@@ -77,3 +77,30 @@ arc::Task<> asyncMain() {
 }
 ```
 
+Using async locks and joining multiple tasks
+```cpp
+arc::Task<> lockerFn(size_t i, arc::Mutex<int>& mtx, Duration wait) {
+    fmt::println("Thread {}, waiting..", i);
+    auto guard = co_await mtx.lock();
+    fmt::println("Thread {}, holding lock for {}", i, wait.toString());
+    co_await arc::sleepFor(wait);
+    fmt::println("Thread {}, releasing lock", i);
+}
+
+arc::Task<> lockTests() {
+    arc::Mutex<int> mtx{0};
+
+    auto t1 = arc::spawn(lockerFn(1, mtx, Duration::fromSecs(2)));
+    auto t2 = arc::spawn(lockerFn(2, mtx, Duration::fromSecs(1)));
+    auto t3 = arc::spawn(lockerFn(3, mtx, Duration::fromSecs(3)));
+    auto t4 = arc::spawn(lockerFn(4, mtx, Duration::fromSecs(1)));
+
+    co_await arc::joinAll(
+        std::move(t1),
+        std::move(t2),
+        std::move(t3),
+        std::move(t4)
+    );
+}
+```
+

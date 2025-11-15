@@ -1,7 +1,6 @@
 #pragma once
 
 #include "Runtime.hpp"
-#include <fmt/core.h>
 
 namespace arc::mpsc {
 
