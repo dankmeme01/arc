@@ -1,4 +1,4 @@
-#include <arc/Runtime.hpp>
+#include <arc/runtime/Runtime.hpp>
 
 namespace arc {
 
@@ -10,15 +10,11 @@ Runtime::Runtime(size_t workers) : m_stopFlag(false) {
     m_workers.reserve(workers);
     for (size_t i = 0; i < workers; ++i) {
         m_workers.emplace_back([this, i] {
-            g_runtime = this;
-
             if (i == 0) {
                 this->timerDriverLoop();
             } else {
                 this->workerLoop(i);
             }
-
-            g_runtime = nullptr;
         });
     }
 }
@@ -27,36 +23,44 @@ Runtime::~Runtime() {
     this->shutdown();
 }
 
-void Runtime::enqueue(std::coroutine_handle<> h) {
+void Runtime::enqueueTask(TaskBase* task) {
+    trace("[Runtime] enqueuing task {}", (void*)task);
     {
         std::lock_guard lock(m_mtx);
-        m_tasks.push_back(h);
+        m_runQueue.push_back(task);
     }
     m_cv.notify_one();
 }
 
 void Runtime::workerLoop(size_t id) {
     while (true) {
-        std::coroutine_handle<> task;
+        TaskBase* task = nullptr;
         {
             std::unique_lock lock(m_mtx);
             m_cv.wait(lock, [this] {
-                return m_stopFlag.load() || !m_tasks.empty();
+                return m_stopFlag.load() || !m_runQueue.empty();
             });
 
-            if (m_stopFlag.load() && m_tasks.empty()) {
+            if (m_stopFlag.load() && m_runQueue.empty()) {
                 break;
             }
 
-            if (!m_tasks.empty()) {
-                task = m_tasks.front();
-                m_tasks.pop_front();
+            if (!m_runQueue.empty()) {
+                task = m_runQueue.front();
+                m_runQueue.pop_front();
             }
         }
 
-        if (task) {
-            task.resume();
+        if (!task) {
+            continue;
         }
+
+        // if (task->m_cancellation.isCancelled()) {
+        //     continue;
+        // }
+        trace("[Worker {}] driving task {}", id, (void*)task);
+        task->m_vtable->run(task);
+        trace("[Worker {}] finished driving task", id);
     }
 }
 
@@ -73,6 +77,7 @@ void Runtime::timerDriverLoop() {
 }
 
 void Runtime::shutdown() {
+    trace("[Runtime] shutting down");
     m_stopFlag.store(true);
     m_cv.notify_all();
 

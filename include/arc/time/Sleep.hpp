@@ -1,20 +1,19 @@
 #pragma once
 
+#include <arc/future/Pollable.hpp>
 #include <asp/time/Instant.hpp>
-#include <coroutine>
 
 namespace arc {
 
-struct Sleep {
+struct Sleep : PollableBase<Sleep, void> {
     asp::time::Instant m_expiry;
 
     explicit Sleep(asp::time::Instant expiry) : m_expiry(expiry) {}
 
-    bool await_ready() const noexcept;
-    void await_suspend(std::coroutine_handle<> h) noexcept;
-    void await_resume() noexcept;
+    bool pollImpl();
 };
 
+Sleep sleep(asp::time::Duration duration);
 Sleep sleepFor(asp::time::Duration duration);
 Sleep sleepUntil(asp::time::Instant expiry);
 

@@ -1,7 +1,7 @@
 #pragma once
 
+#include <arc/future/Pollable.hpp>
 #include <asp/time/Instant.hpp>
-#include <coroutine>
 
 namespace arc {
 
@@ -14,18 +14,16 @@ enum class MissedTickBehavior {
     Skip,
 };
 
-struct Interval {
+struct Interval : PollableBase<Interval, void> {
+    // The next wake time
     asp::time::Instant m_current;
     asp::time::Duration m_period;
     MissedTickBehavior m_mtBehavior = MissedTickBehavior::Burst;
 
     explicit Interval(asp::time::Duration period);
 
-    bool await_ready() const noexcept;
-    void await_suspend(std::coroutine_handle<> h) noexcept;
-    void await_resume() noexcept;
-
     void setMissedTickBehavior(MissedTickBehavior behavior);
+    bool pollImpl();
 };
 
 Interval interval(asp::time::Duration period);

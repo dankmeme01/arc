@@ -1,6 +1,6 @@
 #pragma once
 
-#include "Task.hpp"
+#include <arc/task/Task.hpp>
 #include <asp/time/Instant.hpp>
 #include <asp/sync/SpinLock.hpp>
 #include <queue>
@@ -11,7 +11,7 @@ class Runtime;
 
 struct TimerEntry {
     asp::time::Instant expiry;
-    std::coroutine_handle<> handle;
+    Waker waker;
 
     bool operator>(const TimerEntry& other) const {
         return expiry > other.expiry;
@@ -25,8 +25,7 @@ public:
     TimeDriver(Runtime* runtime);
     ~TimeDriver();
 
-    void addEntry(asp::time::Instant expiry, std::coroutine_handle<> handle);
-    void addTimeout(asp::time::Duration delay, std::coroutine_handle<> handle);
+    void addEntry(asp::time::Instant expiry, Waker waker);
 
 private:
     friend struct Runtime;

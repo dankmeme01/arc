@@ -1,8 +1,38 @@
 # Arc
 
-Modern C++ async runtime inspired by Tokio.
+Arc is a modern C++ async runtime heavily inspired by Tokio and Rust async in general. If you've programmed async rust before - this library will be very familiar to you.
 
-This project is heavily WIP, few things are implemented and they likely have bugs.
+Tasks are the primary unit of execution. The very first function that is ran (your async main function) will be spawned as a task and `blockOn` will return once it's finished. Tasks are intended to be lightweight, and you can always spawn a new task with `arc::spawn(fut)`.
+
+This project is heavily WIP, few things are implemented and they likely have bugs. TODO:
+
+* Foreign future support? awaiting things that aren't `arc::Future<>` or don't inherit `PollableUniBase` at all.
+* Select - implement biased (currently it's always biased)
+* Properly implement future cancellation by adding dtors to every custom future
+* MPSC channels
+* Async IO
+* tokio::time::timeout equivalent (standalone or dependant on select?)
+
+## Usage
+
+```cmake
+CPMAddPackage("gh:dankmeme01/arc#main")
+```
+
+```cpp
+#include <arc/prelude.hpp>
+
+arc::Future<> aMain() {
+    fmt::println("Hello from async!");
+}
+
+ARC_DEFINE_MAIN(aMain);
+// Alternatively, you can define your own `main` function for runtime management:
+int main() {
+    arc::Runtime rt;
+    rt.blockOn(aMain());
+}
+```
 
 ## Examples
 
@@ -11,12 +41,12 @@ Creating a runtime and blocking on a single async function, creating tasks
 #include <arc/prelude.hpp>
 using namespace asp::time;
 
-arc::Task<int> noop() {
+arc::Future<int> noop() {
     co_await arc::yield();
     co_return 1;
 }
 
-arc::Task<> asyncMain() {
+arc::Future<> asyncMain() {
     // This task will run in the background and not block the current task
     auto handle = arc::spawn(noop());
 
@@ -26,19 +56,14 @@ arc::Task<> asyncMain() {
     // One second later, let's retrieve the value returned by the spawned task
     int value = co_await handle;
     std::cout << value << std::endl;
-
-    co_return;
 }
 
-int main() {
-    arc::Runtime runtime;
-    runtime.blockOn(asyncMain());
-}
+ARC_DEFINE_MAIN(asyncMain);
 ```
 
 Running a task every X seconds (interval)
 ```cpp
-arc::Task<> asyncMain() {
+arc::Future<> asyncMain() {
     auto interval = arc::interval(Duration::fromMillis(250));
     while (true) {
         co_await interval;
@@ -47,7 +72,7 @@ arc::Task<> asyncMain() {
 }
 ```
 
-Sending data between tasks or between sync code
+Sending data between tasks or between sync code (TODO: unimpl right now)
 ```cpp
 arc::Task<> consumer(arc::mpsc::Receiver<int> rx) {
     while (true) {
@@ -77,30 +102,70 @@ arc::Task<> asyncMain() {
 }
 ```
 
-Using async locks and joining multiple tasks
+Synchronization utilities such as Mutex, Notify, Semaphore
 ```cpp
-arc::Task<> lockerFn(size_t i, arc::Mutex<int>& mtx, Duration wait) {
-    fmt::println("Thread {}, waiting..", i);
+arc::Future<> lockerFn(arc::Mutex<int>& mtx, arc::Notify& notify) {
+    co_await arc::yield();
+
+    // 2. wait for the main task to release the lock
     auto guard = co_await mtx.lock();
-    fmt::println("Thread {}, holding lock for {}", i, wait.toString());
-    co_await arc::sleepFor(wait);
-    fmt::println("Thread {}, releasing lock", i);
+    fmt::println("Task acquired lock, value: {}", *guard);
+    co_await arc::sleepFor(Duration::fromMillis(500));
+
+    // 3. send notification to main task
+    notify.notifyOne();
 }
 
-arc::Task<> lockTests() {
+arc::Future<> lockTests() {
     arc::Mutex<int> mtx{0};
+    arc::Notify notify;
 
-    auto t1 = arc::spawn(lockerFn(1, mtx, Duration::fromSecs(2)));
-    auto t2 = arc::spawn(lockerFn(2, mtx, Duration::fromSecs(1)));
-    auto t3 = arc::spawn(lockerFn(3, mtx, Duration::fromSecs(3)));
-    auto t4 = arc::spawn(lockerFn(4, mtx, Duration::fromSecs(1)));
+    arc::spawn(lockerFn(mtx, notify));
 
-    co_await arc::joinAll(
-        std::move(t1),
-        std::move(t2),
-        std::move(t3),
-        std::move(t4)
-    );
+    {
+        // 1. lock the mutex, change the value and wait a bit before unlocking
+        auto lock = co_await mtx.lock();
+        *lock = 42;
+        co_await arc::sleep(Duration::fromSecs(1));
+        fmt::println("Unlocking mutex in main");
+    }
+
+    // 4. wait until worker notifies us
+    co_await notify.notified();
 }
 ```
 
+Run multiple futures concurrently (as part of one task), wait for one of them to complete and cancel the losers. This is very similar to the `tokio::select!` macro in Rust and can be incredibly useful.
+
+```cpp
+arc::Future<> aMain() {
+    arc::Mutex<int> mtx;
+
+    // arc::select takes an unlimited list of selectees.
+    // Whenever the first one of them completes, its callback is invoked (if any), and the rest are immediately cancelled.
+    co_await arc::select(
+        // A future that simply finishes in 5 seconds (basically ensuring the select won't last longer than that)
+        arc::selectee(
+            arc::sleep(Duration::fromSecs(5)),
+            [] { fmt::println("Time elapsed!"); }
+        ),
+
+        // A future that never completes, just for showcase purposes
+        arc::selectee(arc::never()),
+
+        // A future that will complete once we are able to acquire the lock on the mutex
+        arc::selectee(
+            mtx.lock(),
+            [](auto guard) { fmt::println("Value: {}", *guard); },
+            // Passing `false` as the 3rd argument to `selectee` will disable this branch from being polled.
+            false
+        ),
+
+        // A future that waits for an interrupt (Ctrl+C) signal to be sent
+        arc::selectee(
+            arc::ctrl_c(),
+            [] { fmt::println("Ctrl+C received, exiting!"); }
+        )
+    );
+}
+```

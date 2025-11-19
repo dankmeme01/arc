@@ -11,11 +11,12 @@ target_include_directories(arc PUBLIC "include")
 include(cmake/CPM.cmake)
 
 CPMAddPackage("gh:dankmeme01/asp2#15da600")
-target_link_libraries(arc PUBLIC asp)
+CPMAddPackage("gh:zhihaoy/nontype_functional#bdb0987")
+target_link_libraries(arc PUBLIC asp std23::nontype_functional)
 
 
 # testing
 
 file(GLOB_RECURSE TESTER_SOURCES CONFIGURE_DEPENDS "test/*.cpp")
 add_executable(arc_tester ${TESTER_SOURCES})
-target_link_libraries(arc_tester PRIVATE arc asp fmt)
+target_link_libraries(arc_tester PRIVATE arc asp fmt std23::nontype_functional)
