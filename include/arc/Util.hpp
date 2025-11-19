@@ -21,7 +21,7 @@ struct ManuallyDrop {
 
     ~ManuallyDrop() noexcept {}
 
-    void drop() noexcept {
+    void drop() noexcept(noexcept(std::declval<T>().~T())) {
         value.~T();
     }
 

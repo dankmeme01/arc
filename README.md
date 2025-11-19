@@ -6,6 +6,7 @@ Tasks are the primary unit of execution. The very first function that is ran (yo
 
 This project is heavily WIP, few things are implemented and they likely have bugs. TODO:
 
+* Properly remove tasks when they terminate
 * Foreign future support? awaiting things that aren't `arc::Future<>` or don't inherit `PollableUniBase` at all.
 * Select - implement biased (currently it's always biased)
 * MPSC channels
