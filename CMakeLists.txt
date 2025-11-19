@@ -3,17 +3,21 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 project(arc VERSION 1.0.0)
+option(ARC_DEBUG "Enable debug assertions" OFF)
 
 file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS "src/*.cpp")
 add_library(arc STATIC ${SOURCES})
 target_include_directories(arc PUBLIC "include")
+
+if (ARC_DEBUG)
+    target_compile_definitions(arc PUBLIC ARC_DEBUG=1)
+endif()
 
 include(cmake/CPM.cmake)
 
 CPMAddPackage("gh:dankmeme01/asp2#15da600")
 CPMAddPackage("gh:zhihaoy/nontype_functional#bdb0987")
 target_link_libraries(arc PUBLIC asp std23::nontype_functional)
-
 
 # testing
 

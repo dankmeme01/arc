@@ -8,11 +8,35 @@ namespace arc {
 bool Sleep::pollImpl() {
     auto now = Instant::now();
     if (now >= m_expiry) {
+        m_id = 0;
         return true;
     } else {
-        ctx().runtime()->timeDriver().addEntry(m_expiry, ctx().m_waker->clone());
+        // only register if we aren't already registered
+        if (m_id == 0) {
+            m_id = ctx().runtime()->timeDriver().addEntry(m_expiry, ctx().m_waker->clone());
+        }
+
         return false;
     }
+}
+
+Sleep::~Sleep() {
+    if (m_id != 0) {
+        ctx().runtime()->timeDriver().removeEntry(m_expiry, m_id);
+    }
+}
+
+Sleep::Sleep(Sleep&& other) noexcept {
+    *this = std::move(other);
+}
+
+Sleep& Sleep::operator=(Sleep&& other) noexcept {
+    if (this != &other) {
+        m_expiry = other.m_expiry;
+        m_id = other.m_id;
+        other.m_id = 0;
+    }
+    return *this;
 }
 
 Sleep sleep(asp::time::Duration duration) {

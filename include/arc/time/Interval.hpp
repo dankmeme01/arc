@@ -2,6 +2,7 @@
 
 #include <arc/future/Pollable.hpp>
 #include <asp/time/Instant.hpp>
+#include <cstdint>
 
 namespace arc {
 
@@ -19,8 +20,12 @@ struct Interval : PollableBase<Interval, void> {
     asp::time::Instant m_current;
     asp::time::Duration m_period;
     MissedTickBehavior m_mtBehavior = MissedTickBehavior::Burst;
+    uint64_t m_id = 0;
 
     explicit Interval(asp::time::Duration period);
+    ~Interval();
+    Interval(Interval&& other) noexcept;
+    Interval& operator=(Interval&& other) noexcept;
 
     void setMissedTickBehavior(MissedTickBehavior behavior);
     bool pollImpl();

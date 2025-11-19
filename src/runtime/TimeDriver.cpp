@@ -10,31 +10,43 @@ TimeDriver::TimeDriver(Runtime* runtime) : m_runtime(runtime) {}
 TimeDriver::~TimeDriver() {}
 
 void TimeDriver::doWork() {
-    std::array<std::optional<TimerEntry>, 64> readyHandles;
+    std::array<std::optional<Waker>, 64> readyHandles;
     size_t count = 0;
 
     auto now = Instant::now();
 
     auto timers = m_timers.lock();
-    while (!timers->empty() && count < readyHandles.size()) {
-        auto& entry = const_cast<TimerEntry&>(timers->top());
-        if (entry.expiry > now) {
+    auto it = timers->begin();
+    while (it != timers->end() && count < readyHandles.size()) {
+        if (it->first.expiry > now) {
             break;
         }
 
-        readyHandles[count++] = std::move(entry);
-        timers->pop();
+        readyHandles[count++] = std::move(it->second);
+        it = timers->erase(it);
     }
 
     timers.unlock();
 
     for (size_t i = 0; i < count; i++) {
-        readyHandles[i]->waker.wake();
+        readyHandles[i]->wake();
     }
 }
 
-void TimeDriver::addEntry(Instant expiry, Waker waker) {
-    m_timers.lock()->emplace(TimerEntry{expiry, std::move(waker)});
+uint64_t TimeDriver::addEntry(Instant expiry, Waker waker) {
+    uint64_t id = fastRandNonzero();
+    m_timers.lock()->emplace(TimerEntryKey{expiry, id}, std::move(waker));
+    return id;
+}
+
+void TimeDriver::removeEntry(Instant expiry, uint64_t id) {
+    TimerEntryKey key{expiry, id};
+
+    auto timers = m_timers.lock();
+    auto it = timers->find(key);
+    if (it != timers->end()) {
+        timers->erase(it);
+    }
 }
 
 }

@@ -47,6 +47,27 @@ void trace(fmt::format_string<Args...> fmt, Args&&... args) {
     fmt::println("[TRACE] [{:.4f}] {}", elapsed.seconds<float>(), fmt::format(fmt, std::forward<Args>(args)...));
 }
 
+// Assert macro
+#define ARC__GET_MACRO(_0, _1, _2, name, ...) name
+#define ARC_ASSERT(...) ARC__GET_MACRO(_0, ##__VA_ARGS__, ARC__ASSERT2, ARC__ASSERT1, ARC__ASSERT0)(__VA_ARGS__)
+
+#define ARC__ASSERT2(condition, msg) \
+    do { \
+        if (!(condition)) [[unlikely]] { \
+            ::arc::_assertionFail(#condition, msg, __FILE__, __LINE__); \
+        } \
+    } while (false)
+#define ARC__ASSERT1(condition) ARC__ASSERT2(condition, "")
+
+#if defined ARC_DEBUG
+# define ARC_DEBUG_ASSERT ARC_ASSERT
+#else
+# define ARC_DEBUG_ASSERT(__VA_ARGS__) (void)0
+#endif
+
+[[noreturn]] void _assertionFail(std::string_view what, std::string_view why, std::string_view file, int line);
+
+
 // Implementation of RomuTrio PRNG
 // https://www.romu-random.org/
 
@@ -67,5 +88,13 @@ inline uint64_t fastRand() {
     return xp;
 }
 #undef ARC_ROTL
+
+inline uint64_t fastRandNonzero() {
+    uint64_t x;
+    do {
+        x = fastRand();
+    } while (x == 0);
+    return x;
+}
 
 }

@@ -3,29 +3,30 @@
 #include <arc/task/Task.hpp>
 #include <asp/time/Instant.hpp>
 #include <asp/sync/SpinLock.hpp>
-#include <queue>
+#include <map>
 
 namespace arc {
 
 class Runtime;
 
-struct TimerEntry {
+struct TimerEntryKey {
     asp::time::Instant expiry;
-    Waker waker;
+    uint64_t id;
 
-    bool operator>(const TimerEntry& other) const {
-        return expiry > other.expiry;
+    bool operator<(const TimerEntryKey& other) const {
+        return expiry < other.expiry;
     }
 };
 
-using TimerQueue = std::priority_queue<TimerEntry, std::vector<TimerEntry>, std::greater<>>;
+using TimerQueue = std::map<TimerEntryKey, Waker, std::less<TimerEntryKey>>;
 
 class TimeDriver {
 public:
     TimeDriver(Runtime* runtime);
     ~TimeDriver();
 
-    void addEntry(asp::time::Instant expiry, Waker waker);
+    uint64_t addEntry(asp::time::Instant expiry, Waker waker);
+    void removeEntry(asp::time::Instant expiry, uint64_t id);
 
 private:
     friend struct Runtime;

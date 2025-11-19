@@ -7,8 +7,14 @@ using enum std::memory_order;
 namespace arc {
 
 static void notify(Waker& waker, Notified* waiter) {
-    waiter->m_waitState.store(Notified::State::Notified, release);
-    waker.wake(); // consume waker
+    auto expected = Notified::State::Waiting;
+    bool exchanged = waiter->m_waitState.compare_exchange_strong(expected, Notified::State::Notified, acq_rel, acquire);
+
+    if (exchanged) {
+        waker.wake();
+    } else {
+        // was already notified or in init state, do nothing
+    }
 }
 
 Notified::~Notified() {
@@ -16,10 +22,12 @@ Notified::~Notified() {
 }
 
 void Notified::reset() {
-    if (m_waitState.load(acquire) == State::Waiting) {
+    auto state = m_waitState.load(acquire);
+    if (state == State::Waiting) {
         m_notify->m_waiters.remove(this);
-        m_waitState.store(State::Init, release);
     }
+
+    m_waitState.store(State::Init, release);
 }
 
 Notified::Notified(Notified&& other) noexcept {
@@ -31,12 +39,22 @@ Notified& Notified::operator=(Notified&& other) noexcept {
 
     m_notify = std::move(other.m_notify);
     auto state = other.m_waitState.load(acquire);
-    other.m_waitState.store(State::Init, release);
     m_waitState.store(state, release);
 
-    // were we waiting? re-register ourselves
+    // was the other notify waiting? re-register as ourselves
     if (state == State::Waiting) {
         m_notify->m_waiters.swapData(&other, this);
+
+        // one last check, in case the other notified gets notified in the middle of this
+        if (!other.m_waitState.compare_exchange_strong(state, State::Init)) {
+            // `other` got notified, reset it and bring the notification here
+            m_waitState.store(state, release);
+            other.m_waitState.store(State::Init, acquire);
+        }
+    }
+    // were we already notified?
+    else if (state == State::Notified) {
+        other.m_waitState.store(State::Init, acquire);
     }
 
     return *this;
@@ -47,8 +65,8 @@ bool Notified::pollImpl() {
         case State::Init: {
             // register the waker
 
-            m_notify->m_waiters.add(*ctx().m_waker, this);
             m_waitState.store(State::Waiting, release);
+            m_notify->m_waiters.add(*ctx().m_waker, this);
             return false;
         } break;
 

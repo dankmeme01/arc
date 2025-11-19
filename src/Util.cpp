@@ -15,4 +15,8 @@ std::array<uint64_t, 3> _getRandomSeed() {
     return seed;
 }
 
+[[noreturn]] void _assertionFail(std::string_view what, std::string_view why, std::string_view file, int line) {
+    throw std::runtime_error(fmt::format("Assertion failed ({}) at {}:{}: {}", what, file, line, why));
+}
+
 }

@@ -5,10 +5,19 @@ using enum std::memory_order;
 namespace arc {
 
 using AcquireAwaiter = Semaphore::AcquireAwaiter;
+using State = AcquireAwaiter::State;
 
-static void notify(Waker& waker, AcquireAwaiter* waiter) {
-    waiter->m_waitState.store(AcquireAwaiter::State::Notified, release);
-    waker.wake(); // consume waker
+static bool notify(Waker& waker, AcquireAwaiter* waiter) {
+    auto expected = State::Waiting;
+    bool exchanged = waiter->m_waitState.compare_exchange_strong(expected, State::Notified, acq_rel, acquire);
+
+    if (exchanged) {
+        waker.wake();
+        return true;
+    } else {
+        // was already notified or in init state, do nothing
+        return false;
+    }
 }
 
 Semaphore::Semaphore(size_t permits) : m_permits(permits) {}
@@ -39,7 +48,10 @@ void Semaphore::release() noexcept {
 void Semaphore::release(size_t n) noexcept {
     for (size_t i = 0; i < n; i++) {
         if (auto waiter = m_waiters.takeFirst()) {
-            notify(waiter->waker, waiter->awaiter);
+            if (!notify(waiter->waker, waiter->awaiter)) {
+                // if the awaiter already got their permit, just add to the semaphore
+                m_permits.fetch_add(1, ::relaxed);
+            }
         } else {
             m_permits.fetch_add(1, ::relaxed);
         }
@@ -47,30 +59,24 @@ void Semaphore::release(size_t n) noexcept {
 }
 
 bool AcquireAwaiter::pollImpl() {
-    // try to acquire immediately
-    if (m_sem.tryAcquire()) {
-        m_waitState.store(State::Notified, ::release);
-        return true;
-    }
-
     switch (m_waitState.load(::acquire)) {
         case State::Init: {
-            // register the waker
-            m_sem.m_waiters.add(*ctx().m_waker, this);
-            m_waitState.store(State::Waiting, ::release);
-
-            // it's not impossible that a permit was released between our tryAcquire and registering, so try again
+            // try to acquire immediately
             if (m_sem.tryAcquire()) {
-                m_sem.m_waiters.remove(this);
                 m_waitState.store(State::Notified, ::release);
                 return true;
             }
 
-            return false;
+            // register the waker
+            m_waitState.store(State::Waiting, ::release);
+            m_sem.m_waiters.add(*ctx().m_waker, this);
+
+            // it's not impossible that a permit was released between our tryAcquire and registering, so try again
+            return this->tryAcquireSafe();
         } break;
 
         case State::Waiting: {
-            return false;
+            return this->tryAcquireSafe();
         } break;
 
         case State::Notified: {
@@ -81,14 +87,29 @@ bool AcquireAwaiter::pollImpl() {
     }
 }
 
+bool AcquireAwaiter::tryAcquireSafe() {
+    if (!m_sem.tryAcquire()) return false;
+
+    // we got a permit, BUT we need to consider the possibility that someone else just notified us.
+    auto expected = State::Waiting;
+    if (m_waitState.compare_exchange_strong(expected, State::Notified, acq_rel, ::release)) {
+        // no notification, we are good to go
+        m_sem.m_waiters.remove(this);
+    } else {
+        // duplicate acquire, return one permit to the semaphore
+        ARC_DEBUG_ASSERT(expected == State::Notified);
+        m_sem.release(1);
+    }
+
+    return true;
+}
+
 AcquireAwaiter::AcquireAwaiter(AcquireAwaiter&& other) noexcept : m_sem(other.m_sem) {
     *this = std::move(other);
 }
 
 AcquireAwaiter& AcquireAwaiter::operator=(AcquireAwaiter&& other) noexcept {
-    if (&m_sem != &other.m_sem) {
-        std::abort();
-    }
+    ARC_ASSERT(&m_sem != &other.m_sem, "cannot move assign awaiters from different semaphores");
 
     this->reset();
     auto state = other.m_waitState.load(::acquire);
@@ -111,9 +132,9 @@ void AcquireAwaiter::reset() {
     auto state = m_waitState.load(::acquire);
     if (state == State::Waiting) {
         m_sem.m_waiters.remove(this);
-        m_waitState.store(State::Init, ::release);
     }
 
+    m_waitState.store(State::Init, ::release);
 }
 
 }

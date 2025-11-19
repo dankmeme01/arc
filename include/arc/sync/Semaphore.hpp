@@ -26,7 +26,10 @@ struct Semaphore {
         AcquireAwaiter(AcquireAwaiter&&) noexcept;
         AcquireAwaiter& operator=(AcquireAwaiter&&) noexcept;
         ~AcquireAwaiter();
+
+    private:
         void reset();
+        bool tryAcquireSafe();
     };
 
     AcquireAwaiter acquire() noexcept;
