@@ -169,3 +169,37 @@ arc::Future<> aMain() {
     );
 }
 ```
+
+Creating custom futures
+```cpp
+#include <arc/future/Pollable.hpp>
+
+// Custom futures must inherit PollableBase and implement the `pollImpl` method
+// If your future returns a value, the `getOutputImpl` also must exist and return the output value.
+struct MyFuture : arc::PollableBase<MyFuture, int> {
+    int counter = 0;
+
+    bool pollImpl() {
+        // Let's make a simple generator, that yields numbers forever
+        // It's always ready, so always return true
+        counter++;
+        return true;
+    }
+
+    // This is where you return the result. This function is guaranteed to be called after `pollImpl` returns true.
+    int getOutputImpl() {
+        return counter;
+    }
+};
+
+arc::Future<> aMain() {
+    auto fut = MyFuture{};
+    while (true) {
+        int x = co_await fut;
+        fmt::println("{}", x);
+        co_await arc::sleep(Duration::fromMillis(500));
+    }
+}
+
+ARC_DEFINE_MAIN(aMain);
+```

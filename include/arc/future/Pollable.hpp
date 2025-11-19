@@ -42,6 +42,10 @@ template <typename Derived, typename T>
 struct PollableBase : PollableUniBase {
     using Output = T;
 
+    T await_resume() noexcept(noexcept(getOutput())) {
+        return this->getOutput();
+    }
+
     T getOutput() {
         return PollableUniBase::getOutput<T>();
     }
