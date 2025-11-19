@@ -8,7 +8,6 @@ This project is heavily WIP, few things are implemented and they likely have bug
 
 * Foreign future support? awaiting things that aren't `arc::Future<>` or don't inherit `PollableUniBase` at all.
 * Select - implement biased (currently it's always biased)
-* Properly implement future cancellation by adding dtors to every custom future
 * MPSC channels
 * Async IO
 * tokio::time::timeout equivalent (standalone or dependant on select?)
