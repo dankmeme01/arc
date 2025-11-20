@@ -12,12 +12,12 @@ Future<Out> _toPlainFuture(Fut fut) {
     co_return co_await std::move(fut);
 }
 
-template <typename Output>
+template <typename Output, typename Cbt>
 struct Selectee {
     using Callback = std::conditional_t<std::is_void_v<Output>,
-        std23::function_ref<void()>,
+        std23::function_ref<Cbt()>,
         // this is funny, but it's necessary to avoid a void param error
-        std23::function_ref<void(std::conditional_t<std::is_void_v<Output>, std::monostate, Output>)>
+        std23::function_ref<Cbt(std::conditional_t<std::is_void_v<Output>, std::monostate, Output>)>
     >;
     static constexpr bool IsVoid = std::is_void_v<Output>;
 
@@ -73,7 +73,14 @@ struct Select : PollableBase<Select<Futures...>, void> {
 template <typename Fut>
 auto selectee(Fut fut, auto callback, bool enabled) {
     using Output = typename FutureTraits<std::decay_t<Fut>>::Output;
-    return Selectee<Output>{std::move(fut), std::move(callback), enabled};
+
+    if constexpr (std::is_void_v<Output>) {
+        using Cbt = decltype(callback());
+        return Selectee<Output, Cbt>{std::move(fut), std::move(callback), enabled};
+    } else {
+        using Cbt = decltype(callback(std::declval<Output>()));
+        return Selectee<Output, Cbt>{std::move(fut), std::move(callback), enabled};
+    }
 }
 
 template <typename Fut>
@@ -93,18 +100,29 @@ auto branch(Args&&... args) {
 }
 
 template <size_t... Is>
-auto invokeSelecteeCallback(std::index_sequence<Is...>, auto& sel) {
-    (([&] {
-        auto& selectee = std::get<Is>(*(sel.m_selectees));
+arc::Future<> invokeSelecteeCallback(std::index_sequence<Is...>, auto& sel) {
+    (co_await ([&] -> arc::Future<> {
+        auto& selectee = std::get<Is>(*sel.m_selectees);
+        if (sel.m_winner != Is) co_return;
 
-        if (sel.m_winner == Is) {
-            if constexpr (selectee.IsVoid) {
-                selectee.callback();
+        if constexpr (selectee.IsVoid) {
+            using CbRet = decltype(selectee.callback());
+            if constexpr (IsFuture<CbRet>::value) {
+                co_await selectee.callback();
             } else {
-                selectee.callback(selectee.future.getOutput());
+                selectee.callback();
+            }
+        } else {
+            auto output = selectee.future.getOutput();
+            using CbRet = decltype(selectee.callback(output));
+            if constexpr (IsFuture<CbRet>::value) {
+                co_await selectee.callback(std::move(output));
+            } else {
+                selectee.callback(std::move(output));
             }
         }
     }()), ...);
+    co_return;
 }
 
 template <typename... Futures>
@@ -113,8 +131,7 @@ arc::Future<> select(Futures... futs) {
     Select sel{std::move(selectees)};
 
     co_await sel;
-
-    invokeSelecteeCallback(std::make_index_sequence<sizeof...(Futures)>{}, sel);
+    co_await invokeSelecteeCallback(std::make_index_sequence<sizeof...(Futures)>{}, sel);
 }
 
 }

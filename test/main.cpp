@@ -54,18 +54,6 @@ arc::Future<int> locker(arc::Mutex<>& mtx) {
 
 arc::Future<> asyncMain() {
     arc::trace("Hello from asyncMain!");
-    arc::Notify notify;
-    arc::Mutex<> mtx;
-
-    int x = co_await arc::spawn(locker(mtx));
-
-    {
-        auto mg = co_await mtx.lock();
-        fmt::println("Locked mutex in asyncMain {}", x);
-        co_await arc::sleepFor(Duration::fromMillis(200));
-        fmt::println("Releasing mutex in asyncMain");
-    }
-
 
     dbg_await(arc::select(
         // future that finishes after 2.5 seconds
@@ -83,7 +71,10 @@ arc::Future<> asyncMain() {
         // future that waits for ctrl+c signal
         arc::selectee(
             arc::ctrl_c(),
-            [] { fmt::println("Ctrl+C received, exiting!"); }
+            [] -> arc::Future<> {
+                fmt::println("Ctrl+C received, exiting!");
+                co_return;
+            }
         )
     ));
 

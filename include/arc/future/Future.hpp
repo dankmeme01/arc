@@ -213,4 +213,9 @@ struct FutureTraits {
     using NonVoidOutput = std::conditional_t<std::is_void_v<Output>, std::monostate, Output>;
 };
 
+template <typename T>
+struct IsFuture : std::false_type {};
+template <Pollable T>
+struct IsFuture<T> : std::true_type {};
+
 }

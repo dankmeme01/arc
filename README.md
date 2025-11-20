@@ -163,7 +163,11 @@ arc::Future<> aMain() {
         // A future that waits for an interrupt (Ctrl+C) signal to be sent
         arc::selectee(
             arc::ctrl_c(),
-            [] { fmt::println("Ctrl+C received, exiting!"); }
+            // Callbacks can be synchronous, but they also can be futures
+            [] -> arc::Future<> {
+                fmt::println("Ctrl+C received, exiting!");
+                co_return;
+            }
         )
     );
 }
