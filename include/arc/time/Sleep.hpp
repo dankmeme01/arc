@@ -13,7 +13,7 @@ struct Sleep : PollableBase<Sleep, void> {
     Sleep(Sleep&& other) noexcept;
     Sleep& operator=(Sleep&& other) noexcept;
 
-    bool pollImpl();
+    bool poll();
 
 private:
     asp::time::Instant m_expiry;

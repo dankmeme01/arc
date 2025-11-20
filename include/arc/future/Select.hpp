@@ -42,7 +42,7 @@ struct Select : PollableBase<Select<Futures...>, void> {
 
     explicit Select(std::tuple<Futures...>&& selectees) : m_selectees(std::move(selectees)) {}
 
-    bool pollImpl() {
+    bool poll() {
         checkForEach(*m_selectees);
         return m_winner != static_cast<size_t>(-1);
     }

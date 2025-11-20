@@ -38,7 +38,7 @@ Signal::Signal(SignalKind kind)
     : m_kind(kind),
       m_notified(ctx().runtime()->signalDriver().addSignalAndNotify(kind)) {}
 
-bool Signal::pollImpl() {
+bool Signal::poll() {
     return m_notified.poll();
 }
 

@@ -28,7 +28,7 @@ struct Interval : PollableBase<Interval, void> {
     Interval& operator=(Interval&& other) noexcept;
 
     void setMissedTickBehavior(MissedTickBehavior behavior);
-    bool pollImpl();
+    bool poll();
 };
 
 Interval interval(asp::time::Duration period);

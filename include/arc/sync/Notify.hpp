@@ -31,7 +31,7 @@ struct Notified : PollableBase<Notified, void> {
 
     ~Notified();
 
-    bool pollImpl();
+    bool poll();
     void reset();
 };
 

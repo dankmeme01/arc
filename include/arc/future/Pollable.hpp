@@ -24,12 +24,12 @@ struct PollableUniBase {
     PollableUniBase& operator=(PollableUniBase&&) = default;
     ~PollableUniBase() = default;
 
-    bool poll() {
+    bool vPoll() {
         return m_vtable->poll(this);
     }
 
     template <typename T>
-    T getOutput() {
+    T vGetOutput() {
         return reinterpret_cast<T (*)(void*)>(m_vtable->getOutput)(this);
     }
 
@@ -42,21 +42,17 @@ template <typename Derived, typename T>
 struct PollableBase : PollableUniBase {
     using Output = T;
 
-    T await_resume() noexcept(noexcept(getOutput())) {
-        return this->getOutput();
-    }
-
-    T getOutput() {
-        return PollableUniBase::getOutput<T>();
+    T await_resume() noexcept(noexcept(vGetOutput())) {
+        return this->vGetOutput();
     }
 
     inline PollableBase() {
         static const PollableVtable vtable = {
             .poll = [](void* self) {
-                return reinterpret_cast<Derived*>(self)->pollImpl();
+                return reinterpret_cast<Derived*>(self)->poll();
             },
             .getOutput = reinterpret_cast<void*>(+[](void* self) -> T {
-                return reinterpret_cast<Derived*>(self)->getOutputImpl();
+                return reinterpret_cast<Derived*>(self)->getOutput();
             }),
         };
 
@@ -71,7 +67,7 @@ struct PollableBase<Derived, void> : PollableUniBase {
 
     static constexpr PollableVtable vtable = {
         .poll = [](void* self) {
-            return reinterpret_cast<Derived*>(self)->pollImpl();
+            return reinterpret_cast<Derived*>(self)->poll();
         },
         .getOutput = nullptr,
     };
@@ -82,10 +78,6 @@ struct PollableBase<Derived, void> : PollableUniBase {
 };
 
 template <typename T>
-concept Pollable = requires(T t) {
-    { t.poll() } -> std::same_as<bool>;
-    typename T::Output;
-    { t.getOutput() } -> std::same_as<typename T::Output>;
-};
+concept Pollable = std::derived_from<T, PollableUniBase>;
 
 }

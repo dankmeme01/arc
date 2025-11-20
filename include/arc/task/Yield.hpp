@@ -5,7 +5,7 @@
 namespace arc {
 
 struct Yield : PollableBase<Yield, void> {
-    bool pollImpl();
+    bool poll();
 
     bool yielded = false;
 };
@@ -13,7 +13,7 @@ struct Yield : PollableBase<Yield, void> {
 Yield yield() noexcept;
 
 struct Never : PollableBase<Never, void> {
-    bool pollImpl();
+    bool poll();
 };
 
 Never never() noexcept;

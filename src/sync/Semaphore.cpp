@@ -58,7 +58,7 @@ void Semaphore::release(size_t n) noexcept {
     }
 }
 
-bool AcquireAwaiter::pollImpl() {
+bool AcquireAwaiter::poll() {
     switch (m_waitState.load(::acquire)) {
         case State::Init: {
             // try to acquire immediately

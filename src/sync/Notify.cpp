@@ -60,7 +60,7 @@ Notified& Notified::operator=(Notified&& other) noexcept {
     return *this;
 }
 
-bool Notified::pollImpl() {
+bool Notified::poll() {
     switch (m_waitState.load(acquire)) {
         case State::Init: {
             // register the waker

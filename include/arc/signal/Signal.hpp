@@ -53,7 +53,7 @@ struct Signal : PollableBase<Signal, void> {
 
     explicit Signal(SignalKind kind);
 
-    bool pollImpl();
+    bool poll();
 };
 
 inline auto signal(SignalKind kind) {

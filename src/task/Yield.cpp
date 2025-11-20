@@ -3,7 +3,7 @@
 
 namespace arc {
 
-bool Yield::pollImpl() {
+bool Yield::poll() {
     if (!yielded) {
         yielded = true;
         ctx().wake();
@@ -17,7 +17,7 @@ Yield yield() noexcept {
     return Yield{};
 }
 
-bool Never::pollImpl() {
+bool Never::poll() {
     return false;
 }
 

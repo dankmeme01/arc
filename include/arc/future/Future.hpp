@@ -98,12 +98,12 @@ struct Future : PollableBase<Future<T>, T> {
         return this->getOutput();
     }
 
-    bool pollImpl() {
+    bool poll() {
         auto child = this->child();
         trace("[{}] poll(), child: {}", this->debugName(), (void*)child);
 
         if (child) {
-            bool done = child->poll();
+            bool done = child->vPoll();
             trace("[{}] poll() -> child done: {}", this->debugName(), done);
             if (done) {
                 m_handle.resume();
@@ -118,7 +118,7 @@ struct Future : PollableBase<Future<T>, T> {
         }
     }
 
-    T getOutputImpl() {
+    T getOutput() {
         if (this->promise().m_exception) {
             std::rethrow_exception(this->promise().m_exception);
         }

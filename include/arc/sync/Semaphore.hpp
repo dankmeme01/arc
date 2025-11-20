@@ -22,7 +22,7 @@ struct Semaphore {
 
         explicit AcquireAwaiter(Semaphore& sem) : m_sem(sem) {}
 
-        bool pollImpl();
+        bool poll();
         AcquireAwaiter(AcquireAwaiter&&) noexcept;
         AcquireAwaiter& operator=(AcquireAwaiter&&) noexcept;
         ~AcquireAwaiter();

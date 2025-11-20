@@ -30,7 +30,7 @@ Interval& Interval::operator=(Interval&& other) noexcept {
     return *this;
 }
 
-bool Interval::pollImpl() {
+bool Interval::poll() {
     auto& driver = ctx().runtime()->timeDriver();
     auto now = Instant::now();
 
