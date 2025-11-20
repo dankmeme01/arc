@@ -7,7 +7,7 @@
 
 namespace arc {
 
-class Runtime;
+struct Runtime;
 
 class SignalDriver {
 public:

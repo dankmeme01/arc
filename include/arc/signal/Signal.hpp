@@ -2,6 +2,7 @@
 
 #include <arc/future/Pollable.hpp>
 #include <arc/sync/Notify.hpp>
+#include <csignal>
 
 namespace arc {
 
@@ -17,16 +18,33 @@ struct SignalKind {
     constexpr bool operator==(const SignalKind& other) const noexcept = default;
     constexpr bool operator!=(const SignalKind& other) const noexcept = default;
 
-    static const SignalKind Alarm;
-    static const SignalKind Child;
-    static const SignalKind Hangup;
     static const SignalKind Interrupt;
-    static const SignalKind Io;
-    static const SignalKind Pipe;
-    static const SignalKind Quit;
     static const SignalKind Terminate;
+
+#ifdef SIGALRM
+    static const SignalKind Alarm;
+#endif
+#ifdef SIGCHLD
+    static const SignalKind Child;
+#endif
+#ifdef SIGHUP
+    static const SignalKind Hangup;
+#endif
+#ifdef SIGIO
+    static const SignalKind Io;
+#endif
+#ifdef SIGPIPE
+    static const SignalKind Pipe;
+#endif
+#ifdef SIGQUIT
+    static const SignalKind Quit;
+#endif
+#ifdef SIGUSR1
     static const SignalKind User1;
+#endif
+#ifdef SIGUSR2
     static const SignalKind User2;
+#endif
 };
 
 struct Signal : PollableBase<Signal, void> {

@@ -33,7 +33,9 @@ size_t SignalDriver::addInner(std::vector<std::pair<int, Notify>>& signals, int 
 }
 
 void SignalDriver::registerHandler(int signum) {
+#ifndef _WIN32
     ARC_ASSERT(signum != SIGKILL && signum != SIGSTOP, "Cannot register handler for SIGKILL or SIGSTOP");
+#endif
 
     static SignalDriver* self;
     self = this;

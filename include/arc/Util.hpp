@@ -1,9 +1,10 @@
 #pragma once
 
-#include <utility>
 #include <fmt/core.h>
 #include <fmt/std.h>
 #include <asp/time/Instant.hpp>
+#include <utility>
+#include <array>
 
 namespace arc {
 

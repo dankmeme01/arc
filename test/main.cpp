@@ -4,6 +4,12 @@
 
 #include <fmt/format.h>
 
+#ifdef _WIN32
+# include <Windows.h>
+// Lol
+# define pthread_self GetCurrentThreadId
+#endif
+
 using namespace asp::time;
 
 #define DBG_FUT_WRAP(f) ({ \
