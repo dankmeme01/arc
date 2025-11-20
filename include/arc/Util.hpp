@@ -63,7 +63,7 @@ void trace(fmt::format_string<Args...> fmt, Args&&... args) {
 #if defined ARC_DEBUG
 # define ARC_DEBUG_ASSERT ARC_ASSERT
 #else
-# define ARC_DEBUG_ASSERT(__VA_ARGS__) (void)0
+# define ARC_DEBUG_ASSERT(...) (void)0
 #endif
 
 [[noreturn]] void _assertionFail(std::string_view what, std::string_view why, std::string_view file, int line);

@@ -84,7 +84,8 @@ struct Runtime {
     }
 
 private:
-    friend class Runtime;
+    template <Pollable P>
+    friend struct Task;
 
     std::atomic<bool> m_stopFlag;
     std::mutex m_mtx;
@@ -99,6 +100,8 @@ private:
 
     void workerLoop(size_t id);
     void timerDriverLoop();
+
+    void removeTask(TaskBase* task) noexcept;
 };
 
 template <Pollable F>

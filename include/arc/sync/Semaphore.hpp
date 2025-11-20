@@ -3,6 +3,7 @@
 #include <arc/future/Pollable.hpp>
 #include <arc/task/WaitList.hpp>
 #include <arc/runtime/Runtime.hpp>
+#include <asp/sync/Mutex.hpp>
 #include <cstddef>
 
 namespace arc {
@@ -19,8 +20,9 @@ struct Semaphore {
 
         Semaphore& m_sem;
         std::atomic<State> m_waitState{State::Init};
+        std::atomic<size_t> m_remaining;
 
-        explicit AcquireAwaiter(Semaphore& sem) : m_sem(sem) {}
+        explicit AcquireAwaiter(Semaphore& sem, size_t permits) : m_sem(sem), m_remaining(permits) {}
 
         bool poll();
         AcquireAwaiter(AcquireAwaiter&&) noexcept;
@@ -32,8 +34,8 @@ struct Semaphore {
         bool tryAcquireSafe();
     };
 
-    AcquireAwaiter acquire() noexcept;
-    bool tryAcquire() noexcept;
+    AcquireAwaiter acquire(size_t permits = 1) noexcept;
+    bool tryAcquire(size_t permits = 1) noexcept;
     void release() noexcept;
     void release(size_t n) noexcept;
 
@@ -47,7 +49,7 @@ private:
     };
 
     std::atomic<size_t> m_permits;
-    WaitList<AcquireAwaiter> m_waiters;
+    asp::Mutex<WaitList<AcquireAwaiter>> m_waiters;
     Runtime* m_runtime = nullptr;
 };
 

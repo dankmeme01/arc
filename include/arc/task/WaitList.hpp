@@ -15,7 +15,6 @@ struct WaitList {
     };
 
     void add(const Waker& waker, T* awaiter) noexcept {
-        std::lock_guard lock(m_mtx);
         m_waiters.push_back({
             waker.clone(),
             awaiter,
@@ -23,8 +22,6 @@ struct WaitList {
     }
 
     void remove(T* awaiter) noexcept {
-        std::lock_guard lock(m_mtx);
-
         for (auto it = m_waiters.begin(); it != m_waiters.end(); ++it) {
             if (it->awaiter == awaiter) {
                 m_waiters.erase(it);
@@ -34,8 +31,6 @@ struct WaitList {
     }
 
     void swapData(T* old, T* newAddr) noexcept {
-        std::lock_guard lock(m_mtx);
-
         for (auto& waiter : m_waiters) {
             if (waiter.awaiter == old) {
                 waiter.awaiter = newAddr;
@@ -45,7 +40,6 @@ struct WaitList {
     }
 
     std::optional<Waiter> takeFirst() {
-        std::lock_guard lock(m_mtx);
         if (m_waiters.empty()) {
             return std::nullopt;
         }
@@ -55,10 +49,17 @@ struct WaitList {
         return waiter;
     }
 
+    Waiter* first() noexcept {
+        if (m_waiters.empty()) {
+            return nullptr;
+        }
+
+        return &m_waiters.front();
+    }
+
     /// Calls the given function on all waiters and clears the list.
     template <typename Func>
     void forAll(Func&& func) {
-        std::lock_guard lock(m_mtx);
         for (auto& waiter : m_waiters) {
             func(waiter.waker, waiter.awaiter);
         }
@@ -66,7 +67,6 @@ struct WaitList {
     }
 
 private:
-    std::mutex m_mtx;
     std::deque<Waiter> m_waiters;
 };
 

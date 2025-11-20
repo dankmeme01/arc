@@ -76,6 +76,11 @@ void Runtime::timerDriverLoop() {
     }
 }
 
+void Runtime::removeTask(TaskBase* task) noexcept {
+    std::lock_guard lock(m_mtx);
+    m_tasks.erase(task);
+}
+
 void Runtime::shutdown() {
     trace("[Runtime] shutting down");
     m_stopFlag.store(true);

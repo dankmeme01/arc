@@ -151,7 +151,9 @@ struct Task : TaskTypedBase<typename P::Output> {
 
     static void vDestroy(void* self) {
         trace("[Task {}] destroying", self);
-        delete static_cast<Task*>(self);
+        auto task = static_cast<Task*>(self);
+        task->m_runtime->removeTask(task);
+        delete task;
     }
 
     static RawWaker vCloneWaker(void* self) {
