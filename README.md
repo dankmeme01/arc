@@ -7,7 +7,7 @@ Tasks are the primary unit of execution. The very first function that is ran (yo
 This project is heavily WIP, few things are implemented and they likely have bugs. TODO:
 
 * Foreign future support? awaiting things that aren't `arc::Future<>` or don't inherit `PollableUniBase` at all.
-* Select - implement biased (currently it's always biased)
+* Select - allow future as a callback
 * MPSC channels
 * Async IO
 * tokio::time::timeout equivalent (standalone or dependant on select?)

@@ -38,12 +38,11 @@ template <typename... Futures>
 struct Select : PollableBase<Select<Futures...>, void> {
     std::optional<std::tuple<Futures...>> m_selectees;
     size_t m_winner = static_cast<size_t>(-1);
-    std::coroutine_handle<> m_awaiter;
 
     explicit Select(std::tuple<Futures...>&& selectees) : m_selectees(std::move(selectees)) {}
 
     bool poll() {
-        checkForEach(*m_selectees);
+        this->checkForEach(*m_selectees);
         return m_winner != static_cast<size_t>(-1);
     }
 
@@ -69,7 +68,6 @@ struct Select : PollableBase<Select<Futures...>, void> {
             }
         }()), ...);
     }
-
 };
 
 template <typename Fut>
@@ -110,26 +108,13 @@ auto invokeSelecteeCallback(std::index_sequence<Is...>, auto& sel) {
 }
 
 template <typename... Futures>
-arc::Future<> selectInner(bool biased, Futures... futs) {
+arc::Future<> select(Futures... futs) {
     auto selectees = std::make_tuple(Selectee{std::move(futs)}...);
     Select sel{std::move(selectees)};
 
     co_await sel;
 
     invokeSelecteeCallback(std::make_index_sequence<sizeof...(Futures)>{}, sel);
-}
-
-struct biased_t {};
-inline constexpr biased_t biased{};
-
-template <typename... Futures>
-auto select(biased_t, Futures... futs) {
-    return selectInner(true, std::move(futs)...);
-}
-
-template <typename... Futures>
-auto select(Futures... futs) {
-    return selectInner(false, std::move(futs)...);
 }
 
 }
