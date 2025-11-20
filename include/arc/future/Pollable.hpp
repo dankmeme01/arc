@@ -42,8 +42,8 @@ template <typename Derived, typename T>
 struct PollableBase : PollableUniBase {
     using Output = T;
 
-    T await_resume() noexcept(noexcept(vGetOutput())) {
-        return this->vGetOutput();
+    T await_resume() noexcept(noexcept(vGetOutput<T>())) {
+        return this->vGetOutput<T>();
     }
 
     inline PollableBase() {
