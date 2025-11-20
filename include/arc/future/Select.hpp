@@ -88,6 +88,12 @@ auto selectee(Fut fut) {
     return selectee(std::move(fut), [](auto...) {}, true);
 }
 
+// Alias to selectee
+template <typename... Args>
+auto branch(Args&&... args) {
+    return selectee(std::forward<Args>(args)...);
+}
+
 template <size_t... Is>
 auto invokeSelecteeCallback(std::index_sequence<Is...>, auto& sel) {
     (([&] {
