@@ -52,7 +52,7 @@ arc::Future<> asyncMain() {
 
     // One second later, let's retrieve the value returned by the spawned task
     int value = co_await handle;
-    std::cout << value << std::endl;
+    fmt::println("{}", value);
 }
 
 ARC_DEFINE_MAIN(asyncMain);
@@ -64,7 +64,7 @@ arc::Future<> asyncMain() {
     auto interval = arc::interval(Duration::fromMillis(250));
     while (true) {
         co_await interval;
-        std::cout << "tick!" << std::endl;
+        fmt::println("tick!");
     }
 }
 ```
@@ -79,7 +79,7 @@ arc::Task<> consumer(arc::mpsc::Receiver<int> rx) {
             break; // channel is closed now, all senders have been destroyed
         }
 
-        std::cout << "received value: " << *val << std::endl;
+        fmt::println("received value: {}", *val);
     }
 }
 
@@ -139,9 +139,11 @@ arc::Future<> aMain() {
     arc::Mutex<int> mtx;
 
     // arc::select takes an unlimited list of selectees.
-    // Whenever the first one of them completes, its callback is invoked (if any), and the rest are immediately cancelled.
+    // Whenever the first one of them completes, its callback is invoked (if any),
+    // and the rest are immediately cancelled.
     co_await arc::select(
-        // A future that simply finishes in 5 seconds (basically ensuring the select won't last longer than that)
+        // A future that simply finishes in 5 seconds
+        // (basically ensuring the select won't last longer than that)
         arc::selectee(
             arc::sleep(Duration::fromSecs(5)),
             [] { fmt::println("Time elapsed!"); }
@@ -150,11 +152,13 @@ arc::Future<> aMain() {
         // A future that never completes, just for showcase purposes
         arc::selectee(arc::never()),
 
-        // A future that will complete once we are able to acquire the lock on the mutex
+        // A future that will complete once we are able to
+        // acquire the lock on the mutex
         arc::selectee(
             mtx.lock(),
             [](auto guard) { fmt::println("Value: {}", *guard); },
-            // Passing `false` as the 3rd argument to `selectee` will disable this branch from being polled.
+            // Passing `false` as the 3rd argument to `selectee` will
+            // disable this branch from being polled.
             false
         ),
 
@@ -176,7 +180,8 @@ Creating custom futures
 #include <arc/future/Pollable.hpp>
 
 // Custom futures must inherit PollableBase and implement the `poll` method
-// If your future returns a value, the `getOutput` also must exist and return the output value.
+// If your future returns a value, the `getOutput` method
+// also must exist and return the output value.
 struct MyFuture : arc::PollableBase<MyFuture, int> {
     int counter = 0;
 
@@ -187,7 +192,8 @@ struct MyFuture : arc::PollableBase<MyFuture, int> {
         return true;
     }
 
-    // This is where you return the result. This function is guaranteed to be called after `poll` returns true.
+    // This is where you return the result.
+    // This function is guaranteed to be called after `poll` returns true.
     int getOutput() {
         return counter;
     }

@@ -224,8 +224,4 @@ void TaskBase::notifyAwaiter(Waker* current) {
     }
 }
 
-void setLeafCoroutine(std::coroutine_handle<> coro) {
-    ctx().currentTask()->m_leaf = coro;
-}
-
 }

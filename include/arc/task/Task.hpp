@@ -42,7 +42,6 @@ struct TaskBase {
     Runtime* m_runtime;
     const TaskVtable* m_vtable;
     std::optional<Waker> m_awaiter;
-    std::coroutine_handle<> m_leaf;
 
     void schedule() noexcept;
 
