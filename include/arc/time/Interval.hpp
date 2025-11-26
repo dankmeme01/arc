@@ -15,20 +15,37 @@ enum class MissedTickBehavior {
     Skip,
 };
 
-struct Interval : PollableBase<Interval, void> {
+struct Interval {
+    explicit Interval(asp::time::Duration period);
+    ~Interval();
+    Interval(Interval&& other) noexcept;
+    Interval& operator=(Interval&& other) noexcept;
+
+    struct Awaiter : PollableBase<Awaiter> {
+        explicit Awaiter(Interval* interval) : m_interval(interval) {}
+        Awaiter(Awaiter&&) noexcept = default;
+        Awaiter& operator=(Awaiter&&) noexcept = default;
+
+        bool poll();
+    private:
+        Interval* m_interval;
+    };
+
+    void setMissedTickBehavior(MissedTickBehavior behavior);
+
+    /// Returns an awaiter that completes when the next tick occurs.
+    /// Note: the behavior is undefined if the Interval is destroyed before the awaiter completes,
+    /// or if multiple awaiters are polled concurrently.
+    Awaiter tick() noexcept;
+
+private:
     // The next wake time
     asp::time::Instant m_current;
     asp::time::Duration m_period;
     MissedTickBehavior m_mtBehavior = MissedTickBehavior::Burst;
     uint64_t m_id = 0;
 
-    explicit Interval(asp::time::Duration period);
-    ~Interval();
-    Interval(Interval&& other) noexcept;
-    Interval& operator=(Interval&& other) noexcept;
-
-    void setMissedTickBehavior(MissedTickBehavior behavior);
-    bool poll();
+    bool doPoll();
 };
 
 Interval interval(asp::time::Duration period);

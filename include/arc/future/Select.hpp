@@ -35,7 +35,7 @@ struct Selectee {
 };
 
 template <typename... Futures>
-struct Select : PollableBase<Select<Futures...>, void> {
+struct Select : PollableBase<Select<Futures...>> {
     std::optional<std::tuple<Futures...>> m_selectees;
     size_t m_winner = static_cast<size_t>(-1);
 

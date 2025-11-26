@@ -38,7 +38,7 @@ struct PollableUniBase {
     void await_resume() noexcept {}
 };
 
-template <typename Derived, typename T>
+template <typename Derived, typename T = void>
 struct PollableBase : PollableUniBase {
     using Output = T;
 

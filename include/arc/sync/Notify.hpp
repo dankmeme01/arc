@@ -13,7 +13,7 @@ struct NotifyState {
     WaitList<Notified> m_waiters;
 };
 
-struct Notified : PollableBase<Notified, void> {
+struct Notified : PollableBase<Notified> {
     enum class State : uint8_t {
         Init,
         Waiting,

@@ -63,7 +63,7 @@ Running a task every X seconds (interval)
 arc::Future<> asyncMain() {
     auto interval = arc::interval(Duration::fromMillis(250));
     while (true) {
-        co_await interval;
+        co_await interval.tick();
         fmt::println("tick!");
     }
 }

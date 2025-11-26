@@ -2,7 +2,7 @@
 
 #include <arc/future/Pollable.hpp>
 #include <arc/sync/Notify.hpp>
-#include <csignal>
+#include <signal.h>
 
 namespace arc {
 
@@ -47,7 +47,7 @@ struct SignalKind {
 #endif
 };
 
-struct Signal : PollableBase<Signal, void> {
+struct Signal : PollableBase<Signal> {
     SignalKind m_kind;
     Notified m_notified;
 

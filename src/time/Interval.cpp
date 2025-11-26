@@ -5,6 +5,16 @@ using namespace asp::time;
 
 namespace arc {
 
+using Awaiter = Interval::Awaiter;
+
+// Awaiter
+
+bool Awaiter::poll() {
+    return m_interval->doPoll();
+}
+
+// Interval
+
 Interval::Interval(Duration period)
     : m_current(Instant::now()),
       m_period(period) {}
@@ -30,7 +40,7 @@ Interval& Interval::operator=(Interval&& other) noexcept {
     return *this;
 }
 
-bool Interval::poll() {
+bool Interval::doPoll() {
     auto& driver = ctx().runtime()->timeDriver();
     auto now = Instant::now();
 
@@ -57,6 +67,10 @@ bool Interval::poll() {
 
 void Interval::setMissedTickBehavior(MissedTickBehavior behavior) {
     m_mtBehavior = behavior;
+}
+
+Awaiter Interval::tick() noexcept {
+    return Awaiter{this};
 }
 
 Interval interval(asp::time::Duration period) {
