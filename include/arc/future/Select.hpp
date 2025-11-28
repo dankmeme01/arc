@@ -2,7 +2,7 @@
 
 #include "Future.hpp"
 #include <arc/task/Task.hpp>
-#include <arc/Util.hpp>
+#include <arc/util/Trace.hpp>
 #include <std23/function_ref.h>
 
 namespace arc {

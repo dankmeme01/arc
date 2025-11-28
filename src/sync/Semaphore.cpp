@@ -1,5 +1,5 @@
 #include <arc/sync/Semaphore.hpp>
-#include <arc/Util.hpp>
+#include <arc/util/Assert.hpp>
 
 using enum std::memory_order;
 

@@ -34,7 +34,7 @@ void TimeDriver::doWork() {
 }
 
 uint64_t TimeDriver::addEntry(Instant expiry, Waker waker) {
-    uint64_t id = fastRandNonzero();
+    uint64_t id = m_nextTimerId.fetch_add(1, std::memory_order::relaxed);
     m_timers.lock()->emplace(TimerEntryKey{expiry, id}, std::move(waker));
     return id;
 }

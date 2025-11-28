@@ -1,5 +1,5 @@
 #include <arc/runtime/SignalDriver.hpp>
-#include <arc/Util.hpp>
+#include <arc/util/Assert.hpp>
 #include <csignal>
 
 namespace arc {

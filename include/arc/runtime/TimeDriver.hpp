@@ -31,6 +31,7 @@ public:
 private:
     friend struct Runtime;
 
+    std::atomic<uint64_t> m_nextTimerId{1};
     Runtime* m_runtime;
     asp::SpinLock<TimerQueue> m_timers;
 

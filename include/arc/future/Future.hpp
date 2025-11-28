@@ -5,7 +5,7 @@
 #include <variant>
 #include <optional>
 
-#include <arc/Util.hpp>
+#include <arc/util/Trace.hpp>
 #include "Pollable.hpp"
 
 namespace arc {
