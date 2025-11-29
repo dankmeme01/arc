@@ -55,11 +55,28 @@ bool Semaphore::tryAcquire(size_t permits) noexcept {
     }
 }
 
+size_t Semaphore::tryAcquireAtMost(size_t maxp) noexcept {
+    size_t current = m_permits.load(::acquire);
+
+    while (true) {
+        if (current == 0) {
+            return 0;
+        }
+
+        size_t toTake = std::min(current, maxp);
+        if (m_permits.compare_exchange_weak(current, current - toTake, ::acq_rel, ::acquire)) {
+            return toTake;
+        }
+    }
+}
+
 void Semaphore::release() noexcept {
     this->release(1);
 }
 
 void Semaphore::release(size_t n) noexcept {
+    if (n == 0) return;
+
     auto waiters = m_waiters.lock();
 
     while (n != 0) {
@@ -79,14 +96,23 @@ void Semaphore::release(size_t n) noexcept {
     }
 }
 
+size_t Semaphore::permits() const noexcept {
+    return m_permits.load(::acquire);
+}
+
 bool AcquireAwaiter::poll() {
     switch (m_waitState.load(::acquire)) {
         case State::Init: {
-            // try to acquire immediately, relaxed because no one else knows about us yet
-            if (m_sem.tryAcquire(m_remaining.load(::relaxed))) {
+            // try to acquire immediately
+            auto initial = m_remaining.load(::acquire);
+            auto iAcquired = m_sem.tryAcquireAtMost(initial);
+
+            if (iAcquired == initial) {
                 m_waitState.store(State::Notified, ::relaxed);
-                m_remaining.store(0, ::relaxed);
+                m_remaining.store(0, ::release);
                 return true;
+            } else if (iAcquired > 0) {
+                m_remaining.fetch_sub(iAcquired, ::acq_rel);
             }
 
             // register the waker
@@ -111,30 +137,63 @@ bool AcquireAwaiter::poll() {
 
 bool AcquireAwaiter::tryAcquireSafe() {
     auto remaining = m_remaining.load(::acquire);
-    if (!m_sem.tryAcquire(remaining)) return false;
+    size_t iAcquired = m_sem.tryAcquireAtMost(remaining);
 
-    // we got a permit, BUT we need to consider the possibility that someone else just notified us.
+    if (iAcquired == 0) {
+        return false;
+    }
+
+    size_t extra = 0;
+    bool satisfied = false;
+
+    if (m_remaining.compare_exchange_strong(remaining, remaining - iAcquired, acq_rel, ::acquire)) {
+        satisfied = (remaining == iAcquired);
+    } else {
+        while (true) {
+            ARC_ASSERT(iAcquired >= remaining);
+            extra = iAcquired - remaining;
+
+            if (m_remaining.compare_exchange_weak(remaining, 0, acq_rel, ::acquire)) {
+                satisfied = true;
+                break;
+            }
+        }
+    }
+
+    // we may have gotten extra permits, return them to the semaphore
+    if (extra > 0) {
+        m_sem.release(extra);
+        extra = 0;
+    }
+
+    // set the state to Notified if we are satisfied,
+    // if we aren't, really make sure no one else notified us in the meantime
+
     auto expected = State::Waiting;
-    if (m_waitState.compare_exchange_strong(expected, State::Notified, acq_rel, ::release)) {
-        // no notification, so remove the waiter, but we are not ready to return yet
-        m_sem.m_waiters.lock()->remove(this);
+    auto stateAfter = satisfied ? State::Notified : State::Waiting;
 
-        // it's possible that someone else gave us some permits, but not enough to satisfy our request
-        // check now if m_remaining still matches the acquired amount
-        auto expected = remaining;
-        if (!m_remaining.compare_exchange_strong(expected, 0, acq_rel, ::acquire)) {
-            size_t extra = remaining - expected;
-            // we got some extra permits, return them to the semaphore
-            m_sem.release(extra);
-            m_remaining.store(0, ::relaxed);
+    if (m_waitState.compare_exchange_strong(expected, stateAfter, acq_rel, ::release)) {
+        if (!satisfied) {
+            // possible that we got some permits sent our way before the cas
+            satisfied = m_remaining.load(::acquire) == 0;
+            if (satisfied) {
+                m_waitState.store(State::Notified, ::release);
+            }
+        }
+
+        if (satisfied) {
+            // remove the waiter
+            m_sem.m_waiters.lock()->remove(this);
         }
     } else {
         // duplicate acquire, return the permits to the semaphore
         ARC_DEBUG_ASSERT(expected == State::Notified);
-        m_sem.release(remaining);
+        auto rem = m_remaining.load(::acquire);
+        m_remaining.store(0, ::relaxed);
+        m_sem.release(rem);
     }
 
-    return true;
+    return satisfied;
 }
 
 AcquireAwaiter::AcquireAwaiter(AcquireAwaiter&& other) noexcept : m_sem(other.m_sem) {
@@ -168,6 +227,18 @@ void AcquireAwaiter::reset() {
     }
 
     m_waitState.store(State::Init, ::release);
+
+    while (true) {
+        auto rem = m_remaining.load(::acquire);
+        if (rem == m_requested) {
+            break;
+        }
+
+        if (m_remaining.compare_exchange_weak(rem, m_requested, acq_rel, ::acquire)) {
+            m_sem.release(m_requested - rem);
+            break;
+        }
+    }
 }
 
 }

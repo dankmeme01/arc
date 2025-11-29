@@ -4,6 +4,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 project(arc VERSION 1.0.0)
 option(ARC_DEBUG "Enable debug assertions" OFF)
+option(ARC_BUILD_TESTS "Build tests" OFF)
 
 file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS "src/*.cpp")
 add_library(arc STATIC ${SOURCES})
@@ -19,8 +20,24 @@ CPMAddPackage("gh:dankmeme01/asp2#15da600")
 CPMAddPackage("gh:zhihaoy/nontype_functional#bdb0987")
 target_link_libraries(arc PUBLIC asp std23::nontype_functional)
 
-# testing
+# small executable for testing
 
-file(GLOB_RECURSE TESTER_SOURCES CONFIGURE_DEPENDS "test/*.cpp")
+file(GLOB_RECURSE TESTER_SOURCES CONFIGURE_DEPENDS "test/main.cpp")
 add_executable(arc_tester ${TESTER_SOURCES})
 target_link_libraries(arc_tester PRIVATE arc asp fmt std23::nontype_functional)
+
+# unit tests (gtest)
+
+if (ARC_BUILD_TESTS)
+    enable_testing()
+
+    CPMAddPackage("gh:google/googletest@1.16.0")
+
+    add_executable(
+        arc_tests
+        test/Semaphore.cpp
+    )
+    target_link_libraries(arc_tests PRIVATE arc gtest_main GeodeResult)
+    include(GoogleTest)
+    gtest_discover_tests(arc_tests)
+endif()

@@ -31,6 +31,11 @@ struct Pin {
     T& get() noexcept {
         return value;
     }
+
+    /// Unpins the value, the user is responsible for ensuring it is safe to move.
+    T unpin() noexcept {
+        return std::move(value);
+    }
 };
 
 }
