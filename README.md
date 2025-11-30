@@ -181,22 +181,15 @@ Creating custom futures
 #include <arc/future/Pollable.hpp>
 
 // Custom futures must inherit PollableBase and implement the `poll` method
-// If your future returns a value, the `getOutput` method
-// also must exist and return the output value.
+// If your future returns nothing, the `poll` method should return a `bool`, representing whether it's ready or not.
+// Otherwise, it should return `optional<T>`, representing the output value if ready.
 struct MyFuture : arc::PollableBase<MyFuture, int> {
     int counter = 0;
 
-    bool poll() {
-        // Let's make a simple generator, that yields numbers forever
-        // It's always ready, so always return true
-        counter++;
-        return true;
-    }
-
-    // This is where you return the result.
-    // This function is guaranteed to be called after `poll` returns true.
-    int getOutput() {
-        return counter;
+    std::optional<int> poll() {
+        // Let's make a simple generator, that yields numbers forever.
+        // It is always ready, so just return the number
+        return counter++;
     }
 };
 

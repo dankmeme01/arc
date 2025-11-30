@@ -52,6 +52,28 @@ arc::Future<int> locker(arc::Mutex<>& mtx) {
     co_return 478;
 }
 
+arc::Future<> tcpTest() {
+    auto res = co_await arc::TcpStream::connect("45.79.112.203:4242");
+    if (!res) {
+        fmt::println("Failed to connect: {}", res.unwrapErr().message());
+        co_return;
+    }
+
+    fmt::println("Connected, sending data");
+    auto stream = std::move(res.unwrap());
+    char msg[] = "hello world\n";
+    (co_await stream.send(msg, sizeof(msg))).unwrap();
+    fmt::println("Data sent, receiving");
+    char buf[128] = {0};
+    auto r = co_await stream.receive(buf, sizeof(buf) - 1);
+    if (!r) {
+        fmt::println("Failed to receive data: {}", r.unwrapErr().message());
+        co_return;
+    }
+    size_t n = r.unwrap();
+    fmt::println("Received {} bytes", n);
+}
+
 arc::Future<> asyncMain() {
     arc::trace("Hello from asyncMain!");
 

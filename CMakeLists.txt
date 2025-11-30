@@ -17,18 +17,20 @@ endif()
 include(cmake/CPM.cmake)
 
 CPMAddPackage("gh:dankmeme01/asp2#15da600")
+CPMAddPackage("gh:dankmeme01/qsox#93da9bf")
 CPMAddPackage("gh:zhihaoy/nontype_functional#bdb0987")
-target_link_libraries(arc PUBLIC asp std23::nontype_functional)
+target_link_libraries(arc PUBLIC asp qsox std23::nontype_functional)
 
-# small executable for testing
-
-file(GLOB_RECURSE TESTER_SOURCES CONFIGURE_DEPENDS "test/main.cpp")
-add_executable(arc_tester ${TESTER_SOURCES})
-target_link_libraries(arc_tester PRIVATE arc asp fmt std23::nontype_functional)
-
-# unit tests (gtest)
 
 if (ARC_BUILD_TESTS)
+    # small executable for testing
+
+    file(GLOB_RECURSE TESTER_SOURCES CONFIGURE_DEPENDS "test/main.cpp")
+    add_executable(arc_tester ${TESTER_SOURCES})
+    target_link_libraries(arc_tester PRIVATE arc asp fmt std23::nontype_functional)
+
+    # unit tests (gtest)
+
     enable_testing()
 
     CPMAddPackage("gh:google/googletest@1.16.0")

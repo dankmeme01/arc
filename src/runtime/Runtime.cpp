@@ -3,8 +3,8 @@
 namespace arc {
 
 Runtime::Runtime(size_t workers) : m_stopFlag(false) {
-    if (workers < 2) {
-        workers = 2;
+    if (workers < 3) {
+        workers = 3;
     }
 
     m_workers.reserve(workers);
@@ -12,7 +12,9 @@ Runtime::Runtime(size_t workers) : m_stopFlag(false) {
         m_workers.emplace_back([this, i] {
             if (i == 0) {
                 this->timerDriverLoop();
-            } else {
+            } else if (i == 1) {
+                this->ioDriverLoop();
+            } {
                 this->workerLoop(i);
             }
         });
@@ -67,6 +69,18 @@ void Runtime::workerLoop(size_t id) {
 void Runtime::timerDriverLoop() {
     while (true) {
         m_timeDriver.doWork();
+
+        if (m_stopFlag.load()) {
+            break;
+        }
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+    }
+}
+
+void Runtime::ioDriverLoop() {
+    while (true) {
+        m_ioDriver.doWork();
 
         if (m_stopFlag.load()) {
             break;

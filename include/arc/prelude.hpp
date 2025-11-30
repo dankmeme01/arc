@@ -1,6 +1,7 @@
 #include "future/Future.hpp"
 #include "future/Select.hpp"
 #include "future/Pollable.hpp"
+#include "net/TcpStream.hpp"
 #include "runtime/Runtime.hpp"
 #include "signal/Signal.hpp"
 #include "sync/Notify.hpp"

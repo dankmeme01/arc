@@ -11,6 +11,7 @@
 #include <asp/time/sleep.hpp>
 #include "TimeDriver.hpp"
 #include "SignalDriver.hpp"
+#include "IoDriver.hpp"
 
 namespace arc {
 
@@ -30,6 +31,10 @@ struct Runtime {
 
     inline SignalDriver& signalDriver() noexcept {
         return m_signalDriver;
+    }
+
+    inline IoDriver& ioDriver() noexcept {
+        return m_ioDriver;
     }
 
     void enqueueTask(TaskBase* task);
@@ -95,11 +100,13 @@ private:
     std::vector<std::thread> m_workers;
     TimeDriver m_timeDriver{this};
     SignalDriver m_signalDriver{this};
+    IoDriver m_ioDriver{this};
 
     void shutdown();
 
     void workerLoop(size_t id);
     void timerDriverLoop();
+    void ioDriverLoop();
 
     void removeTask(TaskBase* task) noexcept;
 };
