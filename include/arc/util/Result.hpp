@@ -3,6 +3,7 @@
 
 #define ARC_UNWRAP(...) GEODE_UNWRAP(__VA_ARGS__)
 #define ARC_UNWRAP_INTO(...) GEODE_UNWRAP_INTO(__VA_ARGS__)
+#define ARC_MAP_UNWRAP(...) GEODE_UNWRAP((__VA_ARGS__).mapErr([](auto err) { return err.message(); }))
 
 #if defined(__GNUC__) || defined(__clang__)
     #define ARC_CO_UNWRAP(...)                                                          \
@@ -22,3 +23,5 @@
     if (GEODE_CONCAT(res, __LINE__).isErr())                                   \
         co_return geode::Err(std::move(GEODE_CONCAT(res, __LINE__)).unwrapErr()); \
     variable = std::move(GEODE_CONCAT(res, __LINE__)).unwrap()
+
+#define ARC_CO_MAP_UNWRAP(...) ARC_CO_UNWRAP((__VA_ARGS__).mapErr([](auto err) { return err.message(); }))

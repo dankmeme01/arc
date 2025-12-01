@@ -38,7 +38,9 @@ bool RegisteredIoWaiter::satisfiedBy(Interest ready) const {
 }
 
 bool Registration::pollReady(Interest interest, uint64_t& outId) {
+    ARC_ASSERT(rio);
     ARC_ASSERT(interest != Interest::ReadWrite);
+
     auto curr = rio->readiness.load(acquire);
 
     trace("IoDriver: fd {} readiness: {}", fmtFd(rio->fd), curr);
@@ -80,6 +82,9 @@ bool Registration::pollReady(Interest interest, uint64_t& outId) {
 }
 
 void Registration::unregister(uint64_t id) {
+    ARC_ASSERT(rio);
+    if (id == 0) return;
+
     auto waiters = rio->waiters.lock();
 
     auto it = std::find_if(waiters->begin(), waiters->end(), [id](const RegisteredIoWaiter& waiter) {
@@ -115,6 +120,7 @@ void Registration::unregister(uint64_t id) {
 }
 
 void Registration::clearReadiness(Interest interest) {
+    ARC_ASSERT(rio);
     ARC_ASSERT(interest != Interest::ReadWrite);
 
     trace("IoDriver: clearing readiness for fd {}, interest {}", fmtFd(rio->fd), static_cast<uint8_t>(interest));
@@ -134,10 +140,7 @@ Registration IoDriver::registerIo(SockFd fd, Interest interest) {
 
     trace("IoDriver: registered fd {}", fmtFd(fd));
 
-    Registration reg {
-        .rio = rio,
-        // .id = m_nextId.fetch_add(1, std::memory_order::relaxed),
-    };
+    Registration reg{std::move(rio)};
 
     m_ioPendingQueue.lock()->push_back(reg);
     return reg;

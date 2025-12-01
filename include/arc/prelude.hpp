@@ -2,6 +2,8 @@
 #include "future/Select.hpp"
 #include "future/Pollable.hpp"
 #include "net/TcpStream.hpp"
+#include "net/TcpListener.hpp"
+#include "net/UdpSocket.hpp"
 #include "runtime/Runtime.hpp"
 #include "signal/Signal.hpp"
 #include "sync/Notify.hpp"

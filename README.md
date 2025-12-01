@@ -9,7 +9,7 @@ This project is heavily WIP, few things are implemented and they likely have bug
 * Foreign future support? awaiting things that aren't `arc::Future<>` or don't inherit `PollableUniBase` at all.
 * Make the runtime be able to ran with 1 thread, including just using the main thread for it. Run timer/io tasks on worker threads instead of a separate thread.
 * MPSC channels
-* Async IO (backed by blocking thread pool for files, by a poller driver for networking)
+* Thread pool for blocking tasks, use for file io? and spawn function
 
 ## Usage
 
@@ -61,12 +61,10 @@ ARC_DEFINE_MAIN(asyncMain);
 
 Running a task every X seconds (interval)
 ```cpp
-arc::Future<> asyncMain() {
-    auto interval = arc::interval(Duration::fromMillis(250));
-    while (true) {
-        co_await interval.tick();
-        fmt::println("tick!");
-    }
+auto interval = arc::interval(Duration::fromMillis(250));
+while (true) {
+    co_await interval.tick();
+    fmt::println("tick!");
 }
 ```
 
@@ -133,47 +131,87 @@ arc::Future<> lockTests() {
 }
 ```
 
+Creating TCP and UDP sockets
+```cpp
+// TcpStream is very similar to rust's TcpStream
+auto res = co_await arc::TcpStream::connect("127.0.0.1:8000");
+auto socket = res.unwrap();
+
+// In the real world, check that the functions actually succeed instead of casting to void
+char[] data = "hello world";
+(void) co_await socket.send(data, sizeof(data));
+char buf[512];
+size_t n = (co_await socket.receive(buf, 512)).unwrap();
+
+// UdpSocket
+auto res = co_await arc::UdpSocket::bindAny();
+auto socket = res.unwrap();
+
+auto dest = qsox::SocketAddress::parse("127.0.0.1:1234").unwrap();
+char[] data = "hello world";
+(void) co_await socket.sendTo(data, sizeof(data), dest);
+char buf[512];
+size_t n = (co_await socket.receive(buf, 512)).unwrap();
+```
+
+Creating a TCP listener
+```cpp
+auto res = co_await arc::TcpListener::bind(
+    qsox::SocketAddress::parse("0.0.0.0:4242").unwrap()
+);
+auto listener = res.unwrap();
+
+while (true) {
+    auto res = co_await listener.accept();
+    auto [stream, addr] = res.unwrap();
+
+    fmt::println("Accepted connection from {}", addr.toString());
+
+    arc::spawn([](arc::TcpStream s, qsox::SocketAddress a) mutable -> arc::Future<> {
+        // do things with the socket ...
+    }(std::move(stream), addr));
+}
+```
+
 Run multiple futures concurrently (as part of one task), wait for one of them to complete and cancel the losers. This is very similar to the `tokio::select!` macro in Rust and can be incredibly useful.
 
 ```cpp
-arc::Future<> aMain() {
-    arc::Mutex<int> mtx;
+arc::Mutex<int> mtx;
 
-    // arc::select takes an unlimited list of selectees.
-    // Whenever the first one of them completes, its callback is invoked (if any),
-    // and the rest are immediately cancelled.
-    co_await arc::select(
-        // A future that simply finishes in 5 seconds
-        // (basically ensuring the select won't last longer than that)
-        arc::selectee(
-            arc::sleep(Duration::fromSecs(5)),
-            [] { fmt::println("Time elapsed!"); }
-        ),
+// arc::select takes an unlimited list of selectees.
+// Whenever the first one of them completes, its callback is invoked (if any),
+// and the rest are immediately cancelled.
+co_await arc::select(
+    // A future that simply finishes in 5 seconds
+    // (basically ensuring the select won't last longer than that)
+    arc::selectee(
+        arc::sleep(Duration::fromSecs(5)),
+        [] { fmt::println("Time elapsed!"); }
+    ),
 
-        // A future that never completes, just for showcase purposes
-        arc::selectee(arc::never()),
+    // A future that never completes, just for showcase purposes
+    arc::selectee(arc::never()),
 
-        // A future that will complete once we are able to
-        // acquire the lock on the mutex
-        arc::selectee(
-            mtx.lock(),
-            [](auto guard) { fmt::println("Value: {}", *guard); },
-            // Passing `false` as the 3rd argument to `selectee` will
-            // disable this branch from being polled.
-            false
-        ),
+    // A future that will complete once we are able to
+    // acquire the lock on the mutex
+    arc::selectee(
+        mtx.lock(),
+        [](auto guard) { fmt::println("Value: {}", *guard); },
+        // Passing `false` as the 3rd argument to `selectee` will
+        // disable this branch from being polled.
+        false
+    ),
 
-        // A future that waits for an interrupt (Ctrl+C) signal to be sent
-        arc::selectee(
-            arc::ctrl_c(),
-            // Callbacks can be synchronous, but they also can be futures
-            [] -> arc::Future<> {
-                fmt::println("Ctrl+C received, exiting!");
-                co_return;
-            }
-        )
-    );
-}
+    // A future that waits for an interrupt (Ctrl+C) signal to be sent
+    arc::selectee(
+        arc::ctrl_c(),
+        // Callbacks can be synchronous, but they also can be futures
+        [] -> arc::Future<> {
+            fmt::println("Ctrl+C received, exiting!");
+            co_return;
+        }
+    )
+);
 ```
 
 Creating custom futures

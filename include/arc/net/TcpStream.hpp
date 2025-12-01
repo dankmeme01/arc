@@ -1,65 +1,59 @@
 #pragma once
 #include "EventIoBase.hpp"
-#include <arc/runtime/IoDriver.hpp>
 
 #include <qsox/TcpStream.hpp>
 
 namespace arc {
 
-template <typename T>
-using NetResult = qsox::NetResult<T>;
+using qsox::ShutdownMode;
 
-class TcpStream : public EventIoBase {
+class TcpStream : public EventIoBase<TcpStream> {
 public:
-    static arc::Future<NetResult<TcpStream>> connect(const qsox::SocketAddress& address);
-    static arc::Future<NetResult<TcpStream>> connect(std::string_view address);
+    // Creates a new TCP stream, connecting to the given address.
+    static Future<NetResult<TcpStream>> connect(qsox::SocketAddress address);
+    // Creates a new TCP stream, connecting to the given address.
+    // Convenience shorthand, address must be in format ip:port
+    static Future<NetResult<TcpStream>> connect(std::string_view address);
+
+    TcpStream(TcpStream&& other) noexcept = default;
+    TcpStream& operator=(TcpStream&& other) noexcept = default;
+
+    // Shuts down the TCP stream for reading, writing, or both.
+    Future<NetResult<void>> shutdown(ShutdownMode mode);
+
+    // Sets the TCP_NODELAY option on the socket, which disables or enables the Nagle algorithm.
+    // If `noDelay` is true, small packets are sent immediately without waiting for larger packets to accumulate.
+    NetResult<void> setNoDelay(bool noDelay);
+
+    // Sends data over this socket. Returns amount of bytes sent.
+    Future<NetResult<size_t>> send(const void* data, size_t size);
+
+    // Sends data over this socket, waiting until all data is sent, or an error occurs.
+    Future<NetResult<void>> sendAll(const void* data, size_t size);
+
+    // Receives data from the socket. Returns amount of bytes received.
+    Future<NetResult<size_t>> receive(void* buffer, size_t size);
+
+    // Receives data from the socket, waiting until the given buffer is full or an error occurs.
+    Future<NetResult<void>> receiveExact(void* buffer, size_t size);
+
+    // Peeks at incoming data without removing it from the queue.
+    Future<NetResult<size_t>> peek(void* buffer, size_t size);
+
+    NetResult<qsox::SocketAddress> localAddress() const;
+    NetResult<qsox::SocketAddress> remoteAddress() const;
 
 private:
+    friend class TcpListener;
+
     qsox::TcpStream m_stream;
 
     TcpStream(qsox::TcpStream stream, Registration io) : EventIoBase(std::move(io)), m_stream(std::move(stream)) {}
 
     std::optional<NetResult<size_t>> pollWrite(const void* data, size_t size, uint64_t& id);
-    std::optional<NetResult<size_t>> pollRead(void* buf, size_t size, uint64_t& id);
+    std::optional<NetResult<size_t>> pollRead(void* buf, size_t size, uint64_t& id, bool peek = false);
 
-public:
-    struct [[nodiscard]] SendAwaiter : PollableBase<SendAwaiter, NetResult<size_t>> {
-        SendAwaiter(TcpStream* stream, const void* data, size_t size)
-            : m_stream(stream), m_data(data), m_size(size) {}
-
-        ~SendAwaiter();
-
-        std::optional<NetResult<size_t>> poll() {
-            return m_stream->pollWrite(m_data, m_size, m_id);
-        }
-    private:
-        TcpStream* m_stream;
-        const void* m_data;
-        size_t m_size;
-        uint64_t m_id = 0;
-    };
-
-    struct [[nodiscard]] RecvAwaiter : PollableBase<RecvAwaiter, NetResult<size_t>> {
-        RecvAwaiter(TcpStream* stream, void* buf, size_t size)
-            : m_stream(stream), m_buf(buf), m_size(size) {}
-
-        ~RecvAwaiter();
-
-        std::optional<NetResult<size_t>> poll() {
-            return m_stream->pollRead(m_buf, m_size, m_id);
-        }
-    private:
-        TcpStream* m_stream;
-        void* m_buf;
-        size_t m_size;
-        uint64_t m_id;
-    };
-
-    // Sends data over this socket. Returns amount of bytes sent.
-    SendAwaiter send(const void* data, size_t size);
-
-    // Receives data from the socket. Returns amount of bytes received.
-    RecvAwaiter receive(void* buffer, size_t size);
+    static TcpStream fromQsox(qsox::TcpStream socket);
 };
 
 }

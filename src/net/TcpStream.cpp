@@ -8,19 +8,13 @@ using namespace qsox;
 
 namespace arc {
 
-TcpStream::SendAwaiter::~SendAwaiter() {
-    if (m_id == 0) {
-        m_stream->m_io.unregister(m_id);
-    }
+TcpStream TcpStream::fromQsox(qsox::TcpStream socket) {
+    (void) socket.setNonBlocking(true);
+    auto rio = ctx().runtime()->ioDriver().registerIo(socket.handle(), Interest::ReadWrite);
+    return TcpStream{std::move(socket), std::move(rio)};
 }
 
-TcpStream::RecvAwaiter::~RecvAwaiter() {
-    if (m_id == 0) {
-        m_stream->m_io.unregister(m_id);
-    }
-}
-
-arc::Future<NetResult<TcpStream>> TcpStream::connect(std::string_view address) {
+Future<NetResult<TcpStream>> TcpStream::connect(std::string_view address) {
     auto res = qsox::SocketAddress::parse(address);
     if (!res) {
         co_return Err(Error::InvalidArgument);
@@ -29,23 +23,17 @@ arc::Future<NetResult<TcpStream>> TcpStream::connect(std::string_view address) {
     co_return co_await TcpStream::connect(*res);
 }
 
-arc::Future<NetResult<TcpStream>> TcpStream::connect(const qsox::SocketAddress& address) {
+Future<NetResult<TcpStream>> TcpStream::connect(SocketAddress address) {
+    trace("(TCP) Connecting to {}", address.toString());
+
+    // create a tcpstream immediately so that raii will unregister the io on error
     ARC_CO_UNWRAP_INTO(auto stream, qsox::TcpStream::connectNonBlocking(address));
-    auto rio = ctx().runtime()->ioDriver().registerIo(stream.handle(), Interest::ReadWrite);
+    auto out = fromQsox(std::move(stream));
 
     // wait until writable (connected)
-    uint64_t id = 0;
-    co_await pollFunc([&] {
-        return rio.pollReady(Interest::Writable, id);
-    });
-    if (id != 0) {
-        rio.unregister(id);
-    }
+    ARC_CO_UNWRAP(co_await out.pollWritable());
 
-    // optimistically create a tcpstream so that raii will unregister on error
-    TcpStream out{std::move(stream), std::move(rio)};
-
-    auto err = stream.getSocketError();
+    auto err = out.m_stream.getSocketError();
     if (err != Error::Success) {
         co_return Err(err);
     }
@@ -53,61 +41,109 @@ arc::Future<NetResult<TcpStream>> TcpStream::connect(const qsox::SocketAddress& 
     co_return Ok(std::move(out));
 }
 
+Future<NetResult<void>> TcpStream::shutdown(ShutdownMode mode) {
+    ARC_CO_UNWRAP(m_stream.shutdown(mode));
+    co_return Ok();
+}
+
+NetResult<void> TcpStream::setNoDelay(bool noDelay) {
+    return m_stream.setNoDelay(noDelay);
+}
+
+Future<NetResult<size_t>> TcpStream::send(const void* data, size_t size) {
+    return this->rioPoll([this, data, size](uint64_t& id) {
+        return this->pollWrite(data, size, id);
+    });
+}
+
+Future<NetResult<void>> TcpStream::sendAll(const void* datav, size_t size) {
+    const char* data = reinterpret_cast<const char*>(datav);
+    size_t remaining = size;
+
+    uint64_t id = 0;
+
+    NetResult<void> result = Ok();
+    while (remaining > 0) {
+        auto res = co_await pollFunc([&] {
+            return this->pollWrite(data, remaining, id);
+        });
+
+        if (!res) {
+            result = Err(res.unwrapErr());
+            break;
+        }
+
+        auto n = res.unwrap();
+        data += n;
+        remaining -= n;
+    }
+
+    if (id != 0) {
+        m_io.unregister(id);
+    }
+
+    co_return result;
+}
+
+Future<NetResult<size_t>> TcpStream::receive(void* buffer, size_t size) {
+    return this->rioPoll([this, buffer, size](uint64_t& id) {
+        return this->pollRead(buffer, size, id);
+    });
+}
+
+Future<NetResult<void>> TcpStream::receiveExact(void* buffer, size_t size) {
+    char* buf = reinterpret_cast<char*>(buffer);
+    size_t remaining = size;
+
+    uint64_t id = 0;
+
+    NetResult<void> result = Ok();
+    while (remaining > 0) {
+        auto res = co_await pollFunc([&] {
+            return this->pollRead(buf, remaining, id);
+        });
+
+        if (!res) {
+            result = Err(res.unwrapErr());
+            break;
+        }
+
+        auto n = res.unwrap();
+        buf += n;
+        remaining -= n;
+    }
+
+    if (id != 0) {
+        m_io.unregister(id);
+    }
+
+    co_return result;
+}
+
+Future<NetResult<size_t>> TcpStream::peek(void* buffer, size_t size) {
+    return this->rioPoll([this, buffer, size](uint64_t& id) {
+        return this->pollRead(buffer, size, id, true);
+    });
+}
+
+NetResult<qsox::SocketAddress> TcpStream::localAddress() const {
+    return m_stream.localAddress();
+}
+
+NetResult<qsox::SocketAddress> TcpStream::remoteAddress() const {
+    return m_stream.remoteAddress();
+}
+
 std::optional<NetResult<size_t>> TcpStream::pollWrite(const void* data, size_t size, uint64_t& id) {
-    while (true) {
-        if (!m_io.pollReady(Interest::Writable, id)) {
-            return std::nullopt;
-        }
-
-        auto res = m_stream.send(data, size);
-
-        if (res.isOk()) {
-            auto n = res.unwrap();
-            // if not on windows, if we wrote less bytes than requested, that means the socket buffer is full
-#ifndef _WIN32
-            if (n > 0 && n < size) {
-                m_io.clearReadiness(Interest::Writable);
-            }
-#endif
-            return Ok(n);
-        }
-
-        auto err = res.unwrapErr();
-        if (err == Error::WouldBlock) {
-            m_io.clearReadiness(Interest::Writable);
-        } else {
-            return Err(err);
-        }
-    }
+    return EventIoBase::pollWrite(id, data, size, [&](auto buf, auto size) {
+        return m_stream.send(buf, size);
+    });
 }
 
-std::optional<NetResult<size_t>> TcpStream::pollRead(void* buf, size_t size, uint64_t& id) {
-    while (true) {
-        if (!m_io.pollReady(Interest::Readable, id)) {
-            return std::nullopt;
-        }
-
-        auto res = m_stream.receive(buf, size);
-
-        if (res.isOk()) {
-            return Ok(res.unwrap());
-        }
-
-        auto err = res.unwrapErr();
-        if (err == Error::WouldBlock) {
-            m_io.clearReadiness(Interest::Readable);
-        } else {
-            return Err(err);
-        }
-    }
-}
-
-TcpStream::SendAwaiter TcpStream::send(const void* data, size_t size) {
-    return SendAwaiter{this, data, size};
-}
-
-TcpStream::RecvAwaiter TcpStream::receive(void* buf, size_t size) {
-    return RecvAwaiter{this, buf, size};
+std::optional<NetResult<size_t>> TcpStream::pollRead(void* buf, size_t size, uint64_t& id, bool peek) {
+    return EventIoBase::pollRead(id, buf, size, [&](auto buf, auto size) {
+        return peek ? m_stream.peek(buf, size) : m_stream.receive(buf, size);
+    });
 }
 
 }

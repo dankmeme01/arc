@@ -1,5 +1,6 @@
 // #include <arc/prelude.hpp>
 #include <arc/prelude.hpp>
+#include <arc/util/Result.hpp>
 #include <asp/time.hpp>
 
 #include <fmt/format.h>
@@ -19,6 +20,7 @@ using namespace asp::time;
 })
 
 #define dbg_await(f) { auto fut = DBG_FUT_WRAP(f); co_await fut; }
+#define dbg_res_await(...) ARC_CO_UNWRAP((co_await (__VA_ARGS__)).mapErr([](auto err) { return fmt::format("Error: {}\nIn: {}", err.message(), #__VA_ARGS__); }))
 
 arc::Future<> recurseWait(int level) {
     if (level == 0) co_return;
@@ -52,30 +54,60 @@ arc::Future<int> locker(arc::Mutex<>& mtx) {
     co_return 478;
 }
 
-arc::Future<> tcpTest() {
-    auto res = co_await arc::TcpStream::connect("45.79.112.203:4242");
-    if (!res) {
-        fmt::println("Failed to connect: {}", res.unwrapErr().message());
-        co_return;
+arc::Future<geode::Result<>> tcpTest() {
+    auto stream = dbg_res_await(arc::TcpStream::connect("45.79.112.203:4242"));
+    fmt::println("Connected, sending data");
+
+    char msg[] = "hello world\n";
+    dbg_res_await(stream.send(msg, sizeof(msg)));
+    fmt::println("Data sent, receiving");
+
+    char buf[128] = {0};
+    size_t n = dbg_res_await(stream.receive(buf, sizeof(buf) - 1));
+
+    std::string_view received(buf, n);
+    fmt::println("Received {} bytes: {}", n, received);
+    co_return geode::Ok();
+}
+
+arc::Future<geode::Result<>> tcpListenerTask(arc::TcpStream stream, qsox::SocketAddress addr) {
+    char buf[1024];
+    while (true) {
+        size_t n = dbg_res_await(stream.receive(buf, sizeof(buf)));
+
+        if (n == 0) {
+            fmt::println("Connection closed by {}", addr.toString());
+            break;
+        }
+
+        dbg_res_await(stream.sendAll(buf, n));
     }
 
-    fmt::println("Connected, sending data");
-    auto stream = std::move(res.unwrap());
-    char msg[] = "hello world\n";
-    (co_await stream.send(msg, sizeof(msg))).unwrap();
-    fmt::println("Data sent, receiving");
-    char buf[128] = {0};
-    auto r = co_await stream.receive(buf, sizeof(buf) - 1);
-    if (!r) {
-        fmt::println("Failed to receive data: {}", r.unwrapErr().message());
-        co_return;
+    co_return geode::Ok();
+}
+
+arc::Future<geode::Result<>> tcpListener() {
+    auto listener = dbg_res_await(arc::TcpListener::bind(
+        qsox::SocketAddress::parse("0.0.0.0:4242").unwrap()
+    ));
+
+    fmt::println("Listening for connections on {}..", listener.localAddress().unwrap().toString());
+    while (true) {
+        auto [stream, addr] = dbg_res_await(listener.accept());
+        fmt::println("Accepted connection from {}", addr.toString());
+
+        arc::spawn([](arc::TcpStream s, qsox::SocketAddress a) mutable -> arc::Future<> {
+            auto result = co_await tcpListenerTask(std::move(s), std::move(a));
+            if (!result) {
+                fmt::println("Connection error ({}): {}", a.toString(), result.unwrapErr());
+            }
+        }(std::move(stream), addr));
     }
-    size_t n = r.unwrap();
-    fmt::println("Received {} bytes", n);
 }
 
 arc::Future<> asyncMain() {
     arc::trace("Hello from asyncMain!");
+    (co_await tcpListener()).unwrap();
 
     dbg_await(arc::select(
         // future that finishes after 2.5 seconds

@@ -6,6 +6,12 @@
 #include <arc/util/Trace.hpp>
 #include <arc/util/ManuallyDrop.hpp>
 
+#if 0
+# define TRACE trace
+#else
+# define TRACE(...) do {} while(0)
+#endif
+
 #include <utility>
 #include <atomic>
 #include <limits>
@@ -144,20 +150,20 @@ struct Task : TaskTypedBase<typename P::Output> {
     }
 
     static void vDropFuture(void* ptr) {
-        trace("[Task {}] dropping future", ptr);
+        TRACE("[Task {}] dropping future", ptr);
         auto self = static_cast<Task*>(ptr);
         self->m_future.drop();
     }
 
     static void vDestroy(void* self) {
-        trace("[Task {}] destroying", self);
+        TRACE("[Task {}] destroying", self);
         auto task = static_cast<Task*>(self);
         task->m_runtime->removeTask(task);
         delete task;
     }
 
     static RawWaker vCloneWaker(void* self) {
-        trace("[Task {}] cloning waker", self);
+        TRACE("[Task {}] cloning waker", self);
         auto task = static_cast<Task*>(self);
         auto state = task->incref();
 
@@ -175,7 +181,7 @@ struct Task : TaskTypedBase<typename P::Output> {
 
     template <bool Consume>
     static void vWake(void* ptr) {
-        trace("[Task {}] waking", ptr);
+        TRACE("[Task {}] waking", ptr);
 
         auto self = static_cast<Task*>(ptr);
         auto state = self->getState();
@@ -233,7 +239,7 @@ struct Task : TaskTypedBase<typename P::Output> {
         ManuallyDrop<Waker> waker{this, &WakerVtable};
         auto state = this->getState();
 
-        trace("[Task {}] running, state: {}", (void*)this, state);
+        TRACE("[Task {}] running, state: {}", (void*)this, state);
 
         // update task state
         while (true) {
@@ -268,11 +274,11 @@ struct Task : TaskTypedBase<typename P::Output> {
         ctx().m_waker = &waker.get();
 
         auto result = m_future.get().poll();
-        // trace("[Task {}] resuming leaf {} (is root task: {})", (void*)this, leaf.address(), leaf.address() == m_handle.m_handle.address());
+        // TRACE("[Task {}] resuming leaf {} (is root task: {})", (void*)this, leaf.address(), leaf.address() == m_handle.m_handle.address());
 
         ctx().m_waker = nullptr;
 
-        trace("[Task {}] future completion: {}", (void*)this, result);
+        TRACE("[Task {}] future completion: {}", (void*)this, result);
 
         if (result) {
             if constexpr (!IsVoid) {
@@ -442,7 +448,7 @@ struct TaskHandle {
 
     bool await_suspend(std::coroutine_handle<> awaiter) {
         auto res = m_task->pollTask();
-        trace("[Task {}] poll result: {}", (void*)m_task, res);
+        TRACE("[Task {}] poll result: {}", (void*)m_task, res);
 
         if (res && *res) {
             return false; // task completed, don't suspend
@@ -456,7 +462,7 @@ struct TaskHandle {
     }
 
     T await_resume() noexcept {
-        trace("[Task {}] poll resuming", (void*)m_task);
+        TRACE("[Task {}] poll resuming", (void*)m_task);
         if constexpr (!std::is_void_v<T>) {
             return std::move(m_task->m_value.value());
         }

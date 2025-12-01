@@ -153,12 +153,29 @@ private:
     std::optional<Output> m_output;
 };
 
+template <typename T>
+struct ExtractOptional {
+    using type = T;
+};
+
+template <typename U>
+struct ExtractOptional<std::optional<U>> {
+    using type = U;
+};
+
 template <typename F> requires (!std::is_reference_v<F> && std::is_invocable_v<F>)
 inline auto pollFunc(F&& func) {
-    struct Awaiter : PollableBase<Awaiter> {
+    using PollReturn = std::invoke_result_t<F>;
+    using Output = std::conditional_t<
+        std::is_same_v<PollReturn, bool>,
+        void,
+        typename ExtractOptional<PollReturn>::type
+    >;
+
+    struct Awaiter : PollableBase<Awaiter, Output> {
         explicit Awaiter(F&& f) : m_func(std::move(f)) {}
 
-        bool poll() {
+        PollReturn poll() {
             return m_func();
         }
 

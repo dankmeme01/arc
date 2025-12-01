@@ -68,6 +68,13 @@ struct RegisteredIo {
 struct Registration {
     std::shared_ptr<RegisteredIo> rio;
 
+    Registration(std::shared_ptr<RegisteredIo> rio) : rio(std::move(rio)) {}
+
+    Registration(Registration&& other) noexcept = default;
+    Registration& operator=(Registration&& other) noexcept = default;
+    Registration(const Registration&) = default;
+    Registration& operator=(const Registration&) = default;
+
     bool pollReady(Interest interest, uint64_t& outId);
     void unregister(uint64_t id);
     void clearReadiness(Interest interest);
