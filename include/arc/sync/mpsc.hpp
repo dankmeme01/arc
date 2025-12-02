@@ -180,6 +180,11 @@ private:
         std::deque<std::pair<Waker, uint64_t>> sendWaiters;
         bool closed = false;
 
+        ~Data() {
+            // sanity check
+            ARC_DEBUG_ASSERT(!recvWaiter && sendWaiters.empty(), "Data destroyed while having waiters");
+        }
+
         std::optional<T> pop() {
             if (queue.empty()) {
                 return std::nullopt;

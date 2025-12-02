@@ -34,4 +34,15 @@ struct ManuallyDrop {
     }
 };
 
+template <typename T>
+void forget(T&& obj) noexcept {
+    ManuallyDrop<std::decay_t<T>> md(std::forward<T>(obj));
+    // intentionally do not call md.drop()
+}
+
+template <typename T>
+void drop(T&& obj) {
+    std::decay_t<T> temp = std::forward<T>(obj);
+}
+
 }

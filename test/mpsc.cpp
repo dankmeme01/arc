@@ -1,4 +1,5 @@
 #include <arc/sync/mpsc.hpp>
+#include <arc/util/ManuallyDrop.hpp>
 #include <gtest/gtest.h>
 
 using enum std::memory_order;
@@ -50,4 +51,52 @@ TEST(mpsc, Basic) {
     }
 
     EXPECT_FALSE(rx.tryRecv().isOk());
+}
+
+
+TEST(mpsc, ClosedBySender) {
+    Waker waker = Waker::noop();
+    ctx().m_waker = &waker;
+
+    auto [tx, rx] = mpsc::channel<int>(2);
+    EXPECT_TRUE(tx.trySend(1).isOk());
+    EXPECT_TRUE(tx.trySend(2).isOk());
+    // drop the sender, causing a closure since there are no more senders
+    arc::drop(std::move(tx));
+
+    // rx should be able to receive the two values
+    EXPECT_EQ(rx.tryRecv().unwrap(), 1);
+    EXPECT_EQ(rx.tryRecv().unwrap(), 2);
+
+    // further receives should indicate closure
+    auto r = rx.tryRecv();
+    EXPECT_FALSE(r.isOk());
+    EXPECT_TRUE(r.unwrapErr() == mpsc::TryRecvOutcome::Closed);
+}
+
+
+TEST(mpsc, ClosedByReceiver) {
+    Waker waker = Waker::noop();
+    ctx().m_waker = &waker;
+
+    auto [tx, rx] = mpsc::channel<int>(2);
+    EXPECT_TRUE(tx.trySend(1).isOk());
+    EXPECT_TRUE(tx.trySend(2).isOk());
+    auto tx2 = tx;
+    auto txsend = tx.send(3);
+    EXPECT_FALSE(txsend.poll().has_value());
+
+    EXPECT_EQ(rx.tryRecv().unwrap(), 1);
+    // drop the receiver
+    arc::drop(std::move(rx));
+
+    // any pending and future sends should fail despite there being space
+    auto p = txsend.poll();
+    EXPECT_TRUE(p.has_value());
+    EXPECT_TRUE(p->isErr());
+    EXPECT_EQ(p->unwrapErr(), 3);
+
+    auto tr = tx.trySend(4);
+    EXPECT_FALSE(tr.isOk());
+    EXPECT_EQ(tr.unwrapErr(), 4);
 }
