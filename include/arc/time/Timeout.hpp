@@ -8,11 +8,15 @@
 
 namespace arc {
 
+struct TimedOut {};
+template <typename T>
+using TimeoutResult = geode::Result<T, TimedOut>;
+
 template <
     Pollable Fut,
     typename FutOut = FutureTraits<std::decay_t<Fut>>::Output,
     bool IsVoid = std::is_void_v<FutOut>,
-    typename Output = std::optional<std::conditional_t<IsVoid, std::monostate, FutOut>>
+    typename Output = TimeoutResult<std::conditional_t<IsVoid, std::monostate, FutOut>>
 >
 struct Timeout : PollableBase<Timeout<Fut>, Output> {
     explicit Timeout(Fut fut, asp::time::Instant expiry)
@@ -38,24 +42,28 @@ struct Timeout : PollableBase<Timeout<Fut>, Output> {
         return *this;
     }
 
-    bool poll() {
+    std::optional<Output> poll() {
         auto now = asp::time::Instant::now();
         auto& td = ctx().runtime()->timeDriver();
 
         if (now >= m_expiry) {
             // timeout occurred, so the future is now cancelled
             m_id = 0;
-            return true;
+            return geode::Err(TimedOut{});
         }
 
         // poll the future, if completed cancel timer and return ready
-        if (m_future.poll()) {
-            m_completed = true;
+        if (m_future.vPoll()) {
             if (m_id != 0) {
                 td.removeEntry(m_expiry, m_id);
                 m_id = 0;
             }
-            return true;
+
+            if constexpr (IsVoid) {
+                return geode::Ok(std::monostate{});
+            } else {
+                return geode::Ok(std::move(m_future.template vGetOutput<FutOut>()));
+            }
         }
 
         // register timer if we aren't already registered
@@ -63,24 +71,13 @@ struct Timeout : PollableBase<Timeout<Fut>, Output> {
             td.addEntry(m_expiry, ctx().m_waker->clone());
         }
 
-        return false;
-    }
-
-    Output getOutput() {
-        if (!m_completed) return std::nullopt;
-
-        if constexpr (IsVoid) {
-            return std::make_optional(std::monostate{});
-        } else {
-            return std::make_optional(std::move(m_future.getOutput()));
-        }
+        return std::nullopt;
     }
 
 private:
     Fut m_future;
     asp::time::Instant m_expiry;
     uint64_t m_id = 0;
-    bool m_completed = false;
 };
 
 auto timeoutAt(asp::time::Instant expiry, Awaitable auto fut) {

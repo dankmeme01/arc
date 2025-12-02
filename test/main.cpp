@@ -107,7 +107,6 @@ arc::Future<geode::Result<>> tcpListener() {
 
 arc::Future<> asyncMain() {
     arc::trace("Hello from asyncMain!");
-    (co_await tcpListener()).unwrap();
 
     dbg_await(arc::select(
         // future that finishes after 2.5 seconds

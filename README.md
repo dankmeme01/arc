@@ -73,11 +73,11 @@ arc::Task<> consumer(arc::mpsc::Receiver<int> rx) {
     while (true) {
         auto val = co_await rx.recv();
 
-        if (!val) {
+        if (!val.isOk()) {
             break; // channel is closed now, all senders have been destroyed
         }
 
-        fmt::println("received value: {}", *val);
+        fmt::println("received value: {}", val.unwrap());
     }
 }
 
@@ -92,7 +92,7 @@ arc::Task<> asyncMain() {
 
     co_await tx.send(1);
 
-    // `trySend` can be used in sync code
+    // `trySend` can be used in sync or async code
     tx2.trySend(2);
 }
 ```
@@ -136,7 +136,7 @@ Creating TCP and UDP sockets
 auto res = co_await arc::TcpStream::connect("127.0.0.1:8000");
 auto socket = res.unwrap();
 
-// In the real world, check that the functions actually succeed instead of casting to void
+// In the real world, check that the functions actually succeed instead of casting to void/unwrapping
 char[] data = "hello world";
 (void) co_await socket.send(data, sizeof(data));
 char buf[512];
@@ -169,6 +169,29 @@ while (true) {
     arc::spawn([](arc::TcpStream s, qsox::SocketAddress a) mutable -> arc::Future<> {
         // do things with the socket ...
     }(std::move(stream), addr));
+}
+```
+
+Putting a time limit on a future, and cancelling it if it doesn't complete in time.
+```cpp
+auto [tx, rx] = arc::mpsc::channel<int>();
+
+// Wait until we either get a value, or don't get any values in 5 seconds.
+auto res = co_await arc::timeout(
+    Duration::fromSecs(5),
+    rx.recv()
+);
+
+if (res.isErr()) {
+    fmt::println("Timed out!");
+    co_return;
+}
+
+auto result = std::move(res).unwrap();
+if (result.isOk()) {
+    fmt::println("Value: {}", result.unwrap());
+} else {
+    fmt::println("Channel closed!");
 }
 ```
 

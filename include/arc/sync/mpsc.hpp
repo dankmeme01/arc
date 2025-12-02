@@ -269,6 +269,18 @@ struct Sender {
         explicit Awaiter(std::shared_ptr<Shared<T>> data, T value)
             : m_data(std::move(data)), m_value(std::move(value)) {}
 
+        Awaiter(Awaiter&& other) noexcept
+            : m_data(std::exchange(other.m_data, nullptr)),
+              m_state(other.m_state),
+              m_waiterId(other.m_waiterId),
+              m_value(std::move(other.m_value))
+        {
+            other.m_state = State::Done;
+            other.m_waiterId = 0;
+        }
+
+        Awaiter& operator=(Awaiter&& other) noexcept = delete;
+
         std::optional<ChannelSendResult<T>> poll() {
             switch (m_state) {
                 case State::Init: {
@@ -327,13 +339,14 @@ struct Sender {
         }
     };
 
-    /// Attempts to send a value without blocking, returns the value if the channel is full or closed.
+    /// Attempts to send a value, waiting if there is no capacity left.
+    /// Returns the value back if the channel is closed.
     Awaiter send(T value) {
         return Awaiter{m_data, std::move(value)};
     }
 
     /// Attempts to send a value without blocking, returns the value if the channel is full or closed.
-    geode::Result<void, T> trySend(T value) {
+    ChannelSendResult<T> trySend(T value) {
         auto outcome = m_data->trySend(value);
         if (outcome == TrySendOutcome::Success) {
             return geode::Ok();
@@ -366,6 +379,12 @@ struct Receiver {
 
     struct Awaiter : PollableBase<Awaiter, ChannelRecvResult<T>> {
         explicit Awaiter(std::shared_ptr<Shared<T>> data) : m_data(std::move(data)) {}
+
+        Awaiter(Awaiter&& other) noexcept : m_data(std::exchange(other.m_data, nullptr)), m_state(other.m_state) {
+            other.m_state = State::Done;
+        }
+
+        Awaiter& operator=(Awaiter&& other) noexcept = delete;
 
         std::optional<ChannelRecvResult<T>> poll() {
             switch (m_state) {

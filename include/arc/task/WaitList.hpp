@@ -2,7 +2,6 @@
 
 #include "Waker.hpp"
 #include <deque>
-#include <mutex>
 #include <optional>
 
 namespace arc {
