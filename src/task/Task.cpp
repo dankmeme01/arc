@@ -23,9 +23,14 @@ void TaskContext::wake() {
     m_waker->wakeByRef();
 }
 
+Waker TaskContext::cloneWaker() {
+    return m_waker->clone();
+}
+
 void TaskBase::schedule() noexcept {
     m_vtable->schedule(this);
 }
+
 std::optional<bool> TaskBase::pollTask() {
     auto& cx = ctx();
     auto state = this->getState();

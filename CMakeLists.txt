@@ -38,6 +38,7 @@ if (ARC_BUILD_TESTS)
     add_executable(
         arc_tests
         test/Semaphore.cpp
+        test/mpsc.cpp
     )
     target_link_libraries(arc_tests PRIVATE arc gtest_main GeodeResult)
     include(GoogleTest)

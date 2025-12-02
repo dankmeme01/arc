@@ -12,6 +12,7 @@ struct TaskContext {
     TaskBase* currentTask();
     Runtime* runtime();
     void wake();
+    Waker cloneWaker();
 };
 
 inline TaskContext& ctx() {

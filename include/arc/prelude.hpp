@@ -6,6 +6,7 @@
 #include "net/UdpSocket.hpp"
 #include "runtime/Runtime.hpp"
 #include "signal/Signal.hpp"
+#include "sync/mpsc.hpp"
 #include "sync/Notify.hpp"
 #include "sync/Mutex.hpp"
 #include "sync/Semaphore.hpp"

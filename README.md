@@ -8,7 +8,6 @@ This project is heavily WIP, few things are implemented and they likely have bug
 
 * Foreign future support? awaiting things that aren't `arc::Future<>` or don't inherit `PollableUniBase` at all.
 * Make the runtime be able to ran with 1 thread, including just using the main thread for it. Run timer/io tasks on worker threads instead of a separate thread.
-* MPSC channels
 * Thread pool for blocking tasks, use for file io? and spawn function
 
 ## Usage
@@ -68,7 +67,7 @@ while (true) {
 }
 ```
 
-Sending data between tasks or between sync code (TODO: unimpl right now)
+Sending data between tasks or between sync code
 ```cpp
 arc::Task<> consumer(arc::mpsc::Receiver<int> rx) {
     while (true) {

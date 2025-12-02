@@ -1,5 +1,6 @@
 #pragma once
 #include <string_view>
+#include <utility>
 
 namespace arc {
 
@@ -20,6 +21,8 @@ namespace arc {
 #else
 # define ARC_DEBUG_ASSERT(...) (void)0
 #endif
+
+#define ARC_UNREACHABLE(msg) ARC_ASSERT(false, msg); std::unreachable()
 
 [[noreturn]] void _assertionFail(std::string_view what, std::string_view why, std::string_view file, int line);
 
