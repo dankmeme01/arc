@@ -36,8 +36,12 @@ void Runtime::enqueueTask(TaskBase* task) {
 }
 
 void Runtime::workerLoop(WorkerData& data) {
-    auto timerOffset = Duration::fromMicros((data.id * 500) / m_workers.size());
-    auto ioOffset = Duration::fromMicros((data.id * 800) / m_workers.size());
+    float mult = std::powf(m_workers.size(), 0.9f);
+    auto timerIncrement = Duration::fromMicros(500.f * mult);
+    auto ioIncrement = Duration::fromMicros(800.f * mult);
+
+    auto timerOffset = (timerIncrement * data.id) / m_workers.size();
+    auto ioOffset = (ioIncrement * data.id) / m_workers.size();
 
     auto start = Instant::now();
     auto nextTimerTask = start + timerOffset;
@@ -51,14 +55,20 @@ void Runtime::workerLoop(WorkerData& data) {
         // every once in a while, run timer and io drivers
         if (now >= nextTimerTask) {
             m_timeDriver.doWork();
-            timerTick++;
-            nextTimerTask = start + timerOffset + Duration::fromMicros(timerTick * 500);
+
+            do {
+                timerTick++;
+                nextTimerTask = start + timerOffset + timerTick * timerIncrement;
+            } while (now >= nextTimerTask);
         }
 
         if (now >= nextIoTask) {
             m_ioDriver.doWork();
-            ioTick++;
-            nextIoTask = start + ioOffset + Duration::fromMicros(ioTick * 800);
+
+            do {
+                ioTick++;
+                nextIoTask = start + ioOffset + ioTick * ioIncrement;
+            } while (now >= nextIoTask);
         }
 
         auto maxWait = std::min(nextTimerTask, nextIoTask).durationSince(now);
@@ -66,9 +76,16 @@ void Runtime::workerLoop(WorkerData& data) {
         TaskBase* task = nullptr;
         {
             std::unique_lock lock(m_mtx);
-            bool success = m_cv.wait_for(lock, std::chrono::microseconds{maxWait.micros()}, [this] {
-                return m_stopFlag.load() || !m_runQueue.empty();
-            });
+            bool success;
+
+            if (maxWait.isZero()) {
+                // don't wait
+                success = m_stopFlag.load() || !m_runQueue.empty();
+            } else {
+                success = m_cv.wait_for(lock, std::chrono::microseconds{maxWait.micros()}, [this] {
+                    return m_stopFlag.load() || !m_runQueue.empty();
+                });
+            }
 
             if (!success) {
                 // timeout

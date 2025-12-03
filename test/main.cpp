@@ -145,9 +145,4 @@ arc::Future<> asyncMain() {
     co_return;
 }
 
-// ARC_DEFINE_MAIN(asyncMain);
-
-int main(int argc, char **argv) {
-    arc::Runtime runtime{1};
-    runtime.blockOn(asyncMain());
-  }
+ARC_DEFINE_MAIN(asyncMain);
