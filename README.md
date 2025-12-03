@@ -7,7 +7,6 @@ Tasks are the primary unit of execution. The very first function that is ran (yo
 This project is heavily WIP, few things are implemented and they likely have bugs. TODO:
 
 * Foreign future support? awaiting things that aren't `arc::Future<>` or don't inherit `PollableUniBase` at all.
-* Make the runtime be able to ran with 1 thread, including just using the main thread for it. Run timer/io tasks on worker threads instead of a separate thread.
 * Thread pool for blocking tasks, use for file io? and spawn function
 
 ## Usage

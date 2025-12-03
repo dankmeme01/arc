@@ -105,8 +105,19 @@ arc::Future<geode::Result<>> tcpListener() {
     }
 }
 
+arc::Future<> printer() {
+    size_t print = 0;
+
+    while (true) {
+        fmt::println("Printer: {}", print++);
+        co_await arc::sleepFor(Duration::fromMillis(100));
+    }
+}
+
 arc::Future<> asyncMain() {
     arc::trace("Hello from asyncMain!");
+
+    arc::spawn(printer());
 
     dbg_await(arc::select(
         // future that finishes after 2.5 seconds
@@ -134,4 +145,9 @@ arc::Future<> asyncMain() {
     co_return;
 }
 
-ARC_DEFINE_MAIN(asyncMain);
+// ARC_DEFINE_MAIN(asyncMain);
+
+int main(int argc, char **argv) {
+    arc::Runtime runtime{1};
+    runtime.blockOn(asyncMain());
+  }

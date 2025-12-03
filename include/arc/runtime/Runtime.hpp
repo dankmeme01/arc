@@ -92,19 +92,24 @@ private:
     template <Pollable P>
     friend struct Task;
 
+    struct WorkerData {
+        std::thread thread;
+        size_t id;
+    };
+
     std::atomic<bool> m_stopFlag;
     std::mutex m_mtx;
     std::unordered_set<TaskBase*> m_tasks;
     std::deque<TaskBase*> m_runQueue;
     std::condition_variable m_cv;
-    std::vector<std::thread> m_workers;
+    std::vector<WorkerData> m_workers;
     TimeDriver m_timeDriver{this};
     SignalDriver m_signalDriver{this};
     IoDriver m_ioDriver{this};
 
     void shutdown();
 
-    void workerLoop(size_t id);
+    void workerLoop(WorkerData& data);
     void timerDriverLoop();
     void ioDriverLoop();
 

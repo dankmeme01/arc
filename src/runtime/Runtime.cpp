@@ -1,22 +1,23 @@
 #include <arc/runtime/Runtime.hpp>
 
+using namespace asp::time;
+
 namespace arc {
 
 Runtime::Runtime(size_t workers) : m_stopFlag(false) {
-    if (workers < 3) {
-        workers = 3;
-    }
+    workers = std::clamp<size_t>(workers, 1, 128);
 
     m_workers.reserve(workers);
     for (size_t i = 0; i < workers; ++i) {
-        m_workers.emplace_back([this, i] {
-            if (i == 0) {
-                this->timerDriverLoop();
-            } else if (i == 1) {
-                this->ioDriverLoop();
-            } {
-                this->workerLoop(i);
-            }
+        m_workers.emplace_back(WorkerData{
+            .id = i,
+        });
+    }
+
+    for (size_t i = 0; i < workers; ++i) {
+        auto& worker = m_workers[i];
+        worker.thread = std::thread([this, &worker]() {
+            this->workerLoop(worker);
         });
     }
 }
@@ -34,14 +35,45 @@ void Runtime::enqueueTask(TaskBase* task) {
     m_cv.notify_one();
 }
 
-void Runtime::workerLoop(size_t id) {
+void Runtime::workerLoop(WorkerData& data) {
+    auto timerOffset = Duration::fromMicros((data.id * 500) / m_workers.size());
+    auto ioOffset = Duration::fromMicros((data.id * 800) / m_workers.size());
+
+    auto start = Instant::now();
+    auto nextTimerTask = start + timerOffset;
+    auto nextIoTask = start + ioOffset;
+    uint64_t timerTick = 0;
+    uint64_t ioTick = 0;
+
     while (true) {
+        auto now = Instant::now();
+
+        // every once in a while, run timer and io drivers
+        if (now >= nextTimerTask) {
+            m_timeDriver.doWork();
+            timerTick++;
+            nextTimerTask = start + timerOffset + Duration::fromMicros(timerTick * 500);
+        }
+
+        if (now >= nextIoTask) {
+            m_ioDriver.doWork();
+            ioTick++;
+            nextIoTask = start + ioOffset + Duration::fromMicros(ioTick * 800);
+        }
+
+        auto maxWait = std::min(nextTimerTask, nextIoTask).durationSince(now);
+
         TaskBase* task = nullptr;
         {
             std::unique_lock lock(m_mtx);
-            m_cv.wait(lock, [this] {
+            bool success = m_cv.wait_for(lock, std::chrono::microseconds{maxWait.micros()}, [this] {
                 return m_stopFlag.load() || !m_runQueue.empty();
             });
+
+            if (!success) {
+                // timeout
+                continue;
+            }
 
             if (m_stopFlag.load() && m_runQueue.empty()) {
                 break;
@@ -57,12 +89,9 @@ void Runtime::workerLoop(size_t id) {
             continue;
         }
 
-        // if (task->m_cancellation.isCancelled()) {
-        //     continue;
-        // }
-        trace("[Worker {}] driving task {}", id, (void*)task);
+        trace("[Worker {}] driving task {}", data.id, (void*)task);
         task->m_vtable->run(task);
-        trace("[Worker {}] finished driving task", id);
+        trace("[Worker {}] finished driving task", data.id);
     }
 }
 
@@ -101,8 +130,8 @@ void Runtime::shutdown() {
     m_cv.notify_all();
 
     for (auto& worker : m_workers) {
-        if (worker.joinable()) {
-            worker.join();
+        if (worker.thread.joinable()) {
+            worker.thread.join();
         }
     }
 
