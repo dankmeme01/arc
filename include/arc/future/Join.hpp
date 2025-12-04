@@ -27,11 +27,19 @@ private:
 };
 
 template <typename FRet, typename... Futures>
-struct JoinAll : PollableBase<JoinAll<Futures...>, std::array<FRet, sizeof...(Futures)>> {
-    using Output = std::array<FRet, sizeof...(Futures)>;
+struct JoinAll : PollableBase<JoinAll<FRet, Futures...>, std::array<FRet, sizeof...(Futures)>> {
+    using JoinAllOutput = std::array<FRet, sizeof...(Futures)>;
+    using JoinAllTempOutput = std::array<std::optional<FRet>, sizeof...(Futures)>;
     explicit JoinAll(std::tuple<Futures...>&& futs, FRet*) : m_futures(std::move(futs)) {}
 
-    std::optional<Output> poll() {
+    // helper to convert from array<optional<T>, N> to array<T, N>
+    static auto convertTempOutput(JoinAllTempOutput&& tempOut) {
+        return std::apply([](auto&&... opts) {
+            return JoinAllOutput{std::move(*opts)...};
+        }, std::move(tempOut));
+    }
+
+    std::optional<JoinAllOutput> poll() {
         bool allDone = true;
         this->checkForEach(*m_futures, allDone);
 
@@ -39,10 +47,10 @@ struct JoinAll : PollableBase<JoinAll<Futures...>, std::array<FRet, sizeof...(Fu
             return std::nullopt;
         }
 
-        Output out;
+        JoinAllTempOutput out;
         this->extractForEach(*m_futures, out);
 
-        return std::make_optional<Output>(std::move(out));
+        return std::make_optional<JoinAllOutput>(convertTempOutput(std::move(out)));
     }
 
     template <typename Tuple>
@@ -56,17 +64,12 @@ struct JoinAll : PollableBase<JoinAll<Futures...>, std::array<FRet, sizeof...(Fu
         (([&]() {
             auto& fut = std::get<Is>(t);
 
-            trace("[JoinAll] checking future {}, active: {}", Is, !fut.output);
+            trace("[JoinAll] checking future {}, active: {}", Is, !fut.output.has_value());
             if (!fut.output) {
                 allDone = false;
                 auto res = fut.future.poll();
                 if (res) {
-                    if constexpr (fut.IsVoid) {
-                        fut.output = std::monostate{};
-                    } else {
-                        fut.output = std::move(res).value();
-                    }
-
+                    fut.output = fut.future.getOutput();
                     trace("[JoinAll] future {} finished!", Is);
                 }
             }
@@ -74,19 +77,18 @@ struct JoinAll : PollableBase<JoinAll<Futures...>, std::array<FRet, sizeof...(Fu
     }
 
     template <typename Tuple>
-    void extractForEach(Tuple&& t, Output& out) {
+    void extractForEach(Tuple&& t, JoinAllTempOutput& out) {
         constexpr auto size = std::tuple_size_v<std::decay_t<Tuple>>;
         extractForEachImpl(std::forward<Tuple>(t), std::make_index_sequence<size>{}, out);
     }
 
     template <size_t... Is, typename Tuple>
-    void extractForEachImpl(Tuple&& t, std::index_sequence<Is...>, Output& out) {
+    void extractForEachImpl(Tuple&& t, std::index_sequence<Is...>, JoinAllTempOutput& out) {
         (([&]() {
             auto& fut = std::get<Is>(t);
 
             if constexpr (!fut.IsVoid) {
-                ARC_DEBUG_ASSERT(fut.output.has_value());
-                out[Is] = std::move(fut.output).value();
+                out[Is] = std::move(*fut.output);
             }
         }()), ...);
     }

@@ -91,14 +91,14 @@ struct PollableBase : PollableUniBase {
         static const PollableVtable vtable = {
             .poll = [](void* self) {
                 auto me = reinterpret_cast<Derived*>(self);
-                me->m_output = me->poll();
-                return me->m_output.has_value();
+                me->_pb_output() = me->poll();
+                return me->_pb_output().has_value();
             },
 
             .getOutput = reinterpret_cast<void*>(+[](void* self) -> T {
                 auto me = reinterpret_cast<Derived*>(self);
-                auto out = std::move(*me->m_output);
-                me->m_output.reset();
+                auto out = std::move(*me->_pb_output());
+                me->_pb_output().reset();
                 return out;
             }),
         };
@@ -106,7 +106,11 @@ struct PollableBase : PollableUniBase {
         this->m_vtable = &vtable;
     }
 
-private:
+    std::optional<Output>& _pb_output() {
+        return m_output;
+    }
+
+protected:
     std::optional<Output> m_output;
 };
 

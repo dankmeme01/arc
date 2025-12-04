@@ -65,6 +65,32 @@ struct Select : PollableBase<Select<Futures...>> {
         }()), ...);
     }
 
+    template <size_t... Is>
+    arc::Future<> invokeSelecteeCallback(std::index_sequence<Is...>) {
+        (co_await ([&] -> arc::Future<> {
+            auto& selectee = std::get<Is>(*m_selectees);
+            if (m_winner != Is) co_return;
+
+            if constexpr (selectee.IsVoid) {
+                using CbRet = decltype(selectee.callback());
+                if constexpr (IsFuture<CbRet>::value) {
+                    co_await selectee.callback();
+                } else {
+                    selectee.callback();
+                }
+            } else {
+                auto output = selectee.future.getOutput();
+                using CbRet = decltype(selectee.callback(output));
+                if constexpr (IsFuture<CbRet>::value) {
+                    co_await selectee.callback(std::move(output));
+                } else {
+                    selectee.callback(std::move(output));
+                }
+            }
+        }()), ...);
+        co_return;
+    }
+
 private:
     std::optional<std::tuple<Futures...>> m_selectees;
     size_t m_winner = static_cast<size_t>(-1);
@@ -99,39 +125,13 @@ auto branch(Args&&... args) {
     return selectee(std::forward<Args>(args)...);
 }
 
-template <size_t... Is>
-arc::Future<> invokeSelecteeCallback(std::index_sequence<Is...>, auto& sel) {
-    (co_await ([&] -> arc::Future<> {
-        auto& selectee = std::get<Is>(*sel.m_selectees);
-        if (sel.m_winner != Is) co_return;
-
-        if constexpr (selectee.IsVoid) {
-            using CbRet = decltype(selectee.callback());
-            if constexpr (IsFuture<CbRet>::value) {
-                co_await selectee.callback();
-            } else {
-                selectee.callback();
-            }
-        } else {
-            auto output = selectee.future.getOutput();
-            using CbRet = decltype(selectee.callback(output));
-            if constexpr (IsFuture<CbRet>::value) {
-                co_await selectee.callback(std::move(output));
-            } else {
-                selectee.callback(std::move(output));
-            }
-        }
-    }()), ...);
-    co_return;
-}
-
 template <typename... Futures>
 arc::Future<> select(Futures... futs) {
     auto selectees = std::make_tuple(Selectee{std::move(futs)}...);
     Select sel{std::move(selectees)};
 
     co_await sel;
-    co_await invokeSelecteeCallback(std::make_index_sequence<sizeof...(Futures)>{}, sel);
+    co_await sel.invokeSelecteeCallback(std::make_index_sequence<sizeof...(Futures)>{});
 }
 
 }

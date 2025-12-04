@@ -69,6 +69,14 @@ struct Shared {
         return geode::Err(TryRecvOutcome::Empty);
     }
 
+    void drain() {
+        auto data = m_data.lock();
+        while (!data->queue.empty()) {
+            data->pop();
+            data->unblockSender();
+        }
+    }
+
     geode::Result<T, TryRecvOutcome> recvOrWait() {
         auto data = m_data.lock();
         auto value = data->pop();
@@ -454,6 +462,10 @@ struct Receiver {
 
     geode::Result<T, TryRecvOutcome> tryRecv() {
         return m_data->tryRecv();
+    }
+
+    void drain() {
+        m_data->drain();
     }
 
 private:
