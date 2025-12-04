@@ -7,11 +7,6 @@
 
 namespace arc {
 
-template <typename Fut, typename Out = typename FutureTraits<std::decay_t<Fut>>::Output>
-Future<Out> _toPlainFuture(Fut fut) {
-    co_return co_await std::move(fut);
-}
-
 template <typename Output, typename Cbt>
 struct Selectee {
     using Callback = std::conditional_t<std::is_void_v<Output>,
@@ -21,24 +16,25 @@ struct Selectee {
     >;
     static constexpr bool IsVoid = std::is_void_v<Output>;
 
-    Future<Output> future;
-    Callback callback;
-    bool active = true;
-
     template <typename F>
-    Selectee(F fut, Callback cb, bool act) : future(_toPlainFuture(std::move(fut))), callback(cb), active(act) {}
+    Selectee(F fut, Callback cb, bool act) : future(toPlainFuture(std::move(fut))), callback(cb), active(act) {}
 
     Selectee(Selectee&&) = default;
     Selectee& operator=(Selectee&&) = default;
     Selectee(const Selectee&) = delete;
     Selectee& operator=(const Selectee&) = delete;
+
+private:
+    template <typename... F>
+    friend struct Select;
+
+    Future<Output> future;
+    Callback callback;
+    bool active = true;
 };
 
 template <typename... Futures>
 struct Select : PollableBase<Select<Futures...>> {
-    std::optional<std::tuple<Futures...>> m_selectees;
-    size_t m_winner = static_cast<size_t>(-1);
-
     explicit Select(std::tuple<Futures...>&& selectees) : m_selectees(std::move(selectees)) {}
 
     bool poll() {
@@ -68,6 +64,10 @@ struct Select : PollableBase<Select<Futures...>> {
             }
         }()), ...);
     }
+
+private:
+    std::optional<std::tuple<Futures...>> m_selectees;
+    size_t m_winner = static_cast<size_t>(-1);
 };
 
 template <typename Fut>

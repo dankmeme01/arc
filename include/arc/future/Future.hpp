@@ -218,4 +218,9 @@ struct IsFuture : std::false_type {};
 template <Pollable T>
 struct IsFuture<T> : std::true_type {};
 
+template <typename Fut, typename Out = typename FutureTraits<std::decay_t<Fut>>::Output>
+inline Future<Out> toPlainFuture(Fut fut) {
+    co_return co_await std::move(fut);
+}
+
 }

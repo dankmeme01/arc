@@ -469,9 +469,4 @@ struct TaskHandle {
     }
 };
 
-template <typename... Ts>
-arc::Future<> joinAll(Ts&&... tasks) {
-    (co_await tasks, ...);
-}
-
 }

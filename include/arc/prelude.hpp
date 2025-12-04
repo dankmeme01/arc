@@ -1,5 +1,6 @@
 #include "future/Future.hpp"
 #include "future/Select.hpp"
+#include "future/Join.hpp"
 #include "future/Pollable.hpp"
 #include "net/TcpStream.hpp"
 #include "net/TcpListener.hpp"
