@@ -10,6 +10,8 @@ struct CancellationToken {
     std::atomic<bool> m_cancelled{false};
     arc::Notify m_notify;
 
+    CancellationToken() = default;
+
     CancellationToken(CancellationToken&&) = delete;
     CancellationToken& operator=(CancellationToken&&) = delete;
 
