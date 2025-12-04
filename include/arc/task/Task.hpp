@@ -128,6 +128,38 @@ struct TaskTypedBase : TaskBase {
 
         return out;
     }
+
+    void abort() {
+        auto state = this->getState();
+
+        while (true) {
+            // cannot cancel if already completed or closed
+            if (state & (TASK_COMPLETED | TASK_CLOSED)) {
+                break;
+            }
+
+            // if not scheduled nor running, schedule the task
+            auto newState = state | TASK_CLOSED;
+            if ((state & (TASK_SCHEDULED | TASK_RUNNING)) == 0) {
+                newState |= TASK_SCHEDULED;
+                newState += TASK_REFERENCE;
+            }
+
+            if (this->exchangeState(state, newState)) {
+                // schedule it so the future gets dropped by the executor
+                if ((state & (TASK_SCHEDULED | TASK_RUNNING)) == 0) {
+                    this->schedule();
+                }
+
+                // notify awaiter
+                if (state & TASK_AWAITER) {
+                    this->notifyAwaiter();
+                }
+
+                break;
+            }
+        }
+    }
 };
 
 template <Pollable P>
@@ -360,38 +392,6 @@ struct Task : TaskTypedBase<typename P::Output> {
         }
 
         return false;
-    }
-
-    void abort() {
-        auto state = this->getState();
-
-        while (true) {
-            // cannot cancel if already completed or closed
-            if (state & (TASK_COMPLETED | TASK_CLOSED)) {
-                break;
-            }
-
-            // if not scheduled nor running, schedule the task
-            auto newState = state | TASK_CLOSED;
-            if ((state & (TASK_SCHEDULED | TASK_RUNNING)) == 0) {
-                newState |= TASK_SCHEDULED;
-                newState += TASK_REFERENCE;
-            }
-
-            if (this->exchangeState(state, newState)) {
-                // schedule it so the future gets dropped by the executor
-                if ((state & (TASK_SCHEDULED | TASK_RUNNING)) == 0) {
-                    this->schedule();
-                }
-
-                // notify awaiter
-                if (state & TASK_AWAITER) {
-                    this->notifyAwaiter();
-                }
-
-                break;
-            }
-        }
     }
 };
 
