@@ -8,6 +8,7 @@ This project is heavily WIP, few things are implemented and they likely have bug
 
 * Foreign future support? awaiting things that aren't `arc::Future<>` or don't inherit `PollableUniBase` at all.
 * Thread pool for blocking tasks, use for file io? and spawn function
+* Look into changing final_suspend to be suspend_never? So that futures cannot be cancelled when they are about to return
 
 ## Usage
 
@@ -29,6 +30,8 @@ int main() {
     rt.blockOn(aMain());
 }
 ```
+
+When using the macro, the main function can either accept no arguments or accept `(int argc, char** argv)` (argv must **NOT** be `const char**`). It must return either `Future<>` (aka `Future<void>`) or `Future<T>` where `T` is convertible to `int`.
 
 ## Examples
 

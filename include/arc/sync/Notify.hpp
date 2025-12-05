@@ -11,6 +11,7 @@ struct Notified;
 
 struct NotifyState {
     WaitList<Notified> m_waiters;
+    std::atomic<bool> m_storedPermit{false};
 };
 
 struct Notified : PollableBase<Notified> {
@@ -33,14 +34,21 @@ struct Notified : PollableBase<Notified> {
 
     bool poll();
     void reset();
+    bool claimStored();
 };
 
 class Notify {
 public:
     Notify();
 
+    /// Returns an awaitable future that completes when notified.
     Notified notified();
-    void notifyOne();
+
+    /// Notifies one waiter. If no waiter is present, up to a single permit can be stored,
+    /// and the next call to `notified()` will complete immediately. This does not happen if `store` is false.
+    void notifyOne(bool store = true);
+
+    /// Notifies all waiters, no permits are stored.
     void notifyAll();
 
 private:

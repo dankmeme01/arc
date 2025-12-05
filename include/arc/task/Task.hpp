@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Waker.hpp"
+#include "CondvarWaker.hpp"
 #include "Context.hpp"
 #include <arc/future/Future.hpp>
 #include <arc/util/Trace.hpp>
@@ -306,7 +307,6 @@ struct Task : TaskTypedBase<typename P::Output> {
         ctx().m_waker = &waker.get();
 
         auto result = m_future.get().poll();
-        // TRACE("[Task {}] resuming leaf {} (is root task: {})", (void*)this, leaf.address(), leaf.address() == m_handle.m_handle.address());
 
         ctx().m_waker = nullptr;
 
@@ -435,6 +435,26 @@ struct TaskHandle {
             throw std::runtime_error("Task polled after being closed");
         } else {
             return std::nullopt;
+        }
+    }
+
+    /// Blocks until the task is completed.
+    /// Do not use this inside async code.
+    typename TaskTypedBase<T>::Output blockOn() noexcept {
+        CondvarWaker cvw;
+        m_task->registerAwaiter(cvw.waker());
+
+        while (true) {
+            auto result = this->pollTask();
+            if (result) {
+                if constexpr (!std::is_void_v<T>) {
+                    return std::move(*result);
+                } else {
+                    return;
+                }
+            }
+
+            cvw.wait();
         }
     }
 

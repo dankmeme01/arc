@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <condition_variable>
 #include <arc/task/Task.hpp>
+#include <arc/task/CondvarWaker.hpp>
 
 #include <asp/time/Duration.hpp>
 #include <asp/time/sleep.hpp>
@@ -51,41 +52,7 @@ struct Runtime {
     template <Pollable F, typename T = typename F::Output>
     T blockOn(F fut) {
         auto handle = this->spawn(std::move(fut));
-
-        std::condition_variable cv;
-
-        // Create a waker that will notify us
-        static constexpr RawWakerVtable vtable = {
-            .wake = [](void* data) {
-                static_cast<std::condition_variable*>(data)->notify_one();
-            },
-            .wakeByRef = [](void* data) {
-                static_cast<std::condition_variable*>(data)->notify_one();
-            },
-            .clone = [](void* data) -> RawWaker {
-                return RawWaker{data, &vtable};
-            },
-            .destroy = [](void*) {},
-        };
-        auto cvWaker = Waker{&cv, &vtable};
-
-        handle.m_task->registerAwaiter(cvWaker);
-
-        while (true) {
-            auto result = handle.pollTask();
-            if (result) {
-                if constexpr (!std::is_void_v<T>) {
-                    return std::move(*result);
-                } else {
-                    return;
-                }
-            }
-
-            // wait
-            std::mutex m;
-            std::unique_lock lock(m);
-            cv.wait(lock);
-        }
+        return handle.blockOn();
     }
 
 private:
