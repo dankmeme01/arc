@@ -63,14 +63,31 @@ Notified& Notified::operator=(Notified&& other) noexcept {
 bool Notified::poll() {
     switch (m_waitState.load(acquire)) {
         case State::Init: {
+            // try to consume a stored permit
+            if (this->claimStored()) {
+                return true;
+            }
+
             // register the waker
 
             m_waitState.store(State::Waiting, release);
             m_notify->m_waiters.add(*ctx().m_waker, this);
+
+            // double check for a stored permit
+            if (this->claimStored()) {
+                m_notify->m_waiters.remove(this);
+                return true;
+            }
+
             return false;
         } break;
 
         case State::Waiting: {
+            if (this->claimStored()) {
+                m_notify->m_waiters.remove(this);
+                return true;
+            }
+
             return false;
         } break;
 
@@ -82,13 +99,24 @@ bool Notified::poll() {
     }
 }
 
+bool Notified::claimStored() {
+    bool expected = true;
+    if (m_notify->m_storedPermit.compare_exchange_strong(expected, false, acq_rel, acquire)) {
+        m_waitState.store(State::Notified, release);
+        return true;
+    }
+    return false;
+}
+
 Notified Notify::notified() {
     return Notified{m_state};
 }
 
-void Notify::notifyOne() {
+void Notify::notifyOne(bool store) {
     if (auto w = m_state->m_waiters.takeFirst()) {
         notify(w->waker, w->awaiter);
+    } else if (store) {
+        m_state->m_storedPermit.store(true, release);
     }
 }
 
