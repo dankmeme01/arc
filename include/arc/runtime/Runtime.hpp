@@ -20,6 +20,9 @@ struct Runtime {
     Runtime(size_t workers = std::thread::hardware_concurrency());
     ~Runtime();
 
+    /// Get the thread-local runtime context, returns nullptr if not inside a runtime.
+    static Runtime* current();
+
     Runtime(const Runtime&) = delete;
     Runtime& operator=(const Runtime&) = delete;
     // pin the runtime to a specific location in memory

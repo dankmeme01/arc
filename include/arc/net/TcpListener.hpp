@@ -22,6 +22,11 @@ public:
 
     NetResult<qsox::SocketAddress> localAddress() const;
 
+    /// Get the handle to the inner `qsox::TcpListener`.
+    inline qsox::TcpListener& inner() noexcept {
+        return m_listener;
+    }
+
 private:
     qsox::TcpListener m_listener;
 

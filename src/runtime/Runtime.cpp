@@ -26,6 +26,10 @@ Runtime::~Runtime() {
     this->shutdown();
 }
 
+Runtime* Runtime::current() {
+    return ctx().runtime();
+}
+
 void Runtime::enqueueTask(TaskBase* task) {
     trace("[Runtime] enqueuing task {}", (void*)task);
     {

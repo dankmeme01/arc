@@ -47,6 +47,11 @@ public:
     NetResult<qsox::SocketAddress> localAddress() const;
     NetResult<qsox::SocketAddress> remoteAddress() const;
 
+    /// Get the handle to the inner `qsox::UdpSocket`.
+    inline qsox::UdpSocket& inner() noexcept {
+        return m_socket;
+    }
+
 private:
     qsox::UdpSocket m_socket;
 

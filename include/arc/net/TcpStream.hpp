@@ -43,6 +43,11 @@ public:
     NetResult<qsox::SocketAddress> localAddress() const;
     NetResult<qsox::SocketAddress> remoteAddress() const;
 
+    /// Get the handle to the inner `qsox::TcpStream`.
+    inline qsox::TcpStream& inner() noexcept {
+        return m_stream;
+    }
+
 private:
     friend class TcpListener;
 
