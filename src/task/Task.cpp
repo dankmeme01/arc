@@ -1,5 +1,6 @@
 #include <arc/task/Task.hpp>
 #include <arc/runtime/Runtime.hpp>
+#include <arc/util/Assert.hpp>
 
 namespace arc {
 
@@ -24,6 +25,7 @@ void TaskContext::wake() {
 }
 
 Waker TaskContext::cloneWaker() {
+    ARC_DEBUG_ASSERT(m_waker, "no current waker");
     return m_waker->clone();
 }
 

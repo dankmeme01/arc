@@ -3,6 +3,7 @@
 #include <arc/task/Context.hpp>
 #include <arc/task/Waker.hpp>
 #include <arc/util/Assert.hpp>
+#include <arc/util/Result.hpp>
 #include <asp/sync/SpinLock.hpp>
 #include <Geode/Result.hpp>
 #include <atomic>
@@ -14,9 +15,9 @@ namespace arc::mpsc {
 struct ChannelClosed {};
 
 template <typename T>
-using ChannelRecvResult = geode::Result<T, ChannelClosed>;
+using ChannelRecvResult = Result<T, ChannelClosed>;
 template <typename T>
-using ChannelSendResult = geode::Result<void, T>;
+using ChannelSendResult = Result<void, T>;
 
 enum class TrySendOutcome {
     Success,
@@ -32,7 +33,7 @@ enum class TryRecvOutcome {
 
 template <typename T>
 struct Shared {
-    explicit Shared(size_t capacity) : m_capacity(capacity) {}
+    explicit Shared(std::optional<size_t> capacity) : m_capacity(capacity) {}
 
     bool isClosed() const noexcept {
         return m_data.lock()->closed;
@@ -49,7 +50,7 @@ struct Shared {
     }
 
     template <bool RemoveWaker = false>
-    geode::Result<T, TryRecvOutcome> tryRecv() {
+    Result<T, TryRecvOutcome> tryRecv() {
         auto data = m_data.lock();
         auto value = data->pop();
 
@@ -58,15 +59,15 @@ struct Shared {
             if constexpr (RemoveWaker) {
                 data->recvWaiter.reset();
             }
-            return geode::Ok(std::move(*value));
+            return Ok(std::move(*value));
         }
 
         if (data->closed) {
             ARC_DEBUG_ASSERT(!data->recvWaiter, "channel closure should've already removed recvWaiter");
-            return geode::Err(TryRecvOutcome::Closed);
+            return Err(TryRecvOutcome::Closed);
         }
 
-        return geode::Err(TryRecvOutcome::Empty);
+        return Err(TryRecvOutcome::Empty);
     }
 
     void drain() {
@@ -77,22 +78,22 @@ struct Shared {
         }
     }
 
-    geode::Result<T, TryRecvOutcome> recvOrWait() {
+    Result<T, TryRecvOutcome> recvOrWait(std::optional<T>* valueSlot) {
         auto data = m_data.lock();
         auto value = data->pop();
 
         if (value) {
             data->unblockSender();
-            return geode::Ok(std::move(*value));
+            return Ok(std::move(*value));
         }
 
         if (data->closed) {
-            return geode::Err(TryRecvOutcome::Closed);
+            return Err(TryRecvOutcome::Closed);
         }
 
-        data->recvWaiter = ctx().cloneWaker();
+        data->recvWaiter = {ctx().cloneWaker(), valueSlot};
 
-        return geode::Err(TryRecvOutcome::Empty);
+        return Err(TryRecvOutcome::Empty);
     }
 
     template <bool AddWaker = false, bool RemoveWaker = false>
@@ -103,7 +104,39 @@ struct Shared {
             return TrySendOutcome::Closed;
         }
 
-        if (m_capacity != 0 && data->queue.size() >= m_capacity) {
+        auto removeWaker = [&] {
+            if (!RemoveWaker || !waiterId) {
+                return;
+            }
+
+            // find and remove the given waker from the sendWaiters
+            auto it = std::find_if(
+                data->sendWaiters.begin(),
+                data->sendWaiters.end(),
+                [waiterId](const auto& waiter) {
+                    return waiter.second == *waiterId;
+                }
+            );
+
+            if (it != data->sendWaiters.end()) {
+                data->sendWaiters.erase(it);
+            }
+        };
+
+        // check if a receiver is waiting, put value directly into its slot and wake them
+        if (data->recvWaiter) {
+            std::optional<T>* slot = data->recvWaiter->second;
+            if (slot && !slot->has_value()) {
+                *slot = std::move(value);
+                data->recvWaiter->first.wake();
+                data->recvWaiter.reset();
+
+                removeWaker();
+                return TrySendOutcome::Success;
+            }
+        }
+
+        if (!m_capacity.has_value() || (*m_capacity != 0 && data->queue.size() >= *m_capacity)) {
             if constexpr (AddWaker) {
                 ARC_DEBUG_ASSERT(waiterId);
 
@@ -137,24 +170,10 @@ struct Shared {
 
         // wake any waiting receiver
         if (data->recvWaiter) {
-            data->recvWaiter->wake();
+            data->recvWaiter->first.wake();
         }
 
-        if (RemoveWaker && waiterId) {
-            // find and remove the given waker from the sendWaiters
-            auto it = std::find_if(
-                data->sendWaiters.begin(),
-                data->sendWaiters.end(),
-                [waiterId](const auto& waiter) {
-                    return waiter.second == *waiterId;
-                }
-            );
-
-            if (it != data->sendWaiters.end()) {
-                data->sendWaiters.erase(it);
-            }
-        }
-
+        removeWaker();
         return TrySendOutcome::Success;
     }
 
@@ -184,7 +203,7 @@ struct Shared {
 private:
     struct Data {
         std::deque<T> queue;
-        std::optional<Waker> recvWaiter;
+        std::optional<std::pair<Waker, std::optional<T>*>> recvWaiter;
         std::deque<std::pair<Waker, uint64_t>> sendWaiters;
         bool closed = false;
 
@@ -214,7 +233,7 @@ private:
             closed = true;
 
             if (recvWaiter) {
-                recvWaiter->wake();
+                recvWaiter->first.wake();
             }
 
             for (auto& [waker, _] : sendWaiters) {
@@ -226,7 +245,7 @@ private:
         }
     };
 
-    size_t m_capacity;
+    std::optional<size_t> m_capacity;
     std::atomic<size_t> m_senders{0};
     asp::SpinLock<Data> m_data;
 
@@ -295,10 +314,10 @@ struct Sender {
                     auto outcome = m_data->template trySend<true>(m_value, &m_waiterId);
                     if (outcome == TrySendOutcome::Success) {
                         m_state = State::Done;
-                        return geode::Ok();
+                        return Ok();
                     } else if (outcome == TrySendOutcome::Closed) {
                         m_state = State::Done;
-                        return geode::Err(std::move(m_value));
+                        return Err(std::move(m_value));
                     }
 
                     // channel is full, we need to wait
@@ -310,10 +329,10 @@ struct Sender {
                     auto outcome = m_data->template trySend<true, true>(m_value, &m_waiterId);
                     if (outcome == TrySendOutcome::Success) {
                         m_state = State::Done;
-                        return geode::Ok();
+                        return Ok();
                     } else if (outcome == TrySendOutcome::Closed) {
                         m_state = State::Done;
-                        return geode::Err(std::move(m_value));
+                        return Err(std::move(m_value));
                     }
 
                     return std::nullopt;
@@ -357,9 +376,9 @@ struct Sender {
     ChannelSendResult<T> trySend(T value) {
         auto outcome = m_data->trySend(value);
         if (outcome == TrySendOutcome::Success) {
-            return geode::Ok();
+            return Ok();
         } else {
-            return geode::Err(std::move(value));
+            return Err(std::move(value));
         }
     }
 
@@ -398,17 +417,17 @@ struct Receiver {
             switch (m_state) {
                 case State::Init: {
                     // if the channel has a value, return it immediately
-                    auto value = m_data->recvOrWait();
+                    auto value = m_data->recvOrWait(&m_valueSlot);
                     if (value) {
                         m_state = State::Done;
-                        return geode::Ok(std::move(value).unwrap());
+                        return Ok(std::move(value).unwrap());
                     }
 
                     // check if the channel is closed
                     auto err = value.unwrapErr();
                     if (err == TryRecvOutcome::Closed) {
                         m_state = State::Done;
-                        return geode::Err(ChannelClosed{});
+                        return Err(ChannelClosed{});
                     }
 
                     // otherwise, we are waiting
@@ -417,17 +436,22 @@ struct Receiver {
                 } break;
 
                 case State::Waiting: {
+                    if (m_valueSlot) {
+                        m_state = State::Done;
+                        return Ok(std::move(*m_valueSlot));
+                    }
+
                     auto value = m_data->template tryRecv<true>();
                     if (value) {
                         m_state = State::Done;
-                        return geode::Ok(std::move(*value));
+                        return Ok(std::move(*value));
                     }
 
                     // check if the channel is closed
                     auto err = value.unwrapErr();
                     if (err == TryRecvOutcome::Closed) {
                         m_state = State::Done;
-                        return geode::Err(ChannelClosed{});
+                        return Err(ChannelClosed{});
                     }
 
                     return std::nullopt;
@@ -453,6 +477,7 @@ struct Receiver {
         };
 
         std::shared_ptr<Shared<T>> m_data;
+        std::optional<T> m_valueSlot;
         State m_state{State::Init};
     };
 
@@ -460,7 +485,7 @@ struct Receiver {
         return Awaiter{m_data};
     }
 
-    geode::Result<T, TryRecvOutcome> tryRecv() {
+    Result<T, TryRecvOutcome> tryRecv() {
         return m_data->tryRecv();
     }
 
@@ -472,8 +497,14 @@ private:
     std::shared_ptr<Shared<T>> m_data;
 };
 
+/// Creates a new multi-producer, single-consumer channel with the given capacity.
+/// Sender<T> may be copied to create multiple senders, but there can only be one Receiver<T>.
+/// `send()` is typically non-blocking unless the channel is full, in which case senders will have to wait.
+/// When capacity is 0 (the default), the channel is unbounded.
+/// When capacity is set to `std::nullopt`, the channel is zero-capacity (rendezvous),
+/// meaning that messages are never stored and can only be sent when a receiver is waiting.
 template <typename T>
-std::pair<Sender<T>, Receiver<T>> channel(size_t capacity = 0) {
+std::pair<Sender<T>, Receiver<T>> channel(std::optional<size_t> capacity = 0) {
     auto shared = std::make_shared<Shared<T>>(capacity);
     return std::make_pair(Sender<T>{shared}, Receiver<T>{shared});
 }

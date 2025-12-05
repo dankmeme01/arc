@@ -13,11 +13,16 @@
 #include "sync/Semaphore.hpp"
 #include "task/Task.hpp"
 #include "task/CancellationToken.hpp"
+#include "task/CondvarWaker.hpp"
+#include "task/Context.hpp"
 #include "task/Yield.hpp"
 #include "task/Waker.hpp"
 #include "time/Sleep.hpp"
 #include "time/Interval.hpp"
 #include "time/Timeout.hpp"
+#include "util/Assert.hpp"
+#include "util/Random.hpp"
+#include "util/Result.hpp"
 
 namespace arc {
 

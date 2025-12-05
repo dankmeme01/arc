@@ -3,6 +3,7 @@
 #include <arc/runtime/Runtime.hpp>
 #include <arc/future/Pollable.hpp>
 #include <arc/util/Trace.hpp>
+#include <arc/util/Result.hpp>
 
 #include <std23/function_ref.h>
 
@@ -48,7 +49,7 @@ public:
         if (id != 0) {
             m_io.unregister(id);
         }
-        co_return geode::Ok();
+        co_return Ok();
     }
 
 protected:
@@ -66,14 +67,14 @@ protected:
             auto res = readFn(buf, size);
 
             if (res.isOk()) {
-                return geode::Ok(res.unwrap());
+                return Ok(res.unwrap());
             }
 
             auto err = res.unwrapErr();
             if (err == qsox::Error::WouldBlock) {
                 m_io.clearReadiness(Interest::Readable);
             } else {
-                return geode::Err(err);
+                return Err(err);
             }
         }
     }
@@ -94,7 +95,7 @@ protected:
                     m_io.clearReadiness(Interest::Writable);
                 }
 #endif
-                return geode::Ok(n);
+                return Ok(n);
             }
 
             auto err = res.unwrapErr();

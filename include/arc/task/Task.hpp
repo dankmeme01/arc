@@ -65,6 +65,8 @@ struct TaskBase {
 
 protected:
     friend struct Runtime;
+    template <typename T>
+    friend struct TaskHandle;
 
     static bool shouldDestroy(uint64_t state) noexcept;
     uint64_t incref() noexcept;
@@ -442,7 +444,8 @@ struct TaskHandle {
     /// Do not use this inside async code.
     typename TaskTypedBase<T>::Output blockOn() noexcept {
         CondvarWaker cvw;
-        m_task->registerAwaiter(cvw.waker());
+        auto waker = cvw.waker();
+        m_task->registerAwaiter(waker);
 
         while (true) {
             auto result = this->pollTask();

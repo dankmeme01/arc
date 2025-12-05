@@ -43,7 +43,7 @@ std::optional<TcpListener::PollAcceptResult> TcpListener::pollAccept(uint64_t& i
         if (err == qsox::Error::WouldBlock) {
             m_io.clearReadiness(Interest::Readable);
         } else {
-            return geode::Err(err);
+            return Err(err);
         }
     }
 }

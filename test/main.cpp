@@ -12,6 +12,7 @@
 #endif
 
 using namespace asp::time;
+using namespace arc;
 
 #define DBG_FUT_WRAP(f) ({ \
     auto _fut = f; \
@@ -22,40 +23,40 @@ using namespace asp::time;
 #define dbg_await(f) { auto fut = DBG_FUT_WRAP(f); co_await fut; }
 #define dbg_res_await(...) ARC_CO_UNWRAP((co_await (__VA_ARGS__)).mapErr([](auto err) { return fmt::format("Error: {}\nIn: {}", err.message(), #__VA_ARGS__); }))
 
-arc::Future<> recurseWait(int level) {
+Future<> recurseWait(int level) {
     if (level == 0) co_return;
-    co_await(arc::sleepFor(Duration::fromMillis(100)));
-    arc::trace("recurseWait level {} IN", level);
+    co_await(sleepFor(Duration::fromMillis(100)));
+    trace("recurseWait level {} IN", level);
     dbg_await(recurseWait(level - 1));
-    arc::trace("recurseWait level {} OUT", level);
+    trace("recurseWait level {} OUT", level);
 }
 
-arc::Future<int> waiter(Duration dur) {
-    arc::trace("{} is waiting for {}", pthread_self(), dur.toString());
-    co_await arc::sleepFor(dur);
-    arc::trace("{} has finished waiting for {}", pthread_self(), dur.toString());
+Future<int> waiter(Duration dur) {
+    trace("{} is waiting for {}", pthread_self(), dur.toString());
+    co_await sleepFor(dur);
+    trace("{} has finished waiting for {}", pthread_self(), dur.toString());
     co_await arc::yield();
     co_return dur.millis() + 42;
 }
 
-arc::Future<int> noop(int x) {
+Future<int> noop(int x) {
     if (x > 0) {
         co_await noop(x - 1);
     }
     co_return x;
 }
 
-arc::Future<int> locker(arc::Mutex<>& mtx) {
-    arc::trace("locker trying to lock mutex");
+Future<int> locker(Mutex<>& mtx) {
+    trace("locker trying to lock mutex");
     auto guard = co_await mtx.lock();
-    arc::trace("locker acquired mutex");
-    co_await arc::sleepFor(Duration::fromMillis(500));
-    arc::trace("locker releasing mutex");
+    trace("locker acquired mutex");
+    co_await sleepFor(Duration::fromMillis(500));
+    trace("locker releasing mutex");
     co_return 478;
 }
 
-arc::Future<geode::Result<>> tcpTest() {
-    auto stream = dbg_res_await(arc::TcpStream::connect("45.79.112.203:4242"));
+Future<Result<>> tcpTest() {
+    auto stream = dbg_res_await(TcpStream::connect("45.79.112.203:4242"));
     fmt::println("Connected, sending data");
 
     char msg[] = "hello world\n";
@@ -67,10 +68,10 @@ arc::Future<geode::Result<>> tcpTest() {
 
     std::string_view received(buf, n);
     fmt::println("Received {} bytes: {}", n, received);
-    co_return geode::Ok();
+    co_return Ok();
 }
 
-arc::Future<geode::Result<>> tcpListenerTask(arc::TcpStream stream, qsox::SocketAddress addr) {
+Future<Result<>> tcpListenerTask(TcpStream stream, qsox::SocketAddress addr) {
     char buf[1024];
     while (true) {
         size_t n = dbg_res_await(stream.receive(buf, sizeof(buf)));
@@ -83,11 +84,11 @@ arc::Future<geode::Result<>> tcpListenerTask(arc::TcpStream stream, qsox::Socket
         dbg_res_await(stream.sendAll(buf, n));
     }
 
-    co_return geode::Ok();
+    co_return Ok();
 }
 
-arc::Future<geode::Result<>> tcpListener() {
-    auto listener = dbg_res_await(arc::TcpListener::bind(
+Future<Result<>> tcpListener() {
+    auto listener = dbg_res_await(TcpListener::bind(
         qsox::SocketAddress::parse("0.0.0.0:4242").unwrap()
     ));
 
@@ -96,7 +97,7 @@ arc::Future<geode::Result<>> tcpListener() {
         auto [stream, addr] = dbg_res_await(listener.accept());
         fmt::println("Accepted connection from {}", addr.toString());
 
-        arc::spawn([](arc::TcpStream s, qsox::SocketAddress a) mutable -> arc::Future<> {
+        spawn([](TcpStream s, qsox::SocketAddress a) mutable -> Future<> {
             auto result = co_await tcpListenerTask(std::move(s), std::move(a));
             if (!result) {
                 fmt::println("Connection error ({}): {}", a.toString(), result.unwrapErr());
@@ -105,37 +106,37 @@ arc::Future<geode::Result<>> tcpListener() {
     }
 }
 
-arc::Future<> printer() {
+Future<> printer() {
     size_t print = 0;
 
     while (true) {
         fmt::println("Printer: {}", print++);
-        co_await arc::sleepFor(Duration::fromMillis(100));
+        co_await sleepFor(Duration::fromMillis(100));
     }
 }
 
-arc::Future<> asyncMain() {
-    arc::trace("Hello from asyncMain!");
+Future<> asyncMain() {
+    trace("Hello from asyncMain!");
 
-    arc::spawn(printer());
+    spawn(printer());
 
-    dbg_await(arc::select(
+    dbg_await(select(
         // future that finishes after 2.5 seconds
-        arc::selectee(
-            arc::sleepFor(Duration::fromMillis(2500)),
+        selectee(
+            sleepFor(Duration::fromMillis(2500)),
             []() { fmt::println("2.5 seconds elapsed, shutting down!"); }
         ),
 
         // future that never completes
-        arc::selectee(
-            arc::never(),
+        selectee(
+            never(),
             []() { fmt::println("this will never happen"); }
         ),
 
         // future that waits for ctrl+c signal
-        arc::selectee(
-            arc::ctrl_c(),
-            [] -> arc::Future<> {
+        selectee(
+            ctrl_c(),
+            [] -> Future<> {
                 fmt::println("Ctrl+C received, exiting!");
                 co_return;
             }

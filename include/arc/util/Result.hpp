@@ -25,3 +25,11 @@
     variable = std::move(GEODE_CONCAT(res, __LINE__)).unwrap()
 
 #define ARC_CO_MAP_UNWRAP(...) ARC_CO_UNWRAP((__VA_ARGS__).mapErr([](auto err) { return err.message(); }))
+
+namespace arc {
+
+using geode::Ok;
+using geode::Err;
+using geode::Result;
+
+}

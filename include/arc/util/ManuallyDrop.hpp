@@ -3,6 +3,7 @@
 
 namespace arc {
 
+/// This type is NOT safe for types whose move constructor is non-trivial.
 template <typename T>
 struct ManuallyDrop {
     union {

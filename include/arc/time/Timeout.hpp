@@ -2,15 +2,17 @@
 
 #include <arc/future/Pollable.hpp>
 #include <arc/future/Future.hpp>
-#include <asp/time/Instant.hpp>
 #include <arc/runtime/Runtime.hpp>
+#include <arc/util/Result.hpp>
+
+#include <asp/time/Instant.hpp>
 #include <cstdint>
 
 namespace arc {
 
 struct TimedOut {};
 template <typename T>
-using TimeoutResult = geode::Result<T, TimedOut>;
+using TimeoutResult = Result<T, TimedOut>;
 
 template <
     Pollable Fut,
@@ -49,7 +51,7 @@ struct Timeout : PollableBase<Timeout<Fut>, Output> {
         if (now >= m_expiry) {
             // timeout occurred, so the future is now cancelled
             m_id = 0;
-            return geode::Err(TimedOut{});
+            return Err(TimedOut{});
         }
 
         // poll the future, if completed cancel timer and return ready
@@ -60,9 +62,9 @@ struct Timeout : PollableBase<Timeout<Fut>, Output> {
             }
 
             if constexpr (IsVoid) {
-                return geode::Ok(std::monostate{});
+                return Ok(std::monostate{});
             } else {
-                return geode::Ok(std::move(m_future.template vGetOutput<FutOut>()));
+                return Ok(std::move(m_future.template vGetOutput<FutOut>()));
             }
         }
 
