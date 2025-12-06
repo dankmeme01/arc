@@ -46,7 +46,7 @@ private:
     Type m_type{};
 };
 
-struct Runtime;
+class Runtime;
 class IoDriver;
 
 struct RegisteredIoWaiter {
@@ -89,7 +89,7 @@ public:
     void unregisterIo(const std::shared_ptr<RegisteredIo>& rio);
 
 private:
-    friend struct Runtime;
+    friend class Runtime;
 
     Runtime* m_runtime;
     std::atomic<uint64_t> m_tick{0};

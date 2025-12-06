@@ -29,7 +29,7 @@ public:
     void removeEntry(asp::time::Instant expiry, uint64_t id);
 
 private:
-    friend struct Runtime;
+    friend class Runtime;
 
     std::atomic<uint64_t> m_nextTimerId{1};
     Runtime* m_runtime;

@@ -64,7 +64,7 @@ struct TaskBase {
     static void vDropWaker(void* ptr);
 
 protected:
-    friend struct Runtime;
+    friend class Runtime;
     template <typename T>
     friend struct TaskHandle;
 

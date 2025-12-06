@@ -3,7 +3,7 @@
 namespace arc {
 
 struct Waker;
-struct Runtime;
+class Runtime;
 struct TaskBase;
 
 struct TaskContext {
