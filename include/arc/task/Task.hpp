@@ -308,7 +308,7 @@ struct Task : TaskTypedBase<typename P::Output> {
         // poll the inner future
         ctx().m_waker = &waker.get();
 
-        auto result = m_future.get().poll();
+        auto result = m_future.get().vPoll();
 
         ctx().m_waker = nullptr;
 
@@ -316,7 +316,7 @@ struct Task : TaskTypedBase<typename P::Output> {
 
         if (result) {
             if constexpr (!IsVoid) {
-                this->m_value = m_future.get().getOutput();
+                this->m_value = m_future.get().template vGetOutput<Output>();
             }
 
             this->vDropFuture(this);

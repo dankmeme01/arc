@@ -56,7 +56,7 @@ struct Select : PollableBase<Select<Futures...>> {
 
             trace("[Select] checking selectee {}, active: {}", Is, selectee.active);
             if (selectee.active) {
-                auto res = selectee.future.poll();
+                auto res = selectee.future.vPoll();
                 if (res) {
                     m_winner = Is;
                     trace("[Select] selectee {} finished!", Is);
