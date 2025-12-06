@@ -17,6 +17,7 @@
 namespace arc {
 
 class Runtime {
+public:
     Runtime(size_t workers = std::thread::hardware_concurrency());
     ~Runtime();
 
