@@ -17,7 +17,7 @@ struct Selectee {
     static constexpr bool IsVoid = std::is_void_v<Output>;
 
     template <typename F>
-    Selectee(F fut, Callback cb, bool act) : future(toPlainFuture(std::move(fut))), callback(cb), active(act) {}
+    Selectee(F fut, Callback cb, bool act) : future(toPlainFuture(std::move(fut))), callback(std::move(cb)), active(act) {}
 
     Selectee(Selectee&&) = default;
     Selectee& operator=(Selectee&&) = default;
