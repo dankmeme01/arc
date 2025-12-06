@@ -66,11 +66,12 @@ struct JoinAll : PollableBase<JoinAll<FRet, Futures...>, std::array<FRet, sizeof
 
             trace("[JoinAll] checking future {}, active: {}", Is, !fut.output.has_value());
             if (!fut.output) {
-                allDone = false;
                 auto res = fut.future.poll();
                 if (res) {
                     fut.output = fut.future.getOutput();
                     trace("[JoinAll] future {} finished!", Is);
+                } else {
+                    allDone = false;
                 }
             }
         }()), ...);
