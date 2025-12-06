@@ -3,6 +3,7 @@
 #include <arc/util/Assert.hpp>
 #include <arc/util/Trace.hpp>
 #include <fmt/format.h>
+#include <iostream>
 
 #ifdef _WIN32
 # include <winsock2.h>
@@ -193,13 +194,24 @@ void IoDriver::doWork() {
         count++;
     }
 
+    if (count == 0) {
+        // nothing to do
+        return;
+    }
+
     int ret = ARC_POLL(fds, count, 0);
 
     if (ret == 0) {
         return;
     } else if (ret < 0) {
-        fmt::println("Error in IO driver: {}", errno);
-        std::abort();
+#ifdef _WIN32
+        auto msg = fmt::format("Error in IO driver: poll failed: {}", WSAGetLastError());
+#else
+        auto msg = fmt::format("Error in IO driver: poll failed: {}", errno);
+#endif
+
+        std::cerr << msg << std::endl;
+        throw std::runtime_error(msg);
     }
 
     trace("IoDriver: poll returned {} fds", ret);

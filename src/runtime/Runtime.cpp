@@ -1,4 +1,5 @@
 #include <arc/runtime/Runtime.hpp>
+#include <asp/thread/Thread.hpp>
 
 using namespace asp::time;
 
@@ -16,7 +17,8 @@ Runtime::Runtime(size_t workers) : m_stopFlag(false) {
 
     for (size_t i = 0; i < workers; ++i) {
         auto& worker = m_workers[i];
-        worker.thread = std::thread([this, &worker]() {
+        worker.thread = std::thread([this, &worker] {
+            asp::_setThreadName(fmt::format("arc-worker-{}", worker.id));
             this->workerLoop(worker);
         });
     }
