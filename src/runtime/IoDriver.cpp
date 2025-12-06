@@ -204,10 +204,15 @@ void IoDriver::doWork() {
     if (ret == 0) {
         return;
     } else if (ret < 0) {
-#ifdef _WIN32
-        auto msg = fmt::format("Error in IO driver: poll failed: {}", WSAGetLastError());
-#else
+#ifndef _WIN32
+        // ignore interrupt
+        if (errno == EINTR) {
+            return;
+        }
+
         auto msg = fmt::format("Error in IO driver: poll failed: {}", errno);
+#else
+        auto msg = fmt::format("Error in IO driver: poll failed: {}", WSAGetLastError());
 #endif
 
         std::cerr << msg << std::endl;
@@ -229,7 +234,7 @@ void IoDriver::doWork() {
         if (pfd.revents & POLLOUT) {
             ready |= Interest::Writable;
         }
-        if (pfd.revents & POLLERR) {
+        if (pfd.revents & (POLLERR | POLLHUP | POLLNVAL)) {
             ready |= Interest::Error;
         }
 
