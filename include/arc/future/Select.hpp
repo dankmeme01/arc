@@ -3,16 +3,16 @@
 #include "Future.hpp"
 #include <arc/task/Task.hpp>
 #include <arc/util/Trace.hpp>
-#include <std23/function_ref.h>
+#include <std23/move_only_function.h>
 
 namespace arc {
 
 template <typename Output, typename Cbt>
 struct Selectee {
     using Callback = std::conditional_t<std::is_void_v<Output>,
-        std23::function_ref<Cbt()>,
+        std23::move_only_function<Cbt()>,
         // this is funny, but it's necessary to avoid a void param error
-        std23::function_ref<Cbt(std::conditional_t<std::is_void_v<Output>, std::monostate, Output>)>
+        std23::move_only_function<Cbt(std::conditional_t<std::is_void_v<Output>, std::monostate, Output>)>
     >;
     static constexpr bool IsVoid = std::is_void_v<Output>;
 
