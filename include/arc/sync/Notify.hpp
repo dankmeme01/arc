@@ -42,14 +42,14 @@ public:
     Notify();
 
     /// Returns an awaitable future that completes when notified.
-    Notified notified();
+    Notified notified() const;
 
     /// Notifies one waiter. If no waiter is present, up to a single permit can be stored,
     /// and the next call to `notified()` will complete immediately. This does not happen if `store` is false.
-    void notifyOne(bool store = true);
+    void notifyOne(bool store = true) const;
 
     /// Notifies all waiters, no permits are stored.
-    void notifyAll();
+    void notifyAll() const;
 
 private:
     std::shared_ptr<NotifyState> m_state;

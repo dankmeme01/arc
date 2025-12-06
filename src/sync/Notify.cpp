@@ -108,11 +108,11 @@ bool Notified::claimStored() {
     return false;
 }
 
-Notified Notify::notified() {
+Notified Notify::notified() const {
     return Notified{m_state};
 }
 
-void Notify::notifyOne(bool store) {
+void Notify::notifyOne(bool store) const {
     if (auto w = m_state->m_waiters.takeFirst()) {
         notify(w->waker, w->awaiter);
     } else if (store) {
@@ -120,7 +120,7 @@ void Notify::notifyOne(bool store) {
     }
 }
 
-void Notify::notifyAll() {
+void Notify::notifyAll() const {
     m_state->m_waiters.forAll([](Waker& waker, Notified* awaiter) {
         notify(waker, awaiter);
     });
