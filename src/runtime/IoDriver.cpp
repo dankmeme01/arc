@@ -216,7 +216,7 @@ void IoDriver::doWork() {
 
     trace("IoDriver: poll returned {} fds", ret);
 
-    static std::vector<Waker> toWake;
+    static thread_local std::vector<Waker> toWake;
 
     for (int i = 0; i < count; i++) {
         auto& rio = (*ios)[indices[i]];
@@ -230,11 +230,13 @@ void IoDriver::doWork() {
             ready |= Interest::Writable;
         }
 
-        rio->readiness.fetch_or(ready, release);
+        auto newReadiness = rio->readiness.fetch_or(ready, release) | static_cast<uint8_t>(ready);
+        trace("IoDriver: fd {} - readiness {}", fmtFd(rio->fd), newReadiness);
 
         auto waiters = rio->waiters.lock();
         for (auto& waiter : *waiters) {
             if (waiter.satisfiedBy(ready) && waiter.waker) {
+                trace("IoDriver: will wake waker {} (id {})", (void*)waiter.waker->m_data, waiter.id);
                 toWake.push_back(std::move(waiter.waker).value());
                 waiter.waker.reset();
             }
