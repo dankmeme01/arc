@@ -5,6 +5,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 project(arc VERSION 1.0.0)
 option(ARC_DEBUG "Enable debug assertions" OFF)
 option(ARC_BUILD_TESTS "Build tests" OFF)
+option(ARC_TRACE "Enable debug tracing" OFF)
 
 file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS "src/*.cpp")
 add_library(arc STATIC ${SOURCES})
@@ -12,6 +13,10 @@ target_include_directories(arc PUBLIC "include")
 
 if (ARC_DEBUG)
     target_compile_definitions(arc PUBLIC ARC_DEBUG=1)
+endif()
+
+if (ARC_TRACE)
+    target_compile_definitions(arc PUBLIC ARC_TRACE=1)
 endif()
 
 include(cmake/CPM.cmake)

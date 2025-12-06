@@ -38,7 +38,7 @@ bool RegisteredIoWaiter::satisfiedBy(Interest ready) const {
     return (ready & interest) != 0;
 }
 
-bool Registration::pollReady(Interest interest, uint64_t& outId) {
+Interest Registration::pollReady(Interest interest, uint64_t& outId) {
     ARC_ASSERT(rio);
     ARC_ASSERT(interest != Interest::ReadWrite);
 
@@ -46,17 +46,15 @@ bool Registration::pollReady(Interest interest, uint64_t& outId) {
 
     trace("IoDriver: fd {} readiness: {}", fmtFd(rio->fd), curr);
 
-    auto ready = (curr & static_cast<uint8_t>(interest)) != 0;
+    uint8_t readiness = (curr & static_cast<uint8_t>(interest));
 
-    // TODO: tick stuff
-
-    if (ready) {
-        return true;
+    if (readiness != 0) {
+        return readiness;
     }
 
     // if the id is nonzero, assume we are already registered
     if (outId != 0) {
-        return false;
+        return 0;
     }
 
     outId = nextId();
@@ -79,7 +77,7 @@ bool Registration::pollReady(Interest interest, uint64_t& outId) {
         rio->anyWrite.store(true, release);
     }
 
-    return false;
+    return 0;
 }
 
 void Registration::unregister(uint64_t id) {
@@ -187,7 +185,7 @@ void IoDriver::doWork() {
         }
 
         fds[count].fd = rio->fd;
-        fds[count].events = 0;
+        fds[count].events = POLLERR; // always monitor errors
         fds[count].revents = 0;
         if (read) fds[count].events |= POLLIN;
         if (write) fds[count].events |= POLLOUT;
@@ -230,6 +228,9 @@ void IoDriver::doWork() {
         }
         if (pfd.revents & POLLOUT) {
             ready |= Interest::Writable;
+        }
+        if (pfd.revents & POLLERR) {
+            ready |= Interest::Error;
         }
 
         auto newReadiness = rio->readiness.fetch_or(ready, release) | static_cast<uint8_t>(ready);

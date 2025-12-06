@@ -5,6 +5,7 @@
 #include <asp/sync/Mutex.hpp>
 #include <memory>
 #include <vector>
+#include <atomic>
 
 namespace arc {
 
@@ -14,11 +15,13 @@ struct Interest {
     enum Type : uint8_t {
         Readable = 1 << 0,
         Writable = 1 << 1,
+        Error = 1 << 2,
         ReadWrite = Readable | Writable,
     };
 
     Interest() : m_type{} {}
     Interest(Type type) : m_type(type) {}
+    Interest(uint8_t type) : m_type(static_cast<Type>(type)) {}
 
     Interest operator|(const Interest& other) const {
         return Interest(static_cast<Type>(m_type | other.m_type));
@@ -75,7 +78,7 @@ struct Registration {
     Registration(const Registration&) = default;
     Registration& operator=(const Registration&) = default;
 
-    bool pollReady(Interest interest, uint64_t& outId);
+    Interest pollReady(Interest interest, uint64_t& outId);
     void unregister(uint64_t id);
     void clearReadiness(Interest interest);
 };

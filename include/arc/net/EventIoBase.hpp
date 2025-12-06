@@ -19,6 +19,8 @@ private:
 template <typename T = void>
 using NetResult = qsox::NetResult<T>;
 
+qsox::Error errorFromSocket(SockFd fd);
+
 template <typename Derived>
 class EventIoBase {
 public:
@@ -34,22 +36,33 @@ public:
     }
 
     Future<NetResult<void>> pollReadable() {
-        return this->pollReady(Interest::Readable);
+        return this->pollReady(Interest::Readable | Interest::Error);
     }
 
     Future<NetResult<void>> pollWritable() {
-        return this->pollReady(Interest::Writable);
+        return this->pollReady(Interest::Writable | Interest::Error);
     }
 
     Future<NetResult<void>> pollReady(Interest interest) {
         uint64_t id = 0;
-        co_await pollFunc([&] {
+        Interest ready = co_await pollFunc([&] {
             return m_io.pollReady(interest, id);
         });
         if (id != 0) {
             m_io.unregister(id);
         }
+
+        // check if there was an error
+        if (ready & Interest::Error) {
+            co_return Err(this->takeSocketError());
+        }
+
+        // otherwise, we are ready to return
         co_return Ok();
+    }
+
+    qsox::Error takeSocketError() {
+        return errorFromSocket(m_io.rio->fd);
     }
 
 protected:
@@ -60,8 +73,11 @@ protected:
 
     std::optional<NetResult<size_t>> pollRead(uint64_t& id, void* buf, size_t size, PollReadFn readFn) {
         while (true) {
-            if (!m_io.pollReady(Interest::Readable, id)) {
+            auto ready = m_io.pollReady(Interest::Readable | Interest::Error, id);
+            if (ready == 0) {
                 return std::nullopt;
+            } else if (ready & Interest::Error) {
+                return Err(this->takeSocketError());
             }
 
             auto res = readFn(buf, size);
@@ -81,8 +97,11 @@ protected:
 
     std::optional<NetResult<size_t>> pollWrite(uint64_t& id, const void* buf, size_t size, PollWriteFn writeFn) {
         while (true) {
-            if (!m_io.pollReady(Interest::Writable, id)) {
+            auto ready = m_io.pollReady(Interest::Writable | Interest::Error, id);
+            if (ready == 0) {
                 return std::nullopt;
+            } else if (ready & Interest::Error) {
+                return Err(this->takeSocketError());
             }
 
             auto res = writeFn(buf, size);
