@@ -73,6 +73,8 @@ public:
         return handle.blockOn();
     }
 
+    bool isShuttingDown() const noexcept;
+
 private:
     template <Pollable P>
     friend struct Task;
@@ -101,7 +103,6 @@ private:
     std::atomic<size_t> m_nextBlockingWorkerId{0};
 
     void shutdown();
-    bool isShuttingDown() const noexcept;
 
     void workerLoop(WorkerData& data);
     void workerLoopWrapper(WorkerData& data);
