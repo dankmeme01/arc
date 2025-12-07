@@ -4,9 +4,20 @@ Arc is a modern C++ async runtime heavily inspired by Tokio and Rust async in ge
 
 Tasks are the primary unit of execution. The very first function that is ran (your async main function) will be spawned as a task and `blockOn` will return once it's finished. Tasks are intended to be lightweight, and you can always spawn a new task with `arc::spawn(fut)`.
 
-This project is heavily WIP, few things are implemented and they likely have bugs. TODO:
+This project is WIP, some things may have bugs and not be production ready, but it is actively maintained and some things are covered by tests. Features (scroll below for examples):
+* Runtime that can run using either one or multiple threads
+* Tasks as an independent unit of execution
+* Blocking tasks on a thread pool
+* Synchronization (Mutexes, semaphores, notify, MPSC channels)
+* Networking (UDP sockets, TCP sockets and listeners)
+* Time utilities (sleep, interval, timeout)
+* Multi-future pollers like `arc::select` and `arc::joinAll`
+* Signal catching (i.e. listening for Ctrl+C easily)
+* Top-level exception handler that prints the backtrace of futures, to aid in debugging
 
+TODO:
 * File IO using blocking thread pool
+* Better poller. Current implementation uses `poll`/`WSAPoll`, which isn't scalable. This is not an issue for small jobs, but makes the library unsuitable for servers that handle hundreds of connections. Currently this is a non-goal as this library was mostly made for a network client rather than a server.
 
 ## Usage
 
