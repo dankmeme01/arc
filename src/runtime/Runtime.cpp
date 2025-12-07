@@ -227,6 +227,10 @@ void Runtime::spawnBlockingWorker() {
     th.detach();
 }
 
+bool Runtime::isShuttingDown() const noexcept {
+    return m_stopFlag.load(::acquire);
+}
+
 void Runtime::shutdown() {
     TRACE("[Runtime] shutting down");
     m_stopFlag.store(true, ::release);
