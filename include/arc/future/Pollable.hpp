@@ -187,8 +187,8 @@ inline auto pollFunc(F&& func) {
         typename ExtractOptional<PollReturn>::type
     >;
 
-    struct Awaiter : PollableBase<Awaiter, Output> {
-        explicit Awaiter(F&& f) : m_func(std::move(f)) {}
+    struct PollFuncAwaiter : PollableBase<PollFuncAwaiter, Output> {
+        explicit PollFuncAwaiter(F&& f) : m_func(std::move(f)) {}
 
         PollReturn poll() {
             return m_func();
@@ -198,7 +198,7 @@ inline auto pollFunc(F&& func) {
         F m_func;
     };
 
-    return Awaiter{std::forward<F>(func)};
+    return PollFuncAwaiter{std::forward<F>(func)};
 }
 
 }
