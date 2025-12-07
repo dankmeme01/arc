@@ -22,7 +22,7 @@ TODO:
 ## Usage
 
 ```cmake
-CPMAddPackage("gh:dankmeme01/arc#main")
+CPMAddPackage("gh:dankmeme01/arc@v1.0.0")
 ```
 
 ```cpp
