@@ -6,6 +6,12 @@ using enum std::memory_order;
 
 static constexpr size_t MAX_BLOCKING_WORKERS = 128;
 
+#if 0
+# define TRACE ::arc::trace
+#else
+# define TRACE(...) do {} while(0)
+#endif
+
 namespace arc {
 
 Runtime::Runtime(size_t workers) : m_stopFlag(false) {
@@ -37,7 +43,7 @@ Runtime* Runtime::current() {
 }
 
 void Runtime::enqueueTask(TaskBase* task) {
-    trace("[Runtime] enqueuing task {}", (void*)task);
+    TRACE("[Runtime] enqueuing task {}", (void*)task);
     {
         std::lock_guard lock(m_mtx);
         m_runQueue.push_back(task);
@@ -127,9 +133,9 @@ void Runtime::workerLoop(WorkerData& data) {
             continue;
         }
 
-        trace("[Worker {}] driving task {}", data.id, (void*)task);
+        TRACE("[Worker {}] driving task {}", data.id, (void*)task);
         task->m_vtable->run(task);
-        trace("[Worker {}] finished driving task", data.id);
+        TRACE("[Worker {}] finished driving task", data.id);
     }
 }
 
@@ -141,7 +147,7 @@ void Runtime::blockingWorkerLoop(size_t id) {
 
         // terminate if there has been no task in a while
         if (now.durationSince(lastTask) >= Duration::fromSecs(30)) {
-            trace("[Blocking {}] exiting due to inactivity", id);
+            TRACE("[Blocking {}] exiting due to inactivity", id);
             m_blockingWorkers.fetch_sub(1, ::acq_rel);
             m_freeBlockingWorkers.fetch_sub(1, ::acq_rel);
             break;
@@ -176,15 +182,17 @@ void Runtime::blockingWorkerLoop(size_t id) {
 
         lastTask = now;
 
-        trace("[Blocking {}] executing blocking task {}", id, (void*)task);
+        TRACE("[Blocking {}] executing blocking task {}", id, (void*)task);
         m_freeBlockingWorkers.fetch_sub(1, ::acq_rel);
         task->execute();
         m_freeBlockingWorkers.fetch_add(1, ::acq_rel);
-        trace("[Blocking {}] finished blocking task {}", id, (void*)task);
+        TRACE("[Blocking {}] finished blocking task {}", id, (void*)task);
     }
 }
 
+static bool skipRemoveTask = false;
 void Runtime::removeTask(TaskBase* task) noexcept {
+    if (skipRemoveTask) return;
     m_tasks.lock()->erase(task);
 }
 
@@ -220,7 +228,7 @@ void Runtime::spawnBlockingWorker() {
 }
 
 void Runtime::shutdown() {
-    trace("[Runtime] shutting down");
+    TRACE("[Runtime] shutting down");
     m_stopFlag.store(true, ::release);
     m_cv.notify_all();
     m_blockingCv.notify_all();
@@ -232,8 +240,20 @@ void Runtime::shutdown() {
     }
 
     m_workers.clear();
-    m_tasks.lock()->clear();
     m_blockingTasks.clear();
+
+    // deallocate all tasks
+    ctx().m_runtime = this;
+
+    skipRemoveTask = true;
+    auto tasks = m_tasks.lock();
+    for (auto* task : *tasks) {
+        task->m_vtable->destroy(task);
+    }
+    tasks->clear();
+    skipRemoveTask = false;
+
+    ctx().m_runtime = nullptr;
 }
 
 

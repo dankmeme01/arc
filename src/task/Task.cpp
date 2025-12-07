@@ -8,6 +8,38 @@ void TaskBase::schedule() noexcept {
     m_vtable->schedule(this);
 }
 
+void TaskBase::abort() noexcept {
+    auto state = this->getState();
+
+    while (true) {
+        // cannot cancel if already completed or closed
+        if (state & (TASK_COMPLETED | TASK_CLOSED)) {
+            break;
+        }
+
+        // if not scheduled nor running, schedule the task
+        auto newState = state | TASK_CLOSED;
+        if ((state & (TASK_SCHEDULED | TASK_RUNNING)) == 0) {
+            newState |= TASK_SCHEDULED;
+            newState += TASK_REFERENCE;
+        }
+
+        if (this->exchangeState(state, newState)) {
+            // schedule it so the future gets dropped by the executor
+            if ((state & (TASK_SCHEDULED | TASK_RUNNING)) == 0) {
+                this->schedule();
+            }
+
+            // notify awaiter
+            if (state & TASK_AWAITER) {
+                this->notifyAwaiter();
+            }
+
+            break;
+        }
+    }
+}
+
 std::optional<bool> TaskBase::pollTask() {
     auto& cx = ctx();
     auto state = this->getState();
@@ -68,14 +100,14 @@ std::optional<bool> TaskBase::pollTask() {
 }
 
 void TaskBase::vSchedule(void* self) {
-    trace("[Task {}] scheduling", self);
+    // trace("[Task {}] scheduling", self);
 
     auto task = static_cast<TaskBase*>(self);
     task->m_runtime->enqueueTask(task);
 }
 
 void TaskBase::vDropRef(void* self) {
-    trace("[Task {}] dropping reference", self);
+    // trace("[Task {}] dropping reference", self);
 
     auto task = static_cast<TaskBase*>(self);
     auto state = task->decref();
@@ -86,7 +118,7 @@ void TaskBase::vDropRef(void* self) {
 }
 
 void TaskBase::vDropWaker(void* ptr) {
-    trace("[Task {}] dropping waker", ptr);
+    // trace("[Task {}] dropping waker", ptr);
 
     auto self = static_cast<TaskBase*>(ptr);
     auto state = self->decref();

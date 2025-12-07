@@ -3,7 +3,6 @@
 #include <arc/util/Assert.hpp>
 #include <arc/util/Trace.hpp>
 #include <fmt/format.h>
-#include <iostream>
 
 #ifdef _WIN32
 # include <winsock2.h>
@@ -178,7 +177,7 @@ void IoDriver::doWork() {
         bool read = rio->anyRead.load(std::memory_order::acquire);
         bool write = rio->anyWrite.load(std::memory_order::acquire);
 
-        trace("IoDriver: fd {} - poll read: {}, poll write: {}", fmtFd(rio->fd), read, write);
+        // trace("IoDriver: fd {} - poll read: {}, poll write: {}", fmtFd(rio->fd), read, write);
 
         if (!read && !write) {
             continue;

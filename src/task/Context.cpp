@@ -13,10 +13,13 @@ TaskBase* TaskContext::currentTask() {
 }
 
 Runtime* TaskContext::runtime() {
+    if (m_runtime) return m_runtime;
+
     auto task = this->currentTask();
     if (task) {
         return task->m_runtime;
     }
+
     return nullptr;
 }
 
@@ -30,13 +33,13 @@ Waker TaskContext::cloneWaker() {
 }
 
 void TaskContext::pushFrame(const PollableUniBase* pollable) {
-    trace("pushing frame {}", (void*)pollable);
+    // trace("pushing frame {}", (void*)pollable);
     m_stack.push_back(pollable);
 }
 
 void TaskContext::popFrame() {
     ARC_DEBUG_ASSERT(!m_stack.empty(), "popFrame() called on empty future stack");
-    trace("popping frame {}", (void*)m_stack.back());
+    // trace("popping frame {}", (void*)m_stack.back());
     m_stack.pop_back();
 }
 

@@ -20,7 +20,7 @@ using namespace arc;
     std::move(_fut); \
 })
 
-#define dbg_await(f) { auto fut = DBG_FUT_WRAP(f); co_await fut; }
+#define dbg_await(f) ({ auto fut = DBG_FUT_WRAP(f); co_await fut; })
 #define dbg_res_await(...) ARC_CO_UNWRAP((co_await (__VA_ARGS__)).mapErr([](auto err) { return fmt::format("Error: {}\nIn: {}", err.message(), #__VA_ARGS__); }))
 
 Future<> recurseWait(int level) {
@@ -93,17 +93,29 @@ Future<Result<>> tcpListener() {
     ));
 
     fmt::println("Listening for connections on {}..", listener.localAddress().unwrap().toString());
-    while (true) {
-        auto [stream, addr] = dbg_res_await(listener.accept());
-        fmt::println("Accepted connection from {}", addr.toString());
 
-        spawn([](TcpStream s, qsox::SocketAddress a) mutable -> Future<> {
-            auto result = co_await tcpListenerTask(std::move(s), std::move(a));
-            if (!result) {
-                fmt::println("Connection error ({}): {}", a.toString(), result.unwrapErr());
-            }
-        }(std::move(stream), addr));
+    bool running = true;
+    while (running) {
+        co_await arc::select(
+            selectee(ctrl_c(), [&] {
+                running = false;
+            }),
+
+            selectee(listener.accept(), [](auto res) {
+                auto [stream, addr] = std::move(res).unwrap();
+                fmt::println("Accepted connection from {}", addr.toString());
+
+                spawn([](TcpStream s, qsox::SocketAddress a) mutable -> Future<> {
+                    auto result = co_await tcpListenerTask(std::move(s), std::move(a));
+                    if (!result) {
+                        fmt::println("Connection error ({}): {}", a.toString(), result.unwrapErr());
+                    }
+                }(std::move(stream), addr));
+            })
+        );
     }
+
+    co_return Ok();
 }
 
 Future<> printer() {
@@ -115,10 +127,15 @@ Future<> printer() {
     }
 }
 
-Future<> asyncMain() {
+Future<> asyncMain(int argc, char** argv) {
     trace("Hello from asyncMain!");
 
     spawn(printer());
+
+    if (argc > 1 && std::string_view(argv[1]) == "tcp-server") {
+        dbg_await(tcpListener()).unwrap();
+        co_return;
+    }
 
     dbg_await(select(
         // future that finishes after 2.5 seconds

@@ -7,6 +7,7 @@
 #include <arc/util/Trace.hpp>
 #include <arc/util/ManuallyDrop.hpp>
 #include <arc/util/ScopeDtor.hpp>
+#include <arc/util/Assert.hpp>
 
 #if 0
 # define TRACE trace
@@ -53,6 +54,7 @@ struct TaskBase {
     std::optional<Waker> m_awaiter;
 
     void schedule() noexcept;
+    void abort() noexcept;
 
     /// Polls the task. Returns:
     /// - std::nullopt if the task is pending
@@ -132,38 +134,6 @@ struct TaskTypedBase : TaskBase {
 
         return out;
     }
-
-    void abort() {
-        auto state = this->getState();
-
-        while (true) {
-            // cannot cancel if already completed or closed
-            if (state & (TASK_COMPLETED | TASK_CLOSED)) {
-                break;
-            }
-
-            // if not scheduled nor running, schedule the task
-            auto newState = state | TASK_CLOSED;
-            if ((state & (TASK_SCHEDULED | TASK_RUNNING)) == 0) {
-                newState |= TASK_SCHEDULED;
-                newState += TASK_REFERENCE;
-            }
-
-            if (this->exchangeState(state, newState)) {
-                // schedule it so the future gets dropped by the executor
-                if ((state & (TASK_SCHEDULED | TASK_RUNNING)) == 0) {
-                    this->schedule();
-                }
-
-                // notify awaiter
-                if (state & TASK_AWAITER) {
-                    this->notifyAwaiter();
-                }
-
-                break;
-            }
-        }
-    }
 };
 
 template <Pollable P>
@@ -173,6 +143,7 @@ struct Task : TaskTypedBase<typename P::Output> {
     static constexpr bool IsVoid = std::is_void_v<Output>;
 
     ManuallyDrop<P> m_future;
+    bool m_droppedFuture = false;
 
     static Task* create(Runtime* runtime, P&& fut) {
         auto task = new Task{
@@ -185,10 +156,19 @@ struct Task : TaskTypedBase<typename P::Output> {
         return task;
     }
 
+    ~Task() {
+        if (!m_droppedFuture) {
+            this->vDropFuture(this);
+        }
+    }
+
     static void vDropFuture(void* ptr) {
         TRACE("[Task {}] dropping future", ptr);
         auto self = static_cast<Task*>(ptr);
+        ARC_ASSERT(!self->m_droppedFuture);
+
         self->m_future.drop();
+        self->m_droppedFuture = true;
     }
 
     static void vDestroy(void* self) {
@@ -352,8 +332,6 @@ struct Task : TaskTypedBase<typename P::Output> {
             }
         } else {
             // task is still pending
-            bool dropped = false;
-
             while (true) {
                 auto newState = (state & ~TASK_RUNNING);
 
@@ -361,11 +339,10 @@ struct Task : TaskTypedBase<typename P::Output> {
                     newState &= ~TASK_SCHEDULED;
                 }
 
-                if ((state & TASK_CLOSED) && !dropped) {
+                if ((state & TASK_CLOSED) && !m_droppedFuture) {
                     // the thread that closed the task did not drop the future,
                     // so we have to do it here
                     this->vDropFuture(this);
-                    dropped = true;
                 }
 
                 if (this->exchangeState(state, newState)) {
@@ -494,3 +471,5 @@ struct TaskHandle<void> : PollableBase<TaskHandle<void>, void>, TaskHandleBase<v
 };
 
 }
+
+#undef TRACE

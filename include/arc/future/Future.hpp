@@ -8,6 +8,12 @@
 #include <arc/util/Trace.hpp>
 #include "Pollable.hpp"
 
+#if 0
+# define TRACE ::arc::trace
+#else
+# define TRACE(...) do {} while(0)
+#endif
+
 namespace arc {
 
 template <typename T>
@@ -91,12 +97,12 @@ struct ARC_NODISCARD Future : PollableLowLevelBase<Future<T>, T> {
     }
 
     bool await_ready() noexcept {
-        trace("[{}] await_ready(), done: {}", this->debugName(), m_handle ? m_handle.done() : true);
+        TRACE("[{}] await_ready(), done: {}", this->debugName(), m_handle ? m_handle.done() : true);
         return m_handle ? m_handle.done() : true;
     }
 
     bool await_suspend(std::coroutine_handle<> awaiting) {
-        trace("[{}] await_suspend({}), child: {}", this->debugName(), m_handle.address(), awaiting.address(), (void*)this->child());
+        TRACE("[{}] await_suspend({}), child: {}", this->debugName(), m_handle.address(), awaiting.address(), (void*)this->child());
 
         auto awaitingP = std::coroutine_handle<promise_type>::from_address(awaiting.address());
         awaitingP.promise().m_child = this;
@@ -105,7 +111,7 @@ struct ARC_NODISCARD Future : PollableLowLevelBase<Future<T>, T> {
 
         // if we don't have a child, wake the current task immediately
         if (!this->child()) {
-            trace("[{}] await_suspend(): no child, resuming immediately", this->debugName());
+            TRACE("[{}] await_suspend(): no child, resuming immediately", this->debugName());
 
             ctx().pushFrame(this);
             m_handle.resume();
@@ -121,7 +127,7 @@ struct ARC_NODISCARD Future : PollableLowLevelBase<Future<T>, T> {
     }
 
     T await_resume() {
-        trace("[{}] await_resume()", this->debugName());
+        TRACE("[{}] await_resume()", this->debugName());
         return this->getOutput();
     }
 
@@ -136,11 +142,11 @@ struct ARC_NODISCARD Future : PollableLowLevelBase<Future<T>, T> {
             return false;
         };
 
-        trace("[{}] poll(), child: {}", this->debugName(), (void*)child);
+        TRACE("[{}] poll(), child: {}", this->debugName(), (void*)child);
 
         if (child) {
             bool done = child->vPoll();
-            trace("[{}] poll() -> child done: {}", this->debugName(), done);
+            TRACE("[{}] poll() -> child done: {}", this->debugName(), done);
             if (done) {
                 return resume();
             }
@@ -167,7 +173,7 @@ struct PromiseBaseNV {
     PollableUniBase* m_child = nullptr;
     template <std::convertible_to<R> From>
     void return_value(From&& from) {
-        trace("[Promise {}] return_value()", (void*)this);
+        TRACE("[Promise {}] return_value()", (void*)this);
         static_cast<Derived*>(this)->m_value = std::forward<From>(from);
     }
 };
@@ -177,7 +183,7 @@ struct PromiseBaseV {
     PollableUniBase* m_child = nullptr;
 
     void return_void() noexcept {
-        trace("[Promise {}] return_void()", (void*)this);
+        TRACE("[Promise {}] return_void()", (void*)this);
     }
 };
 
@@ -199,7 +205,7 @@ struct Promise : PromiseBase<T> {
     std::suspend_always initial_suspend() noexcept { return {}; }
 
     void unhandled_exception() {
-        trace("[Promise {}] unhandled_exception()", (void*)this);
+        TRACE("[Promise {}] unhandled_exception()", (void*)this);
         m_exception = std::current_exception();
         ctx().onUnhandledException();
     }
@@ -215,18 +221,18 @@ struct Promise : PromiseBase<T> {
 
         void await_suspend(std::coroutine_handle<promise_type> h) noexcept {
             auto& p = h.promise();
-            trace(
-                "[Promise {}] FinalAwaiter::await_suspend({}), child: {}",
-                (void*)this, h.address(),
-                (void*)p.m_child
-            );
+            // trace(
+            //     "[Promise {}] FinalAwaiter::await_suspend({}), child: {}",
+            //     (void*)this, h.address(),
+            //     (void*)p.m_child
+            // );
         }
 
         void await_resume() noexcept {}
     };
 
     auto final_suspend() noexcept {
-        trace("[Promise {}] final_suspend", (void*)this);
+        TRACE("[Promise {}] final_suspend", (void*)this);
         return FinalAwaiter{};
     }
 

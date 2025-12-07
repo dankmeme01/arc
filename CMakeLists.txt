@@ -34,6 +34,10 @@ if (ARC_BUILD_TESTS)
     add_executable(arc_tester ${TESTER_SOURCES})
     target_link_libraries(arc_tester PRIVATE arc asp fmt std23::nontype_functional)
 
+    # add asan
+    target_compile_options(arc_tester PRIVATE -fsanitize=address -fsanitize=leak -fno-omit-frame-pointer -g)
+    target_link_options(arc_tester PRIVATE -fsanitize=address -fsanitize=leak)
+
     # unit tests (gtest)
 
     enable_testing()

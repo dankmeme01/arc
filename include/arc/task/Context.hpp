@@ -11,6 +11,7 @@ struct PollableUniBase;
 
 struct TaskContext {
     Waker* m_waker = nullptr;
+    Runtime* m_runtime = nullptr;
     std::vector<const PollableUniBase*> m_stack;
     std::vector<std::string> m_capturedStack;
 

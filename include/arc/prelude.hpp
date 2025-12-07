@@ -50,6 +50,8 @@ inline int _mainWrapper(int argc, char** argv, auto mainFut, std::optional<size_
         }
     }
 
+    trace("arc main wrapper exiting with code {}", ret);
+
     return ret;
 }
 
