@@ -7,7 +7,6 @@ Tasks are the primary unit of execution. The very first function that is ran (yo
 This project is heavily WIP, few things are implemented and they likely have bugs. TODO:
 
 * Thread pool for blocking tasks, use for file io? and spawn function
-* Look into changing final_suspend to be suspend_never? So that futures cannot be cancelled when they are about to return
 
 ## Usage
 

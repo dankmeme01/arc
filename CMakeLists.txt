@@ -42,6 +42,7 @@ if (ARC_BUILD_TESTS)
 
     add_executable(
         arc_tests
+        test/Future.cpp
         test/Join.cpp
         test/mpsc.cpp
         test/Semaphore.cpp
