@@ -2,6 +2,8 @@
 #include <concepts>
 #include <coroutine>
 #include <optional>
+#include "PollableMetadata.hpp"
+#include <arc/task/Context.hpp>
 
 namespace arc {
 
@@ -12,6 +14,7 @@ struct PollableVtable {
 
     PollFn poll = nullptr;
     void* getOutput = nullptr;
+    const PollableMetadata* metadata = nullptr;
 };
 
 struct PollableUniBase {
@@ -26,7 +29,10 @@ struct PollableUniBase {
     ~PollableUniBase() = default;
 
     bool vPoll() {
-        return m_vtable->poll(this);
+        ctx().pushFrame(this);
+        bool result = m_vtable->poll(this);
+        ctx().popFrame();
+        return result;
     }
 
     template <typename T>
@@ -35,7 +41,7 @@ struct PollableUniBase {
     }
 
     bool await_ready() const noexcept { return false; }
-    bool await_suspend(std::coroutine_handle<> h) noexcept;
+    bool await_suspend(std::coroutine_handle<> h);
     void await_resume() noexcept {}
 };
 
@@ -56,6 +62,8 @@ struct PollableLowLevelBase : PollableUniBase {
             .getOutput = reinterpret_cast<void*>(+[](void* self) -> T {
                 return reinterpret_cast<Derived*>(self)->getOutput();
             }),
+
+            .metadata = PollableMetadata::create<Derived>(),
         };
 
         this->m_vtable = &vtable;
@@ -67,14 +75,15 @@ struct PollableLowLevelBase<Derived, void> : PollableUniBase {
     using Output = void;
     void getOutput() {}
 
-    static constexpr PollableVtable vtable = {
-        .poll = [](void* self) {
-            return reinterpret_cast<Derived*>(self)->poll();
-        },
-        .getOutput = nullptr,
-    };
-
     inline PollableLowLevelBase() {
+        static const PollableVtable vtable = {
+            .poll = [](void* self) {
+                return reinterpret_cast<Derived*>(self)->poll();
+            },
+            .getOutput = nullptr,
+            .metadata = PollableMetadata::create<Derived>(),
+        };
+
         this->m_vtable = &vtable;
     }
 };
@@ -101,6 +110,8 @@ struct PollableBase : PollableUniBase {
                 me->_pb_output().reset();
                 return out;
             }),
+
+            .metadata = PollableMetadata::create<Derived>(),
         };
 
         this->m_vtable = &vtable;

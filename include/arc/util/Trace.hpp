@@ -4,6 +4,7 @@
 #include <fmt/std.h>
 #include <asp/time/Instant.hpp>
 #include <utility>
+#include <iostream>
 
 namespace arc {
 
@@ -16,6 +17,11 @@ void trace(fmt::format_string<Args...> fmt, Args&&... args) {
 
     fmt::println("[TRACE] [{:.4f}] {}", elapsed.seconds<float>(), fmt::format(fmt, std::forward<Args>(args)...));
 #endif
+}
+
+template <class... Args>
+void printError(fmt::format_string<Args...> fmt, Args&&... args) {
+    fmt::println(std::cerr, "[ERROR] {}", fmt::format(fmt, std::forward<Args>(args)...));
 }
 
 }

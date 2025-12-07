@@ -1,6 +1,10 @@
 #include <arc/runtime/Runtime.hpp>
 #include <asp/thread/Thread.hpp>
 
+#ifdef _WIN32
+# include <Windows.h>
+#endif
+
 using namespace asp::time;
 
 namespace arc {
@@ -19,7 +23,8 @@ Runtime::Runtime(size_t workers) : m_stopFlag(false) {
         auto& worker = m_workers[i];
         worker.thread = std::thread([this, &worker] {
             asp::_setThreadName(fmt::format("arc-worker-{}", worker.id));
-            this->workerLoop(worker);
+
+            this->workerLoopWrapper(worker);
         });
     }
 }
@@ -39,6 +44,28 @@ void Runtime::enqueueTask(TaskBase* task) {
         m_runQueue.push_back(task);
     }
     m_cv.notify_one();
+}
+
+void Runtime::workerLoopWrapper(WorkerData& data) {
+    // Wrap around and catch exceptions to get better traces
+
+#ifdef _WIN32
+    __try {
+        this->workerLoop(data);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        trace("[Worker {}] terminating due to uncaught exception", data.id);
+        ctx().dumpStack();
+        std::terminate();
+    }
+#else
+    try {
+        this->workerLoop(data);
+    } catch (const std::exception& e) {
+        printError("[Worker {}] terminating due to uncaught exception: {}", data.id, e.what());
+        ctx().dumpStack();
+        std::terminate();
+    }
+#endif
 }
 
 void Runtime::workerLoop(WorkerData& data) {
@@ -77,7 +104,7 @@ void Runtime::workerLoop(WorkerData& data) {
             } while (now >= nextIoTask);
         }
 
-        auto maxWait = std::min(nextTimerTask, nextIoTask).durationSince(now);
+        auto maxWait = (std::min)(nextTimerTask, nextIoTask).durationSince(now);
 
         TaskBase* task = nullptr;
         {

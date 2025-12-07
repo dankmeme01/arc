@@ -24,13 +24,30 @@ struct [[nodiscard]] Future : PollableLowLevelBase<Future<T>, T> {
     using handle_type = std::coroutine_handle<promise_type>;
     handle_type m_handle;
 
-    Future(handle_type handle) : m_handle(handle) {}
+    Future(handle_type handle) : m_handle(handle) {
+        // Override vtable, to set future to true in metadata
+        static const PollableVtable vtable = {
+            .poll = [](void* self) {
+                return reinterpret_cast<Future*>(self)->poll();
+            },
 
-    Future(Future&& other) noexcept : m_handle(std::exchange(other.m_handle, {})) {}
+            .getOutput = reinterpret_cast<void*>(+[](void* self) -> T {
+                return reinterpret_cast<Future*>(self)->getOutput();
+            }),
+
+            .metadata = PollableMetadata::create<Future, true>(),
+        };
+        this->m_vtable = &vtable;
+    }
+
+    Future(Future&& other) noexcept : m_handle(std::exchange(other.m_handle, {})) {
+        this->m_vtable = other.m_vtable;
+    }
 
     Future& operator=(Future&& other) noexcept {
         if (this != &other) {
             this->destroy();
+            this->m_vtable = other.m_vtable;
             m_handle = std::exchange(other.m_handle, {});
         }
         return *this;
@@ -63,17 +80,23 @@ struct [[nodiscard]] Future : PollableLowLevelBase<Future<T>, T> {
         return m_handle.promise();
     }
 
+    void maybeRethrow() {
+        if (this->promise().m_exception) {
+            std::rethrow_exception(this->promise().m_exception);
+        }
+    }
+
     PollableUniBase* child() {
         return this->promise().m_child;
     }
 
     bool await_ready() noexcept {
-        // trace("[{}] await_ready(), done: {}", this->debugName(), m_handle ? m_handle.done() : true);
+        trace("[{}] await_ready(), done: {}", this->debugName(), m_handle ? m_handle.done() : true);
         return m_handle ? m_handle.done() : true;
     }
 
     bool await_suspend(std::coroutine_handle<> awaiting) {
-        // trace("[{}] await_suspend({}), child: {}", this->debugName(), m_handle.address(), awaiting.address(), (void*)this->child());
+        trace("[{}] await_suspend({}), child: {}", this->debugName(), m_handle.address(), awaiting.address(), (void*)this->child());
 
         auto awaitingP = std::coroutine_handle<promise_type>::from_address(awaiting.address());
         awaitingP.promise().m_child = this;
@@ -82,8 +105,12 @@ struct [[nodiscard]] Future : PollableLowLevelBase<Future<T>, T> {
 
         // if we don't have a child, wake the current task immediately
         if (!this->child()) {
-            // trace("[{}] await_suspend(): no child, resuming immediately", this->debugName());
+            trace("[{}] await_suspend(): no child, resuming immediately", this->debugName());
+
+            ctx().pushFrame(this);
             m_handle.resume();
+            this->maybeRethrow();
+            ctx().popFrame();
 
             if (m_handle.done()) {
                 doSuspend = false;
@@ -94,34 +121,40 @@ struct [[nodiscard]] Future : PollableLowLevelBase<Future<T>, T> {
     }
 
     T await_resume() {
-        // trace("[{}] await_resume()", this->debugName());
+        trace("[{}] await_resume()", this->debugName());
         return this->getOutput();
     }
 
     bool poll() {
         auto child = this->child();
-        // trace("[{}] poll(), child: {}", this->debugName(), (void*)child);
+        auto resume = [&] {
+            m_handle.resume();
+            if (m_handle.done()) {
+                this->maybeRethrow();
+                return true;
+            }
+            return false;
+        };
+
+        trace("[{}] poll(), child: {}", this->debugName(), (void*)child);
 
         if (child) {
             bool done = child->vPoll();
-            // trace("[{}] poll() -> child done: {}", this->debugName(), done);
+            trace("[{}] poll() -> child done: {}", this->debugName(), done);
             if (done) {
-                m_handle.resume();
-                return m_handle.done();
+                return resume();
             }
             return false;
         } else {
-            if (!m_handle.done()) {
-                m_handle.resume();
+            if (m_handle.done()) {
+                return true;
             }
-            return m_handle.done();
+            return resume();
         }
     }
 
     T getOutput() {
-        if (this->promise().m_exception) {
-            std::rethrow_exception(this->promise().m_exception);
-        }
+        this->maybeRethrow();
 
         if constexpr (!std::is_void_v<T>) {
             return std::move(*this->promise().m_value);
@@ -134,7 +167,7 @@ struct PromiseBaseNV {
     PollableUniBase* m_child = nullptr;
     template <std::convertible_to<R> From>
     void return_value(From&& from) {
-        // trace("[Promise {}] return_value()", (void*)this);
+        trace("[Promise {}] return_value()", (void*)this);
         static_cast<Derived*>(this)->m_value = std::forward<From>(from);
     }
 };
@@ -144,7 +177,7 @@ struct PromiseBaseV {
     PollableUniBase* m_child = nullptr;
 
     void return_void() noexcept {
-        // trace("[Promise {}] return_void()", (void*)this);
+        trace("[Promise {}] return_void()", (void*)this);
     }
 };
 
@@ -166,7 +199,9 @@ struct Promise : PromiseBase<T> {
     std::suspend_always initial_suspend() noexcept { return {}; }
 
     void unhandled_exception() {
+        trace("[Promise {}] unhandled_exception()", (void*)this);
         m_exception = std::current_exception();
+        ctx().onUnhandledException();
     }
 
     Future<T> get_return_object() {
@@ -180,18 +215,18 @@ struct Promise : PromiseBase<T> {
 
         void await_suspend(std::coroutine_handle<promise_type> h) noexcept {
             auto& p = h.promise();
-            // trace(
-            //     "[Promise {}] FinalAwaiter::await_suspend({}), child: {}",
-            //     (void*)this, h.address(),
-            //     (void*)p.m_child
-            // );
+            trace(
+                "[Promise {}] FinalAwaiter::await_suspend({}), child: {}",
+                (void*)this, h.address(),
+                (void*)p.m_child
+            );
         }
 
         void await_resume() noexcept {}
     };
 
     auto final_suspend() noexcept {
-        // trace("[Promise {}] final_suspend", (void*)this);
+        trace("[Promise {}] final_suspend", (void*)this);
         return FinalAwaiter{};
     }
 

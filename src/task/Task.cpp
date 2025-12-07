@@ -4,31 +4,6 @@
 
 namespace arc {
 
-TaskBase* TaskContext::currentTask() {
-    if (m_waker) {
-        auto raw = m_waker->m_data;
-        return static_cast<TaskBase*>(raw);
-    }
-    return nullptr;
-}
-
-Runtime* TaskContext::runtime() {
-    auto task = this->currentTask();
-    if (task) {
-        return task->m_runtime;
-    }
-    return nullptr;
-}
-
-void TaskContext::wake() {
-    m_waker->wakeByRef();
-}
-
-Waker TaskContext::cloneWaker() {
-    ARC_DEBUG_ASSERT(m_waker, "no current waker");
-    return m_waker->clone();
-}
-
 void TaskBase::schedule() noexcept {
     m_vtable->schedule(this);
 }

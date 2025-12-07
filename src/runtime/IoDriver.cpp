@@ -215,7 +215,7 @@ void IoDriver::doWork() {
         auto msg = fmt::format("Error in IO driver: poll failed: {}", WSAGetLastError());
 #endif
 
-        std::cerr << msg << std::endl;
+        arc::printError("{}", msg);
         throw std::runtime_error(msg);
     }
 

@@ -81,6 +81,7 @@ private:
     void shutdown();
 
     void workerLoop(WorkerData& data);
+    void workerLoopWrapper(WorkerData& data);
     void timerDriverLoop();
     void ioDriverLoop();
 

@@ -308,7 +308,7 @@ struct Task : TaskTypedBase<typename P::Output> {
         // poll the inner future
         ctx().m_waker = &waker.get();
 
-        auto result = m_future.get().vPoll();
+        bool result = m_future.get().vPoll();
 
         ctx().m_waker = nullptr;
 
