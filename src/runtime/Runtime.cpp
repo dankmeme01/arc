@@ -1,10 +1,6 @@
 #include <arc/runtime/Runtime.hpp>
 #include <asp/thread/Thread.hpp>
 
-#ifdef _WIN32
-# include <Windows.h>
-#endif
-
 using namespace asp::time;
 
 namespace arc {
@@ -49,15 +45,6 @@ void Runtime::enqueueTask(TaskBase* task) {
 void Runtime::workerLoopWrapper(WorkerData& data) {
     // Wrap around and catch exceptions to get better traces
 
-#ifdef _WIN32
-    __try {
-        this->workerLoop(data);
-    } __except (EXCEPTION_EXECUTE_HANDLER) {
-        trace("[Worker {}] terminating due to uncaught exception", data.id);
-        ctx().dumpStack();
-        std::terminate();
-    }
-#else
     try {
         this->workerLoop(data);
     } catch (const std::exception& e) {
@@ -65,7 +52,6 @@ void Runtime::workerLoopWrapper(WorkerData& data) {
         ctx().dumpStack();
         std::terminate();
     }
-#endif
 }
 
 void Runtime::workerLoop(WorkerData& data) {
