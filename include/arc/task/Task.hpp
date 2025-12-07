@@ -6,6 +6,7 @@
 #include <arc/future/Future.hpp>
 #include <arc/util/Trace.hpp>
 #include <arc/util/ManuallyDrop.hpp>
+#include <arc/util/ScopeDtor.hpp>
 
 #if 0
 # define TRACE trace
@@ -66,7 +67,7 @@ struct TaskBase {
 protected:
     friend class Runtime;
     template <typename T>
-    friend struct TaskHandle;
+    friend struct TaskHandleBase;
 
     static bool shouldDestroy(uint64_t state) noexcept;
     uint64_t incref() noexcept;
@@ -398,17 +399,16 @@ struct Task : TaskTypedBase<typename P::Output> {
 };
 
 template <typename T>
-struct TaskHandle {
-    using handle_type = std::coroutine_handle<Promise<T>>;
+struct TaskHandleBase {
     TaskTypedBase<T>* m_task = nullptr;
 
-    TaskHandle(TaskTypedBase<T>* task) : m_task(task) {}
+    TaskHandleBase(TaskTypedBase<T>* task) : m_task(task) {}
 
-    TaskHandle(const TaskHandle&) = delete;
-    TaskHandle& operator=(const TaskHandle&) = delete;
+    TaskHandleBase(const TaskHandleBase&) = delete;
+    TaskHandleBase& operator=(const TaskHandleBase&) = delete;
 
-    TaskHandle(TaskHandle&& other) noexcept : m_task(std::exchange(other.m_task, nullptr)) {}
-    TaskHandle& operator=(TaskHandle&& other) noexcept {
+    TaskHandleBase(TaskHandleBase&& other) noexcept : m_task(std::exchange(other.m_task, nullptr)) {}
+    TaskHandleBase& operator=(TaskHandleBase&& other) noexcept {
         if (this != &other) {
             if (m_task) m_task->detach();
             m_task = std::exchange(other.m_task, nullptr);
@@ -416,7 +416,7 @@ struct TaskHandle {
         return *this;
     }
 
-    ~TaskHandle() {
+    ~TaskHandleBase() {
         if (m_task) m_task->detach();
     }
 
@@ -425,6 +425,7 @@ struct TaskHandle {
     /// Throws an exception if the task was closed before completion.
     std::optional<typename TaskTypedBase<T>::NVOutput> pollTask() {
         auto res = m_task->pollTask();
+        TRACE("[Task {}] poll result: {}", (void*)this->m_task, res);
 
         if (res && *res) {
             if constexpr (!std::is_void_v<T>) {
@@ -447,8 +448,15 @@ struct TaskHandle {
         auto waker = cvw.waker();
         m_task->registerAwaiter(waker);
 
+        ctx().m_waker = &waker;
+        auto _ = scopeDtor([] {
+            ctx().m_waker = nullptr;
+        });
+
         while (true) {
             auto result = this->pollTask();
+            TRACE("[Task {}] poll result: {}", (void*)this->m_task, result);
+
             if (result) {
                 if constexpr (!std::is_void_v<T>) {
                     return std::move(*result);
@@ -464,31 +472,24 @@ struct TaskHandle {
     void abort() noexcept {
         m_task->abort();
     }
+};
 
-    bool await_ready() noexcept {
-        return false;
+template <typename T>
+struct TaskHandle : PollableBase<TaskHandle<T>, T>, TaskHandleBase<T> {
+    TaskHandle(TaskTypedBase<T>* task) : TaskHandleBase<T>(task) {}
+
+    std::optional<T> poll() {
+        return this->pollTask();
     }
+};
 
-    bool await_suspend(std::coroutine_handle<> awaiter) {
-        auto res = m_task->pollTask();
-        TRACE("[Task {}] poll result: {}", (void*)m_task, res);
+template <>
+struct TaskHandle<void> : PollableBase<TaskHandle<void>, void>, TaskHandleBase<void> {
+    TaskHandle(TaskTypedBase<void>* task) : TaskHandleBase<void>(task) {}
 
-        if (res && *res) {
-            return false; // task completed, don't suspend
-        } else if (res) {
-            // task was closed, raise exception
-            throw std::runtime_error("Task polled after being closed");
-        } else {
-            // still pending, suspend
-            return true;
-        }
-    }
-
-    T await_resume() noexcept {
-        TRACE("[Task {}] poll resuming", (void*)m_task);
-        if constexpr (!std::is_void_v<T>) {
-            return std::move(m_task->m_value.value());
-        }
+    bool poll() {
+        auto res = this->pollTask();
+        return res.has_value();
     }
 };
 

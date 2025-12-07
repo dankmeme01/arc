@@ -46,6 +46,7 @@ if (ARC_BUILD_TESTS)
         test/Join.cpp
         test/mpsc.cpp
         test/Semaphore.cpp
+        test/Task.cpp
     )
     target_link_libraries(arc_tests PRIVATE arc gtest_main GeodeResult)
     include(GoogleTest)
