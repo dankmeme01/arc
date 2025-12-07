@@ -244,7 +244,7 @@ Creating custom futures
 // Custom futures must inherit PollableBase and implement the `poll` method
 // If your future returns nothing, the `poll` method should return a `bool`, representing whether it's ready or not.
 // Otherwise, it should return `optional<T>`, representing the output value if ready.
-struct MyFuture : arc::PollableBase<MyFuture, int> {
+struct ARC_NODISCARD MyFuture : arc::PollableBase<MyFuture, int> {
     int counter = 0;
 
     std::optional<int> poll() {

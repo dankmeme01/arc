@@ -14,7 +14,7 @@ struct NotifyState {
     std::atomic<bool> m_storedPermit{false};
 };
 
-struct Notified : PollableBase<Notified> {
+struct ARC_NODISCARD Notified : PollableBase<Notified> {
     enum class State : uint8_t {
         Init,
         Waiting,

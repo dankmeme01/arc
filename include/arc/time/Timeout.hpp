@@ -20,7 +20,7 @@ template <
     bool IsVoid = std::is_void_v<FutOut>,
     typename Output = TimeoutResult<std::conditional_t<IsVoid, std::monostate, FutOut>>
 >
-struct Timeout : PollableBase<Timeout<Fut>, Output> {
+struct ARC_NODISCARD Timeout : PollableBase<Timeout<Fut>, Output> {
     explicit Timeout(Fut fut, asp::time::Instant expiry)
         : m_future(std::move(fut)), m_expiry(expiry) {}
 

@@ -47,7 +47,7 @@ struct SignalKind {
 #endif
 };
 
-struct Signal : PollableBase<Signal> {
+struct ARC_NODISCARD Signal : PollableBase<Signal> {
     SignalKind m_kind;
     Notified m_notified;
 

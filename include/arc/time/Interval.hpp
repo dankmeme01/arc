@@ -21,7 +21,7 @@ struct Interval {
     Interval(Interval&& other) noexcept;
     Interval& operator=(Interval&& other) noexcept;
 
-    struct Awaiter : PollableBase<Awaiter> {
+    struct ARC_NODISCARD Awaiter : PollableBase<Awaiter> {
         explicit Awaiter(Interval* interval) : m_interval(interval) {}
         Awaiter(Awaiter&&) noexcept = default;
         Awaiter& operator=(Awaiter&&) noexcept = default;

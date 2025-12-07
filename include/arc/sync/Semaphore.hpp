@@ -11,7 +11,7 @@ namespace arc {
 struct Semaphore {
     explicit Semaphore(size_t permits);
 
-    struct AcquireAwaiter : PollableBase<AcquireAwaiter> {
+    struct ARC_NODISCARD AcquireAwaiter : PollableBase<AcquireAwaiter> {
         enum class State : uint8_t {
             Init,
             Waiting,

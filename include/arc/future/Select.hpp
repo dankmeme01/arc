@@ -34,7 +34,7 @@ private:
 };
 
 template <typename... Futures>
-struct Select : PollableBase<Select<Futures...>> {
+struct ARC_NODISCARD Select : PollableBase<Select<Futures...>> {
     explicit Select(std::tuple<Futures...>&& selectees) : m_selectees(std::move(selectees)) {}
 
     bool poll() {

@@ -6,7 +6,7 @@
 
 namespace arc {
 
-struct Sleep : PollableBase<Sleep> {
+struct ARC_NODISCARD Sleep : PollableBase<Sleep> {
     explicit Sleep(asp::time::Instant expiry) : m_expiry(expiry) {}
     ~Sleep();
 

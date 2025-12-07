@@ -7,6 +7,9 @@
 
 namespace arc {
 
+// Simple nodiscard helper to mark pollables, since they do nothing unless awaited or polled
+#define ARC_NODISCARD [[nodiscard("Pollables do nothing unless polled or awaited")]]
+
 // A pollable is something that can be polled for completion. This is similar to the `Future` trait in Rust.
 
 struct PollableVtable {

@@ -17,7 +17,7 @@ template <Pollable T>
 struct Task;
 
 template <typename T = void>
-struct [[nodiscard]] Future : PollableLowLevelBase<Future<T>, T> {
+struct ARC_NODISCARD Future : PollableLowLevelBase<Future<T>, T> {
     using Output = T;
     using NVT = std::conditional_t<std::is_void_v<T>, std::monostate, T>;
     using promise_type = Promise<T>;

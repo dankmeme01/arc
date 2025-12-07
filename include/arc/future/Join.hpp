@@ -27,7 +27,7 @@ private:
 };
 
 template <typename FRet, typename... Futures>
-struct JoinAll : PollableBase<JoinAll<FRet, Futures...>, std::array<FRet, sizeof...(Futures)>> {
+struct ARC_NODISCARD JoinAll : PollableBase<JoinAll<FRet, Futures...>, std::array<FRet, sizeof...(Futures)>> {
     using JoinAllOutput = std::array<FRet, sizeof...(Futures)>;
     using JoinAllTempOutput = std::array<std::optional<FRet>, sizeof...(Futures)>;
     explicit JoinAll(std::tuple<Futures...>&& futs, FRet*) : m_futures(std::move(futs)) {}

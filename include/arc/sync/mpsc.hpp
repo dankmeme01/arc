@@ -292,7 +292,7 @@ struct Sender {
         return m_data->isClosed();
     }
 
-    struct Awaiter : PollableBase<Awaiter, ChannelSendResult<T>> {
+    struct ARC_NODISCARD Awaiter : PollableBase<Awaiter, ChannelSendResult<T>> {
         explicit Awaiter(std::shared_ptr<Shared<T>> data, T value)
             : m_data(std::move(data)), m_value(std::move(value)) {}
 
@@ -404,7 +404,7 @@ struct Receiver {
         if (m_data) m_data->receiverClosed();
     }
 
-    struct Awaiter : PollableBase<Awaiter, ChannelRecvResult<T>> {
+    struct ARC_NODISCARD Awaiter : PollableBase<Awaiter, ChannelRecvResult<T>> {
         explicit Awaiter(std::shared_ptr<Shared<T>> data) : m_data(std::move(data)) {}
 
         Awaiter(Awaiter&& other) noexcept : m_data(std::exchange(other.m_data, nullptr)), m_state(other.m_state) {
