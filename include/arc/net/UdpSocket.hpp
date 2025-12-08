@@ -7,6 +7,8 @@ namespace arc {
 
 class UdpSocket : public EventIoBase<UdpSocket> {
 public:
+    ~UdpSocket();
+
     // Creates a new UDP socket, binding to the given address
     static Future<NetResult<UdpSocket>> bind(const qsox::SocketAddress& address);
     // Creates a new UDP socket, binding to 0.0.0.0 and a random port

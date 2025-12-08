@@ -11,6 +11,8 @@ public:
     using AcceptResult = NetResult<std::pair<arc::TcpStream, qsox::SocketAddress>>;
     using PollAcceptResult = NetResult<std::pair<qsox::TcpStream, qsox::SocketAddress>>;
 
+    ~TcpListener();
+
     // Creates a new TCP listener, binding to the given address
     static Future<NetResult<TcpListener>> bind(const qsox::SocketAddress& address);
 

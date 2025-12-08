@@ -9,6 +9,8 @@ using qsox::ShutdownMode;
 
 class TcpStream : public EventIoBase<TcpStream> {
 public:
+    ~TcpStream();
+
     // Creates a new TCP stream, connecting to the given address.
     static Future<NetResult<TcpStream>> connect(qsox::SocketAddress address);
     // Creates a new TCP stream, connecting to the given address.

@@ -8,6 +8,11 @@ using namespace qsox;
 
 namespace arc {
 
+TcpStream::~TcpStream() {
+    // deregister io before destroying the socket
+    this->unregister();
+}
+
 TcpStream TcpStream::fromQsox(qsox::TcpStream socket) {
     (void) socket.setNonBlocking(true);
     auto rio = ctx().runtime()->ioDriver().registerIo(socket.handle(), Interest::ReadWrite);

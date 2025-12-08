@@ -30,9 +30,7 @@ public:
     EventIoBase& operator=(EventIoBase&& other) noexcept = default;
 
     ~EventIoBase() {
-        if (!m_io.rio) return;
-
-        ctx().runtime()->ioDriver().unregisterIo(m_io.rio);
+        this->unregister();
     }
 
     Future<NetResult<void>> pollReadable() {
@@ -70,6 +68,12 @@ protected:
 
     using PollReadFn = std23::function_ref<NetResult<size_t>(void* buf, size_t size)>;
     using PollWriteFn = std23::function_ref<NetResult<size_t>(const void* buf, size_t size)>;
+
+    void unregister() {
+        if (!m_io.rio) return;
+        ctx().runtime()->ioDriver().unregisterIo(m_io.rio);
+        m_io.rio.reset();
+    }
 
     std::optional<NetResult<size_t>> pollRead(uint64_t& id, void* buf, size_t size, PollReadFn readFn) {
         while (true) {

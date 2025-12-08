@@ -5,6 +5,11 @@ using namespace qsox;
 
 namespace arc {
 
+UdpSocket::~UdpSocket() {
+    // deregister io before destroying the socket
+    this->unregister();
+}
+
 UdpSocket UdpSocket::fromQsox(qsox::UdpSocket socket) {
     (void) socket.setNonBlocking(true);
     auto rio = ctx().runtime()->ioDriver().registerIo(socket.handle(), Interest::ReadWrite);

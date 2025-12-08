@@ -5,6 +5,11 @@ using namespace qsox;
 
 namespace arc {
 
+TcpListener::~TcpListener() {
+    // deregister io before destroying the socket
+    this->unregister();
+}
+
 TcpListener TcpListener::fromQsox(qsox::TcpListener listener) {
     (void) listener.setNonBlocking(true);
     auto rio = ctx().runtime()->ioDriver().registerIo(listener.handle(), Interest::Readable);
