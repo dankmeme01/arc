@@ -22,7 +22,7 @@ TODO:
 ## Usage
 
 ```cmake
-CPMAddPackage("gh:dankmeme01/arc@v1.0.0")
+CPMAddPackage("gh:dankmeme01/arc@v1.0.2")
 ```
 
 ```cpp
@@ -30,6 +30,7 @@ CPMAddPackage("gh:dankmeme01/arc@v1.0.0")
 
 arc::Future<> aMain() {
     fmt::println("Hello from async!");
+    co_return;
 }
 
 ARC_DEFINE_MAIN(aMain);
@@ -145,7 +146,7 @@ Creating TCP and UDP sockets
 ```cpp
 // TcpStream is very similar to rust's TcpStream
 auto res = co_await arc::TcpStream::connect("127.0.0.1:8000");
-auto socket = res.unwrap();
+auto socket = std::move(res).unwrap();
 
 // In the real world, check that the functions actually succeed instead of casting to void/unwrapping
 char[] data = "hello world";
@@ -155,7 +156,7 @@ size_t n = (co_await socket.receive(buf, 512)).unwrap();
 
 // UdpSocket
 auto res = co_await arc::UdpSocket::bindAny();
-auto socket = res.unwrap();
+auto socket = std::move(res).unwrap();
 
 auto dest = qsox::SocketAddress::parse("127.0.0.1:1234").unwrap();
 char[] data = "hello world";
@@ -169,11 +170,11 @@ Creating a TCP listener
 auto res = co_await arc::TcpListener::bind(
     qsox::SocketAddress::parse("0.0.0.0:4242").unwrap()
 );
-auto listener = res.unwrap();
+auto listener = std::move(res).unwrap();
 
 while (true) {
     auto res = co_await listener.accept();
-    auto [stream, addr] = res.unwrap();
+    auto [stream, addr] = std::move(res).unwrap();
 
     fmt::println("Accepted connection from {}", addr.toString());
 
@@ -271,7 +272,21 @@ arc::Future<> aMain() {
         fmt::println("{}", x);
         co_await arc::sleep(Duration::fromMillis(500));
     }
+
+    // An even simpler way to make a temporary future is to use arc::pollFunc
+    int counter = 0;
+    auto fut2 = arc::pollFunc([&] -> std::optional<int> {
+        return counter++;
+    });
+
+    // fut2 can be awaited and has identical functionality as the awaiter above
+    int val = co_await fut2;
 }
 
 ARC_DEFINE_MAIN(aMain);
 ```
+
+## Common gotchas
+
+This section is not entirely about Arc, but also about C++ coroutines in general.
+
