@@ -69,9 +69,11 @@ struct ARC_NODISCARD Select : PollableBase<Select<Futures...>> {
     arc::Future<> invokeSelecteeCallback(std::index_sequence<Is...>) {
         (co_await ([&] -> arc::Future<> {
             auto& selectee = std::get<Is>(*m_selectees);
+            using Sel = std::decay_t<decltype(selectee)>;
+
             if (m_winner != Is) co_return;
 
-            if constexpr (selectee.IsVoid) {
+            if constexpr (Sel::IsVoid) {
                 using CbRet = decltype(selectee.callback());
                 if constexpr (IsFuture<CbRet>::value) {
                     co_await selectee.callback();

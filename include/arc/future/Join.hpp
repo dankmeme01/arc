@@ -87,8 +87,9 @@ struct ARC_NODISCARD JoinAll : PollableBase<JoinAll<FRet, Futures...>, std::arra
     void extractForEachImpl(Tuple&& t, std::index_sequence<Is...>, JoinAllTempOutput& out) {
         (([&]() {
             auto& fut = std::get<Is>(t);
+            using Fut = std::decay_t<decltype(fut)>;
 
-            if constexpr (!fut.IsVoid) {
+            if constexpr (!Fut::IsVoid) {
                 out[Is] = std::move(*fut.output);
             }
         }()), ...);
