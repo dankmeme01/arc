@@ -40,6 +40,8 @@ uint64_t TimeDriver::addEntry(Instant expiry, Waker waker) {
 }
 
 void TimeDriver::removeEntry(Instant expiry, uint64_t id) {
+    if (ctx().runtime()->isShuttingDown()) return;
+
     TimerEntryKey key{expiry, id};
 
     auto timers = m_timers.lock();

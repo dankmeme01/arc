@@ -1,4 +1,5 @@
 #include <arc/runtime/IoDriver.hpp>
+#include <arc/runtime/Runtime.hpp>
 #include <arc/task/Context.hpp>
 #include <arc/util/Assert.hpp>
 #include <arc/util/Trace.hpp>
@@ -145,6 +146,8 @@ Registration IoDriver::registerIo(SockFd fd, Interest interest) {
 }
 
 void IoDriver::unregisterIo(const std::shared_ptr<RegisteredIo>& rio) {
+    if (ctx().runtime()->isShuttingDown()) return;
+
     auto ios = m_ios.lock();
 
     auto it = std::find(ios->begin(), ios->end(), rio);
