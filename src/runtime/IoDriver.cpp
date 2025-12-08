@@ -209,13 +209,18 @@ void IoDriver::doWork() {
             return;
         }
 
-        auto msg = fmt::format("Error in IO driver: poll failed: {}", errno);
+        auto msg = fmt::format("Error in IO driver: poll failed: [errno {}] {}", errno, strerror(errno));
 #else
         auto msg = fmt::format("Error in IO driver: poll failed: {}", WSAGetLastError());
 #endif
 
         arc::printError("{}", msg);
-        throw std::runtime_error(msg);
+        arc::printError("Polled fds:");
+        for (int i = 0; i < count; i++) {
+            auto pfd = fds[i].fd;
+            arc::printError(" - {}", fmtFd(pfd));
+        }
+        return;
     }
 
     trace("IoDriver: poll returned {} fds", ret);
