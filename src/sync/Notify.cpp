@@ -49,12 +49,12 @@ Notified& Notified::operator=(Notified&& other) noexcept {
         if (!other.m_waitState.compare_exchange_strong(state, State::Init)) {
             // `other` got notified, reset it and bring the notification here
             m_waitState.store(state, release);
-            other.m_waitState.store(State::Init, acquire);
+            other.m_waitState.store(State::Init, release);
         }
     }
     // were we already notified?
     else if (state == State::Notified) {
-        other.m_waitState.store(State::Init, acquire);
+        other.m_waitState.store(State::Init, release);
     }
 
     return *this;

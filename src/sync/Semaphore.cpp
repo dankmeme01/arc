@@ -172,7 +172,7 @@ bool AcquireAwaiter::tryAcquireSafe() {
     auto expected = State::Waiting;
     auto stateAfter = satisfied ? State::Notified : State::Waiting;
 
-    if (m_waitState.compare_exchange_strong(expected, stateAfter, acq_rel, ::release)) {
+    if (m_waitState.compare_exchange_strong(expected, stateAfter, acq_rel, ::acquire)) {
         if (!satisfied) {
             // possible that we got some permits sent our way before the cas
             satisfied = m_remaining.load(::acquire) == 0;
