@@ -184,7 +184,7 @@ void IoDriver::doWork() {
         }
 
         fds[count].fd = rio->fd;
-        fds[count].events = POLLERR; // always monitor errors
+        fds[count].events = 0;
         fds[count].revents = 0;
         if (read) fds[count].events |= POLLIN;
         if (write) fds[count].events |= POLLOUT;
