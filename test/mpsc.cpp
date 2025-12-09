@@ -145,11 +145,11 @@ TEST(mpsc, ClosedByReceiver) {
     EXPECT_EQ(tr.unwrapErr(), 5);
 }
 
-TEST(mpsc, ZeroCapacity) {
+TEST(mpsc, Unbounded) {
     Waker waker = Waker::noop();
     ctx().m_waker = &waker;
 
-    auto [tx, rx] = mpsc::channel<int>(0);
+    auto [tx, rx] = mpsc::channel<int>(std::nullopt);
 
     for (size_t i = 0; i < 128; i++) {
         EXPECT_TRUE(tx.trySend(i).isOk());
@@ -166,7 +166,7 @@ TEST(mpsc, Rendezvous) {
     Waker waker = Waker::noop();
     ctx().m_waker = &waker;
 
-    auto [tx, rx] = mpsc::channel<int>(std::nullopt);
+    auto [tx, rx] = mpsc::channel<int>(0);
 
     // try_send/send should fail/block when there's no receiver
     EXPECT_FALSE(tx.trySend(1).isOk());
@@ -198,7 +198,7 @@ TEST(mpsc, MoveFuture) {
     Waker waker = Waker::noop();
     ctx().m_waker = &waker;
 
-    auto [tx, rx] = mpsc::channel<int>(std::nullopt);
+    auto [tx, rx] = mpsc::channel<int>(0);
     auto futsend = tx.send(123);
     auto futrecv = rx.recv();
     moveFutureHelper(std::move(futsend), std::move(futrecv));

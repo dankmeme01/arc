@@ -46,6 +46,11 @@ struct ChannelData {
     RecvAwaiter<T>* recvWaiter = nullptr;
     std::optional<size_t> capacity;
 
+    bool hasCapacity() const noexcept {
+        // check for either a receiver, an unbounded channel, or free space in the queue
+        return recvWaiter || !capacity || queue.size() < *capacity;
+    }
+
     void clear() {
         queue.clear();
     }
@@ -97,11 +102,7 @@ struct ChannelData {
         }
 
         // push into the queue if possible
-        if (!capacity) {
-            return false; // rendezvous channel
-        }
-
-        if (*capacity == 0 || queue.size() < *capacity) {
+        if (!capacity || queue.size() < *capacity) {
             if (back) {
                 queue.push_back(std::move(value));
             } else {
@@ -110,7 +111,7 @@ struct ChannelData {
             return true;
         }
 
-        return false;
+        return false; // either full or zero capacity; no receiver waiting so can't deliver
     }
 
 private:
@@ -149,6 +150,10 @@ struct Shared {
 
     bool isClosed() const noexcept {
         return m_closed.load(std::memory_order::acquire);
+    }
+
+    bool hasCapacity() const noexcept {
+        return m_data.lock()->hasCapacity();
     }
 
     void receiverDropped() {
@@ -398,6 +403,13 @@ struct Sender {
         return Err(std::move(value));
     }
 
+    /// Checks if the channel has any capacity to accept new messages.
+    /// Note that this is only a hint, if this returns `true` there is no
+    /// guarantee that a subsequent `send()` will succeed without blocking.
+    bool hasCapacity() const {
+        return m_data->hasCapacity();
+    }
+
 private:
     std::shared_ptr<Shared<T>> m_data;
 };
@@ -526,11 +538,11 @@ private:
 /// Creates a new multi-producer, single-consumer channel with the given capacity.
 /// Sender<T> may be copied to create multiple senders, but there can only be one Receiver<T>.
 /// `send()` is typically non-blocking unless the channel is full, in which case senders will have to wait.
-/// When capacity is 0 (the default), the channel is unbounded.
-/// When capacity is set to `std::nullopt`, the channel is zero-capacity (rendezvous),
+/// When capacity is `std::nullopt` (the default), the channel is unbounded.
+/// When capacity is set to 0, the channel is rendezvous,
 /// meaning that messages are never stored and can only be sent when a receiver is waiting.
 template <typename T>
-std::pair<Sender<T>, Receiver<T>> channel(std::optional<size_t> capacity = 0) {
+std::pair<Sender<T>, Receiver<T>> channel(std::optional<size_t> capacity = std::nullopt) {
     auto shared = std::make_shared<Shared<T>>(capacity);
     return std::make_pair(Sender<T>{shared}, Receiver<T>{shared});
 }
