@@ -12,12 +12,17 @@
 
 namespace arc::mpsc {
 
-struct ChannelClosed {};
+struct ClosedError {};
 
 template <typename T>
-using ChannelRecvResult = Result<T, ChannelClosed>;
+using RecvResult = Result<T, ClosedError>;
 template <typename T>
-using ChannelSendResult = Result<void, T>;
+using SendResult = Result<void, T>;
+
+template <typename T>
+struct SendAwaiter;
+template <typename T>
+struct RecvAwaiter;
 
 enum class TrySendOutcome {
     Success,
@@ -32,244 +37,323 @@ enum class TryRecvOutcome {
 };
 
 template <typename T>
-struct Shared {
-    explicit Shared(std::optional<size_t> capacity) : m_capacity(capacity) {}
+struct ChannelData {
+    explicit ChannelData(std::optional<size_t> capacity) : capacity(capacity) {}
 
-    bool isClosed() const noexcept {
-        return m_data.lock()->closed;
+    std::deque<T> queue;
+    std::deque<SendAwaiter<T>*> sendWaiters;
+    RecvAwaiter<T>* recvWaiter = nullptr;
+    std::optional<size_t> capacity;
+
+    void clear() {
+        queue.clear();
     }
 
-    void incSenders() {
-        m_senders.fetch_add(1, std::memory_order::relaxed);
+    void registerSendWaiter(SendAwaiter<T>* waiter) {
+        sendWaiters.push_back(waiter);
     }
 
-    void decSenders() {
-        if (m_senders.fetch_sub(1, std::memory_order::acq_rel) == 1) {
-            m_data.lock()->handleClosure();
+    void registerRecvWaiter(RecvAwaiter<T>* waiter) {
+        recvWaiter = waiter;
+    }
+
+    void wakeAll() {
+        if (recvWaiter) {
+            recvWaiter->m_waker->wake();
+        }
+
+        for (auto& waiter : sendWaiters) {
+            waiter->m_waker->wake();
+        }
+
+        recvWaiter = nullptr;
+        sendWaiters.clear();
+    }
+
+    /// Pops and returns a value from the queue if one is present.
+    /// Unblocks a waiting sender if applicable.
+    std::optional<T> pop() {
+        if (!queue.empty()) {
+            T value = std::move(queue.front());
+            queue.pop_front();
+
+            // before returning, wake one waiting sender
+            this->unblockSender();
+
+            return value;
+        }
+
+        // the queue is empty, let's see if we can snatch a value directly from a sender
+        return this->takeFromSender();
+    }
+
+    /// Attempts to push a value directly into the receiver's slot if one is present,
+    /// otherwise attempts to push into the queue.
+    /// If everything fails, returns false.
+    bool push(T& value) {
+        if (this->deliverToReceiver(value)) {
+            return true;
+        }
+
+        // push into the queue if possible
+        if (!capacity) {
+            return false; // rendezvous channel
+        }
+
+        if (*capacity == 0 || queue.size() < *capacity) {
+            queue.push_back(std::move(value));
+            return true;
+        }
+
+        return false;
+    }
+
+private:
+    bool deliverToReceiver(T& value) {
+        if (recvWaiter && recvWaiter->tryDeliver(value)) {
+            recvWaiter = nullptr;
+            return true;
+        }
+
+        return false;
+    }
+
+    /// Unblocks a sender, takes their value and pushes to the queue
+    void unblockSender() {
+        if (auto val = this->takeFromSender()) {
+            queue.push_back(std::move(*val));
         }
     }
 
-    template <bool RemoveWaker = false>
+    std::optional<T> takeFromSender() {
+        if (sendWaiters.empty()) {
+            return std::nullopt;
+        }
+
+        auto waiter = sendWaiters.front();
+        sendWaiters.pop_front();
+
+        // in theory this can never fail?
+        return waiter->tryTake();
+    }
+};
+
+template <typename T>
+struct Shared {
+    explicit Shared(std::optional<size_t> capacity) : m_data(ChannelData<T>(capacity)) {}
+
+    bool isClosed() const noexcept {
+        return m_closed.load(std::memory_order::acquire);
+    }
+
+    void receiverDropped() {
+        this->close();
+    }
+
+    void senderDropped() {
+        if (m_senders.fetch_sub(1, std::memory_order::acq_rel) == 1) {
+            this->close();
+        }
+    }
+
+    void senderCloned() {
+        m_senders.fetch_add(1, std::memory_order::relaxed);
+    }
+
+    TrySendOutcome trySend(T& value) {
+        if (this->isClosed()) {
+            return TrySendOutcome::Closed;
+        }
+
+        bool success = m_data.lock()->push(value);
+        return success ? TrySendOutcome::Success : TrySendOutcome::Full;
+    }
+
+    TrySendOutcome trySendOrRegister(SendAwaiter<T>* awaiter) {
+        if (this->isClosed()) {
+            return TrySendOutcome::Closed;
+        }
+
+        ARC_DEBUG_ASSERT(awaiter->m_value && !awaiter->m_waker);
+        T& value = *awaiter->m_value;
+
+        auto data = m_data.lock();
+        if (data->push(value)) {
+            awaiter->m_value.reset();
+            return TrySendOutcome::Success;
+        }
+
+        // register the awaiter
+        if (!awaiter->m_waker) {
+            awaiter->m_waker = ctx().cloneWaker();
+        }
+
+        data->registerSendWaiter(awaiter);
+        return TrySendOutcome::Full;
+    }
+
+    void deregisterSender(SendAwaiter<T>* awaiter) {
+        auto data = m_data.lock();
+        auto it = std::find(data->sendWaiters.begin(), data->sendWaiters.end(), awaiter);
+        if (it != data->sendWaiters.end()) {
+            data->sendWaiters.erase(it);
+        }
+    }
+
     Result<T, TryRecvOutcome> tryRecv() {
+        auto value = m_data.lock()->pop();
+
+        if (value) {
+            return Ok(std::move(*value));
+        }
+
+        return Err(this->isClosed() ? TryRecvOutcome::Closed : TryRecvOutcome::Empty);
+    }
+
+    Result<T, TryRecvOutcome> tryRecvOrRegister(RecvAwaiter<T>* awaiter) {
         auto data = m_data.lock();
         auto value = data->pop();
 
         if (value) {
-            data->unblockSender();
-            if constexpr (RemoveWaker) {
-                data->recvWaiter.reset();
-            }
             return Ok(std::move(*value));
         }
 
-        if (data->closed) {
-            ARC_DEBUG_ASSERT(!data->recvWaiter, "channel closure should've already removed recvWaiter");
+        if (this->isClosed()) {
             return Err(TryRecvOutcome::Closed);
         }
 
+        // register the awaiter
+        if (!awaiter->m_waker) {
+            awaiter->m_waker = ctx().cloneWaker();
+        }
+
+        data->registerRecvWaiter(awaiter);
         return Err(TryRecvOutcome::Empty);
+    }
+
+    void deregisterReceiver(RecvAwaiter<T>* awaiter) {
+        m_data.lock()->recvWaiter = nullptr;
     }
 
     void drain() {
         auto data = m_data.lock();
-        while (!data->queue.empty()) {
-            data->pop();
-            data->unblockSender();
-        }
-    }
-
-    Result<T, TryRecvOutcome> recvOrWait(std::optional<T>* valueSlot) {
-        auto data = m_data.lock();
-        auto value = data->pop();
-
-        if (value) {
-            data->unblockSender();
-            return Ok(std::move(*value));
-        }
-
-        if (data->closed) {
-            return Err(TryRecvOutcome::Closed);
-        }
-
-        data->recvWaiter = {ctx().cloneWaker(), valueSlot};
-
-        return Err(TryRecvOutcome::Empty);
-    }
-
-    template <bool AddWaker = false, bool RemoveWaker = false>
-    TrySendOutcome trySend(T& value, uint64_t* waiterId = nullptr) {
-        auto data = m_data.lock();
-
-        if (data->closed) {
-            return TrySendOutcome::Closed;
-        }
-
-        auto removeWaker = [&] {
-            if (!RemoveWaker || !waiterId) {
-                return;
-            }
-
-            // find and remove the given waker from the sendWaiters
-            auto it = std::find_if(
-                data->sendWaiters.begin(),
-                data->sendWaiters.end(),
-                [waiterId](const auto& waiter) {
-                    return waiter.second == *waiterId;
-                }
-            );
-
-            if (it != data->sendWaiters.end()) {
-                data->sendWaiters.erase(it);
-            }
-        };
-
-        // check if a receiver is waiting, put value directly into its slot and wake them
-        if (data->recvWaiter) {
-            std::optional<T>* slot = data->recvWaiter->second;
-            if (slot && !slot->has_value()) {
-                *slot = std::move(value);
-                data->recvWaiter->first.wake();
-                data->recvWaiter.reset();
-
-                removeWaker();
-                return TrySendOutcome::Success;
-            }
-        }
-
-        if (!m_capacity.has_value() || (*m_capacity != 0 && data->queue.size() >= *m_capacity)) {
-            if constexpr (AddWaker) {
-                ARC_DEBUG_ASSERT(waiterId);
-
-                if (*waiterId != 0) {
-                    // check if already registered
-                    auto it = std::find_if(
-                        data->sendWaiters.begin(),
-                        data->sendWaiters.end(),
-                        [waiterId](const auto& waiter) {
-                            return waiter.second == *waiterId;
-                        }
-                    );
-
-                    if (it != data->sendWaiters.end()) {
-                        // already registered, do nothing
-                        return TrySendOutcome::Full;
-                    }
-                }
-
-                auto id = nextId();
-                data->sendWaiters.push_back({ctx().cloneWaker(), id});
-                if (waiterId) {
-                    *waiterId = id;
-                }
-            }
-
-            return TrySendOutcome::Full;
-        }
-
-        data->queue.push_back(std::move(value));
-
-        // wake any waiting receiver
-        if (data->recvWaiter) {
-            data->recvWaiter->first.wake();
-        }
-
-        removeWaker();
-        return TrySendOutcome::Success;
-    }
-
-    void unregisterRecvWaiter() {
-        auto data = m_data.lock();
-        data->recvWaiter.reset();
-    }
-
-    void unregisterSendWaiter(uint64_t id) {
-        auto data = m_data.lock();
-        data->sendWaiters.erase(
-            std::remove_if(
-                data->sendWaiters.begin(),
-                data->sendWaiters.end(),
-                [id](const auto& waiter) {
-                    return waiter.second == id;
-                }
-            ),
-            data->sendWaiters.end()
-        );
-    }
-
-    void receiverClosed() {
-        m_data.lock()->handleClosure();
+        data->clear();
+        data->wakeAll();
     }
 
 private:
-    struct Data {
-        std::deque<T> queue;
-        std::optional<std::pair<Waker, std::optional<T>*>> recvWaiter;
-        std::deque<std::pair<Waker, uint64_t>> sendWaiters;
-        bool closed = false;
-
-        ~Data() {
-            // sanity check
-            ARC_DEBUG_ASSERT(!recvWaiter && sendWaiters.empty(), "Data destroyed while having waiters");
-        }
-
-        std::optional<T> pop() {
-            if (queue.empty()) {
-                return std::nullopt;
-            }
-            T value = std::move(queue.front());
-            queue.pop_front();
-            return value;
-        }
-
-        void unblockSender() {
-            if (!sendWaiters.empty()) {
-                auto [waker, _] = std::move(sendWaiters.front());
-                sendWaiters.pop_front();
-                waker.wake();
-            }
-        }
-
-        void handleClosure() {
-            closed = true;
-
-            if (recvWaiter) {
-                recvWaiter->first.wake();
-            }
-
-            for (auto& [waker, _] : sendWaiters) {
-                waker.wake();
-            }
-
-            recvWaiter.reset();
-            sendWaiters.clear();
-        }
-    };
-
-    std::optional<size_t> m_capacity;
     std::atomic<size_t> m_senders{0};
-    asp::SpinLock<Data> m_data;
+    std::atomic<bool> m_closed{false};
+    asp::SpinLock<ChannelData<T>> m_data;
 
-    uint64_t nextId() {
-        static std::atomic<uint64_t> counter{1};
-        return counter.fetch_add(1, std::memory_order::relaxed);
+    void close() {
+        m_closed.store(true, std::memory_order::release);
+        m_data.lock()->wakeAll();
+    }
+};
+
+template <typename T>
+struct ARC_NODISCARD SendAwaiter : PollableBase<SendAwaiter<T>, SendResult<T>> {
+    explicit SendAwaiter(std::shared_ptr<Shared<T>> data, T value)
+        : m_data(std::move(data)), m_value(std::move(value)) {}
+
+    SendAwaiter(SendAwaiter&& other) noexcept
+        : m_data(std::move(other.m_data)),
+          m_value(std::move(other.m_value)),
+          m_waker(std::move(other.m_waker))
+    {
+        ARC_ASSERT(!m_waker && m_value, "cannot move a SendAwaiter that already was polled");
+    }
+
+    SendAwaiter& operator=(SendAwaiter&& other) noexcept = delete;
+
+    ~SendAwaiter() {
+        // if we are in the waiting state, remove ourselves from the wait list
+        // note: locking m_lock here isnt necessary and is also unsafe and can lead to deadlocks
+        if (m_data) m_data->deregisterSender(this);
+    }
+
+    std::optional<SendResult<T>> poll() {
+        // We have two valid states for being polled, and the 3rd completed state:
+        // 1. Initial state, m_value is set, m_waker is not set
+        // 2. Waiting state, m_value is set, m_waker is set
+        // 3. Done state, m_value is not set, m_waker is anything
+        auto guard = m_lock.lock();
+
+        if (m_value && !m_waker) {
+            // handle initial state
+            auto outcome = m_data->trySendOrRegister(this);
+            switch (outcome) {
+                case TrySendOutcome::Success: {
+                    return Ok();
+                } break;
+
+                case TrySendOutcome::Closed: {
+                    return Err(std::move(*m_value));
+                } break;
+
+                case TrySendOutcome::Full: {
+                    return std::nullopt; // waiting ..
+                } break;
+            }
+
+            std::unreachable();
+        } else if (m_value && m_waker) {
+            // handle waiting state
+            // since receivers are cooperative and will notify us asap when we can push the value,
+            // the only thing to do is to check if the channel is closed
+            if (m_data->isClosed()) {
+                return Err(std::move(*m_value));
+            }
+
+            return std::nullopt;
+        } else {
+            // completed!
+            return Ok();
+        }
+    }
+
+private:
+    friend struct ChannelData<T>;
+    friend struct Shared<T>;
+    std::shared_ptr<Shared<T>> m_data;
+    std::optional<Waker> m_waker;
+    std::optional<T> m_value;
+    asp::SpinLock<> m_lock;
+
+    /// Attempts to externally take the value from this sender, only works if in the waiting state
+    std::optional<T> tryTake() {
+        auto guard = m_lock.lock();
+        if (!m_waker || !m_value) {
+            return std::nullopt;
+        }
+
+        T value = std::move(*m_value);
+        m_value.reset();
+        m_waker->wake();
+        return value;
     }
 };
 
 template <typename T>
 struct Sender {
     Sender(std::shared_ptr<Shared<T>> data) : m_data(std::move(data)) {
-        m_data->incSenders();
+        m_data->senderCloned();
+    }
+
+    ~Sender() {
+        if (m_data) m_data->senderDropped();
     }
 
     Sender(const Sender& other) : m_data(other.m_data) {
-        m_data->incSenders();
+        m_data->senderCloned();
     }
 
     Sender& operator=(const Sender& other) {
         if (this != &other) {
-            this->releaseData();
+            if (m_data) m_data->senderDropped();
             m_data = other.m_data;
-            m_data->incSenders();
+            m_data->senderCloned();
         }
         return *this;
     }
@@ -278,117 +362,111 @@ struct Sender {
 
     Sender& operator=(Sender&& other) noexcept {
         if (this != &other) {
-            this->releaseData();
+            if (m_data) m_data->senderDropped();
             m_data = std::exchange(other.m_data, nullptr);
         }
         return *this;
     }
 
-    ~Sender() {
-        this->releaseData();
-    }
-
-    bool isClosed() const noexcept {
-        return m_data->isClosed();
-    }
-
-    struct ARC_NODISCARD Awaiter : PollableBase<Awaiter, ChannelSendResult<T>> {
-        explicit Awaiter(std::shared_ptr<Shared<T>> data, T value)
-            : m_data(std::move(data)), m_value(std::move(value)) {}
-
-        Awaiter(Awaiter&& other) noexcept
-            : m_data(std::exchange(other.m_data, nullptr)),
-              m_state(other.m_state),
-              m_waiterId(other.m_waiterId),
-              m_value(std::move(other.m_value))
-        {
-            other.m_state = State::Done;
-            other.m_waiterId = 0;
-        }
-
-        Awaiter& operator=(Awaiter&& other) noexcept = delete;
-
-        std::optional<ChannelSendResult<T>> poll() {
-            switch (m_state) {
-                case State::Init: {
-                    auto outcome = m_data->template trySend<true>(m_value, &m_waiterId);
-                    if (outcome == TrySendOutcome::Success) {
-                        m_state = State::Done;
-                        return Ok();
-                    } else if (outcome == TrySendOutcome::Closed) {
-                        m_state = State::Done;
-                        return Err(std::move(m_value));
-                    }
-
-                    // channel is full, we need to wait
-                    m_state = State::Waiting;
-                    return std::nullopt;
-                } break;
-
-                case State::Waiting: {
-                    auto outcome = m_data->template trySend<true, true>(m_value, &m_waiterId);
-                    if (outcome == TrySendOutcome::Success) {
-                        m_state = State::Done;
-                        return Ok();
-                    } else if (outcome == TrySendOutcome::Closed) {
-                        m_state = State::Done;
-                        return Err(std::move(m_value));
-                    }
-
-                    return std::nullopt;
-                } break;
-
-                case State::Done: {
-                    ARC_UNREACHABLE("polled after completion");
-                } break;
-            }
-        }
-
-        ~Awaiter() {
-            this->unregister();
-        }
-    private:
-        enum class State {
-            Init,
-            Waiting,
-            Done
-        };
-
-        State m_state{State::Init};
-        std::shared_ptr<Shared<T>> m_data;
-        uint64_t m_waiterId = 0;
-        T m_value;
-
-        void unregister() {
-            if (m_state == State::Waiting) {
-                m_data->unregisterSendWaiter(m_waiterId);
-            }
-        }
-    };
-
     /// Attempts to send a value, waiting if there is no capacity left.
     /// Returns the value back if the channel is closed.
-    Awaiter send(T value) {
-        return Awaiter{m_data, std::move(value)};
+    SendAwaiter<T> send(T value) {
+        return SendAwaiter<T>{m_data, std::move(value)};
     }
 
     /// Attempts to send a value without blocking, returns the value if the channel is full or closed.
-    ChannelSendResult<T> trySend(T value) {
+    SendResult<T> trySend(T value) {
         auto outcome = m_data->trySend(value);
         if (outcome == TrySendOutcome::Success) {
             return Ok();
-        } else {
-            return Err(std::move(value));
         }
+
+        return Err(std::move(value));
     }
 
 private:
     std::shared_ptr<Shared<T>> m_data;
+};
 
-    void releaseData() {
-        if (!m_data) return;
-        m_data->decSenders();
-        m_data.reset();
+template <typename T>
+struct ARC_NODISCARD RecvAwaiter : PollableBase<RecvAwaiter<T>, RecvResult<T>> {
+    explicit RecvAwaiter(std::shared_ptr<Shared<T>> data)
+        : m_data(std::move(data)) {}
+
+    RecvAwaiter(RecvAwaiter&& other) noexcept
+        : m_data(std::move(other.m_data)),
+            m_value(std::move(other.m_value)),
+            m_waker(std::move(other.m_waker))
+    {
+        ARC_ASSERT(!m_waker && !m_value, "cannot move a RecvAwaiter that already was polled");
+    }
+
+    RecvAwaiter& operator=(RecvAwaiter&& other) noexcept = delete;
+
+    ~RecvAwaiter() {
+        // if we are in the waiting state, remove ourselves from the wait list
+        if (m_data) m_data->deregisterReceiver(this);
+    }
+
+    std::optional<RecvResult<T>> poll() {
+        // We have two valid states for being polled, and the 3rd completed state:
+        // 1. Initial state, m_value is not set, m_waker is not set
+        // 2. Waiting state, m_value is not set, m_waker is set
+        // 3. Done state, m_value is set, m_waker is anything
+        // Polling again after the done state is undefined behavior.
+        auto guard = m_lock.lock();
+
+        if (!m_value && !m_waker) {
+            // handle initial state
+            auto res = m_data->tryRecvOrRegister(this);
+            if (res) {
+                // immediately received, complete the future
+                return Ok(std::move(res).unwrap());
+            }
+
+            auto outcome = res.unwrapErr();
+            switch (outcome) {
+                case TryRecvOutcome::Closed: {
+                    return Err(ClosedError{});
+                } break;
+
+                case TryRecvOutcome::Empty: {
+                    return std::nullopt; // waiting ..
+                } break;
+
+                default: std::unreachable();
+            }
+        } else if (!m_value && m_waker) {
+            // handle waiting state, once again, nothing to do here besides check for closure
+            if (m_data->isClosed()) {
+                return Err(ClosedError{});
+            }
+
+            return std::nullopt;
+        } else {
+            // completed!
+            return Ok(std::move(*m_value));
+        }
+    }
+
+private:
+    friend struct ChannelData<T>;
+    friend struct Shared<T>;
+    std::shared_ptr<Shared<T>> m_data;
+    std::optional<Waker> m_waker;
+    std::optional<T> m_value;
+    asp::SpinLock<> m_lock;
+
+    /// Attempts to externally insert the value into this receiver, only works if in the waiting state
+    bool tryDeliver(T& value) {
+        auto guard = m_lock.lock();
+        if (!m_waker || m_value) {
+            return false;
+        }
+
+        m_value = std::move(value);
+        m_waker->wake();
+        return true;
     }
 };
 
@@ -401,88 +479,11 @@ struct Receiver {
     Receiver& operator=(Receiver&&) = default;
 
     ~Receiver() {
-        if (m_data) m_data->receiverClosed();
+        if (m_data) m_data->receiverDropped();
     }
 
-    struct ARC_NODISCARD Awaiter : PollableBase<Awaiter, ChannelRecvResult<T>> {
-        explicit Awaiter(std::shared_ptr<Shared<T>> data) : m_data(std::move(data)) {}
-
-        Awaiter(Awaiter&& other) noexcept : m_data(std::exchange(other.m_data, nullptr)), m_state(other.m_state) {
-            other.m_state = State::Done;
-        }
-
-        Awaiter& operator=(Awaiter&& other) noexcept = delete;
-
-        std::optional<ChannelRecvResult<T>> poll() {
-            switch (m_state) {
-                case State::Init: {
-                    // if the channel has a value, return it immediately
-                    auto value = m_data->recvOrWait(&m_valueSlot);
-                    if (value) {
-                        m_state = State::Done;
-                        return Ok(std::move(value).unwrap());
-                    }
-
-                    // check if the channel is closed
-                    auto err = value.unwrapErr();
-                    if (err == TryRecvOutcome::Closed) {
-                        m_state = State::Done;
-                        return Err(ChannelClosed{});
-                    }
-
-                    // otherwise, we are waiting
-                    m_state = State::Waiting;
-                    return std::nullopt;
-                } break;
-
-                case State::Waiting: {
-                    if (m_valueSlot) {
-                        m_state = State::Done;
-                        return Ok(std::move(*m_valueSlot));
-                    }
-
-                    auto value = m_data->template tryRecv<true>();
-                    if (value) {
-                        m_state = State::Done;
-                        return Ok(std::move(*value));
-                    }
-
-                    // check if the channel is closed
-                    auto err = value.unwrapErr();
-                    if (err == TryRecvOutcome::Closed) {
-                        m_state = State::Done;
-                        return Err(ChannelClosed{});
-                    }
-
-                    return std::nullopt;
-                } break;
-
-                case State::Done: {
-                    ARC_UNREACHABLE("polled after completion");
-                } break;
-            }
-        }
-
-        ~Awaiter() {
-            if (m_state == State::Waiting) {
-                m_data->unregisterRecvWaiter();
-            }
-        }
-
-    private:
-        enum class State {
-            Init,
-            Waiting,
-            Done
-        };
-
-        std::shared_ptr<Shared<T>> m_data;
-        std::optional<T> m_valueSlot;
-        State m_state{State::Init};
-    };
-
-    Awaiter recv() {
-        return Awaiter{m_data};
+    RecvAwaiter<T> recv() {
+        return RecvAwaiter<T>{m_data};
     }
 
     Result<T, TryRecvOutcome> tryRecv() {
@@ -510,4 +511,3 @@ std::pair<Sender<T>, Receiver<T>> channel(std::optional<size_t> capacity = 0) {
 }
 
 }
-

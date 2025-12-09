@@ -21,7 +21,7 @@ endif()
 
 include(cmake/CPM.cmake)
 
-CPMAddPackage("gh:dankmeme01/asp2#15da600")
+CPMAddPackage("gh:dankmeme01/asp2#db121e56")
 CPMAddPackage("gh:dankmeme01/qsox#49ecce6")
 CPMAddPackage("gh:zhihaoy/nontype_functional#bdb0987")
 target_link_libraries(arc PUBLIC asp qsox std23::nontype_functional)
