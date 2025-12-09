@@ -349,7 +349,7 @@ auto ja = arc::joinAll(getSize("string"), getSize("string 2"));
 co_await ja;
 ```
 
-The examples earlier were ok, because when a temporary `std::string` is made, it exists up until the end of the expression. This includes the `co_await` statement, and even passing the future into other functions, such as `arc::spawn`, `arc::timeout`, `arc::joinAll`, etc. The other two examples store the future in a local variable, which leads to the temporary string being destroyed before the future is awaited.
+The examples earlier were ok, because when a temporary `std::string` is made, it exists up until the end of the statement. This includes the `co_await` expression, and even passing the future into other functions, such as `arc::spawn`, `arc::timeout`, `arc::joinAll`, etc. The other two examples store the future in a local variable, which leads to the temporary string being destroyed before the future is awaited.
 
 Rvalue references (`T&&`) suffer from the similar problem. It's usually better to just take a `T` argument and move it into the coroutine frame, rather than taking a `T&&` that might be pointing to an object that is already gone. Every single example listed above will work perfectly fine if you simply change the signature to:
 ```cpp
