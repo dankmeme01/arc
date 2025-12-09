@@ -2,8 +2,6 @@
 
 Arc is a modern C++ async runtime heavily inspired by Tokio and Rust async in general. If you've programmed async rust before - this library will be very familiar to you.
 
-Tasks are the primary unit of execution. The very first function that is ran (your async main function) will be spawned as a task and `blockOn` will return once it's finished. Tasks are intended to be lightweight, and you can always spawn a new task with `arc::spawn(fut)`.
-
 This project is WIP, some things may have bugs and not be production ready, but it is actively maintained and some things are covered by tests. Features (scroll below for examples):
 * Runtime that can run using either one or multiple threads
 * Tasks as an independent unit of execution
@@ -19,29 +17,51 @@ TODO:
 * File IO using blocking thread pool
 * Better poller. Current implementation uses `poll`/`WSAPoll`, which isn't scalable. This is not an issue for small jobs, but makes the library unsuitable for servers that handle hundreds of connections. Currently this is a non-goal as this library was mostly made for a network client rather than a server.
 
-## Usage
+## Getting Started
 
+Arc supports CMake and requires C++23. If you are using CPM, the easiest way to use Arc is as follows:
 ```cmake
-CPMAddPackage("gh:dankmeme01/arc@v1.0.2")
+CPMAddPackage("gh:dankmeme01/arc@v1.0.4")
+target_link_libraries(mylib PRIVATE arc)
 ```
 
+To run any async code, you must have a runtime. Arc runtimes do not need to be unique or persistent, there is no global singleton runtime and you are responsible for creating one yourself. If you are a library developer and want to use Arc, you can spin up a runtime and run code like this:
 ```cpp
 #include <arc/prelude.hpp>
 
-arc::Future<> aMain() {
+arc::Future<int> myFuture() {
+    fmt::println("Hello from async!");
+    co_return 42;
+}
+
+arc::Runtime rt{4}; // use 4 threads, omit to use the CPU thread count
+
+// this will wait for `myFuture` to finish and return its result
+int value = rt.blockOn(myFuture());
+
+// this will spawn the future independently and not block
+// note that the future will be aborted if the runtime is destroyed
+auto handle = rt.spawn(myFuture());
+```
+
+If you are an application developer, you can use a helper macro to automatically make a runtime for you:
+```cpp
+#include <arc/runtime/Main.hpp>
+
+arc::Future<> asyncMain(int argc, const char** argv) {
     fmt::println("Hello from async!");
     co_return;
 }
 
-ARC_DEFINE_MAIN(aMain);
-// Alternatively, you can define your own `main` function for runtime management:
-int main() {
-    arc::Runtime rt;
-    rt.blockOn(aMain());
-}
+ARC_DEFINE_MAIN(asyncMain);
+// alternatively, if you want to specify thread count
+ARC_DEFINE_MAIN_NT(asyncMain, 4);
 ```
 
-When using the macro, the main function can either accept no arguments or accept `(int argc, char** argv)` (argv must **NOT** be `const char**`). It must return either `Future<>` (aka `Future<void>`) or `Future<T>` where `T` is convertible to `int`.
+When using the helper macro, the arguments of the main function must be either `()`, `(int, char**)` or `(int, const char**)`. The return value can be:
+* `int` (aka `arc::Future<int>`) or any `T` that is convertible to `int` - value will be used as the exit code
+* `void` (aka `arc::Future<>` or `arc::Future<void>`) - exit code will be 0
+* `geode::Result<void, E>` where `E` can be formatted with `fmt` - returning an `Err` will print the error and exit with code 1
 
 ## Examples
 
@@ -51,12 +71,14 @@ Creating a runtime and blocking on a single async function, creating tasks
 using namespace asp::time;
 
 arc::Future<int> noop() {
+    // `yield` temporarily yields control to the scheduler, like a very short sleep
     co_await arc::yield();
     co_return 1;
 }
 
 arc::Future<> asyncMain() {
-    // This task will run in the background and not block the current task
+    // `spawn` can be used to spawn a task and let it run in the background,
+    // the coroutine will be running in parallel and not block the current task
     auto handle = arc::spawn(noop());
 
     // Async sleep, does not block the thread and yields to the runtime instead.
@@ -72,7 +94,9 @@ ARC_DEFINE_MAIN(asyncMain);
 
 Running a task every X seconds (interval)
 ```cpp
+// create an interval that ticks every 250 milliseconds
 auto interval = arc::interval(Duration::fromMillis(250));
+
 while (true) {
     co_await interval.tick();
     fmt::println("tick!");
@@ -94,51 +118,55 @@ arc::Task<> consumer(arc::mpsc::Receiver<int> rx) {
 }
 
 arc::Task<> asyncMain() {
-    // The channel can be created in sync code as well as async
+    // Create a new MPSC channel with unlimited capacity
     auto [tx, rx] = arc::mpsc::channel<int>();
 
+    // Spawn a consumer task
     arc::spawn(consumer(std::move(rx)));
 
     // Sender can be copied, unlike the Receiver
     auto tx2 = tx;
 
-    co_await tx.send(1);
+    // Send can only fail if the channel has been closed (meaning the receiver no longer exists)
+    (void) co_await tx.send(1);
 
-    // `trySend` can be used in sync or async code
-    tx2.trySend(2);
+    // `trySend` can be used in sync or async code, will fail if the channel is closed or full
+    auto res = tx2.trySend(2);
 }
 ```
 
 Synchronization utilities such as Mutex, Notify, Semaphore
 ```cpp
-arc::Future<> lockerFn(arc::Mutex<int>& mtx, arc::Notify& notify) {
-    co_await arc::yield();
-
-    // 2. wait for the main task to release the lock
-    auto guard = co_await mtx.lock();
-    fmt::println("Task acquired lock, value: {}", *guard);
-    co_await arc::sleepFor(Duration::fromMillis(500));
-
-    // 3. send notification to main task
-    notify.notifyOne();
-}
-
-arc::Future<> lockTests() {
+arc::Future<> asyncMain() {
     arc::Mutex<int> mtx{0};
     arc::Notify notify;
 
-    arc::spawn(lockerFn(mtx, notify));
+    // spawn a task that will wait for a notification
+    // if you're confused about `this auto self`, scroll to the bottom of README
+    auto handle = arc::spawn([&](this auto self) -> arc::Future<int> {
+        co_await notify.notified();
+
+        // try to lock the mutex, this will take some time because main function waits before unlocking
+        auto lock = co_await mtx.lock();
+        co_return *lock;
+    }());
 
     {
-        // 1. lock the mutex, change the value and wait a bit before unlocking
+        // lock the mutex and change the value
+        fmt::println("Locking mutex in main");
         auto lock = co_await mtx.lock();
         *lock = 42;
+
+        // notify the other task and wait a bit before unlocking
+        fmt::println("Notifying task");
+        co_await notify.notified();
         co_await arc::sleep(Duration::fromSecs(1));
+
         fmt::println("Unlocking mutex in main");
     }
 
-    // 4. wait until worker notifies us
-    co_await notify.notified();
+    int value = co_await handle;
+    fmt::println("{}", value);
 }
 ```
 
@@ -290,3 +318,98 @@ ARC_DEFINE_MAIN(aMain);
 
 This section is not entirely about Arc, but also about C++ coroutines in general.
 
+### Reference parameteres in futures
+
+Generally, references are always OK if the object they are pointing to is **not temporary**. This means, `T&` is almost always fine, while `const T&` and `T&&` can be dangerous.
+
+Let's take this function that takes a string by a constant reference:
+```cpp
+Future<size_t> getSize(const std::string& msg) {
+    co_return msg.size();
+}
+```
+
+Here are valid, non-UB ways to invoke it:
+```cpp
+co_await getSize("string");
+co_await arc::spawn(getSize("string"));
+co_await arc::timeout(Duration::fromSecs(1), getSize("string"));
+
+std::string s = "string";
+auto fut = getSize(s);
+co_await fut;
+```
+
+Here are problematic ways that will likely lead to a crash:
+```cpp
+auto fut = getSize("string");
+co_await fut;
+
+auto ja = arc::joinAll(getSize("string"), getSize("string 2"));
+co_await ja;
+```
+
+The examples earlier were ok, because when a temporary `std::string` is made, it exists up until the end of the expression. This includes the `co_await` statement, and even passing the future into other functions, such as `arc::spawn`, `arc::timeout`, `arc::joinAll`, etc. The other two examples store the future in a local variable, which leads to the temporary string being destroyed before the future is awaited.
+
+Rvalue references (`T&&`) suffer from the similar problem. It's usually better to just take a `T` argument and move it into the coroutine frame, rather than taking a `T&&` that might be pointing to an object that is already gone. Every single example listed above will work perfectly fine if you simply change the signature to:
+```cpp
+Future<size_t> getSize(std::string msg) {
+    co_return msg.size();
+}
+```
+
+### Lambda futures
+
+Take a look at this seemingly innocent code:
+
+```cpp
+int value = 0;
+auto fut = [&value] -> arc::Future<> {
+    fmt::println("{}", value);
+    co_return;
+}();
+co_await fut;
+```
+
+At a first glance it seems fine, although the lambda captures `value` by reference, it can never outlive the variable since it's awaited right away, right? Nope, try running it with ASan and watch it go crazy :)
+
+This happens because lambda captures only live as long as the lambda itself. By the time we reach this line:
+```cpp
+}();
+```
+
+we complete the lambda invocation, and the lambda is destroyed. And with it, all captures are gone. When the lambda gets actually awaited, and code starts *actually* executing, the captures are dead and should not be used.
+
+This is a mistake that is very easy to make, especially when passing inline futures to another function, for example `arc::timeout`, `arc::select`, etc. There are three easy ways to work around this problem:
+
+1. If possible, don't capture anything. By contrast, this capture-less code will be completely fine, as parameters are stored in the coroutine frame:
+```cpp
+int value = 0;
+auto fut = [](int& value) -> arc::Future<> {
+    fmt::println("{}", value);
+    co_return;
+}(value);
+co_await fut;
+```
+
+2. Use deducing this to store the lambda object as a parameter in the coroutine frame
+```cpp
+int value = 0;
+auto fut = [&value](this auto self) -> arc::Future<> {
+    fmt::println("{}", value);
+    co_return;
+}();
+co_await fut;
+```
+
+This syntax might be surprising for those who have never seen C++23 "deducing this" feature, but it's a pretty elegant way to ensure lambda captures live long enough. Make sure you specifically do `this auto self` and not `this const auto& self` or `this auto&& self`, as these are also UB.
+
+3. Store the lambda and make sure it lives as long as necessary. This can be pretty annoying, so one of the methods above should be preferred.
+```cpp
+int value = 0;
+auto lambda = [&value] -> arc::Future<> {
+    fmt::println("{}", value);
+    co_return;
+};
+co_await lambda();
+```

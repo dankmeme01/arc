@@ -541,6 +541,8 @@ private:
 /// When capacity is `std::nullopt` (the default), the channel is unbounded.
 /// When capacity is set to 0, the channel is rendezvous,
 /// meaning that messages are never stored and can only be sent when a receiver is waiting.
+///
+/// This function does not require a runtime, and can be run in both synchronous and asynchronous contexts.
 template <typename T>
 std::pair<Sender<T>, Receiver<T>> channel(std::optional<size_t> capacity = std::nullopt) {
     auto shared = std::make_shared<Shared<T>>(capacity);
