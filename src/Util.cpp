@@ -33,11 +33,15 @@ void doLogMessage(std::string message, LogLevel level) {
     } else {
         switch (level) {
             case LogLevel::Trace: {
-                fmt::println("[TRACE] {}", message);
+                fmt::println("{}", message);
+            } break;
+
+            case LogLevel::Warn: {
+                fmt::println(std::cerr, "{}", message);
             } break;
 
             case LogLevel::Error: {
-                fmt::println(std::cerr, "[ERROR] {}", message);
+                fmt::println(std::cerr, "{}", message);
             } break;
         }
     }

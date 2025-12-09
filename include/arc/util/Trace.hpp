@@ -13,6 +13,7 @@ static auto epoch = asp::time::Instant::now();
 
 enum LogLevel {
     Trace,
+    Warn,
     Error,
 };
 
@@ -26,6 +27,12 @@ void trace(fmt::format_string<Args...> fmt, Args&&... args) {
     auto message = fmt::format("[TRACE] [{:.4f}] {}", elapsed.seconds<float>(), fmt::format(fmt, std::forward<Args>(args)...));
     doLogMessage(std::move(message), LogLevel::Trace);
 #endif
+}
+
+template <class... Args>
+void printWarn(fmt::format_string<Args...> fmt, Args&&... args) {
+    auto message = fmt::format("[WARN] {}", fmt::format(fmt, std::forward<Args>(args)...));
+    doLogMessage(std::move(message), LogLevel::Warn);
 }
 
 template <class... Args>

@@ -4,6 +4,7 @@
 #include <arc/task/Waker.hpp>
 #include <arc/util/Assert.hpp>
 #include <arc/util/Result.hpp>
+#include <arc/util/Trace.hpp>
 #include <asp/sync/SpinLock.hpp>
 #include <Geode/Result.hpp>
 #include <atomic>
@@ -90,7 +91,7 @@ struct ChannelData {
     /// Attempts to push a value directly into the receiver's slot if one is present,
     /// otherwise attempts to push into the queue.
     /// If everything fails, returns false.
-    bool push(T& value) {
+    bool push(T& value, bool back = true) {
         if (this->deliverToReceiver(value)) {
             return true;
         }
@@ -101,7 +102,11 @@ struct ChannelData {
         }
 
         if (*capacity == 0 || queue.size() < *capacity) {
-            queue.push_back(std::move(value));
+            if (back) {
+                queue.push_back(std::move(value));
+            } else {
+                queue.push_front(std::move(value));
+            }
             return true;
         }
 
@@ -166,6 +171,15 @@ struct Shared {
         }
 
         bool success = m_data.lock()->push(value);
+        return success ? TrySendOutcome::Success : TrySendOutcome::Full;
+    }
+
+    TrySendOutcome trySendAtFront(T& value) {
+        if (this->isClosed()) {
+            return TrySendOutcome::Closed;
+        }
+
+        bool success = m_data.lock()->push(value, false);
         return success ? TrySendOutcome::Success : TrySendOutcome::Full;
     }
 
@@ -406,6 +420,15 @@ struct ARC_NODISCARD RecvAwaiter : PollableBase<RecvAwaiter<T>, RecvResult<T>> {
     ~RecvAwaiter() {
         // if we are in the waiting state, remove ourselves from the wait list
         if (m_data) m_data->deregisterReceiver(this);
+
+        if (m_value && m_data) {
+            // we got destroyed while holding a value, this is rare but not good,
+            // try to put the value back into the channel to avoid data loss
+            auto outcome = m_data->trySendAtFront(*m_value);
+            if (outcome != TrySendOutcome::Success) {
+                printWarn("RecvAwaiter destroyed while holding a value, could not reinsert into channel!");
+            }
+        }
     }
 
     std::optional<RecvResult<T>> poll() {
@@ -445,7 +468,9 @@ struct ARC_NODISCARD RecvAwaiter : PollableBase<RecvAwaiter<T>, RecvResult<T>> {
             return std::nullopt;
         } else {
             // completed!
-            return Ok(std::move(*m_value));
+            auto val = std::move(*m_value);
+            m_value.reset();
+            return Ok(val);
         }
     }
 
