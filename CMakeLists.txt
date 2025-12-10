@@ -49,6 +49,7 @@ if (ARC_BUILD_TESTS)
         test/Future.cpp
         test/Join.cpp
         test/mpsc.cpp
+        test/Runtime.cpp
         test/Semaphore.cpp
         test/Task.cpp
     )

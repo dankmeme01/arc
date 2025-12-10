@@ -9,7 +9,7 @@ const SignalKind SignalKind::Interrupt{SIGINT};
 const SignalKind SignalKind::Terminate{SIGTERM};
 
 // These are not as cross platform lol
-#ifdef SIGARM
+#ifdef SIGALRM
 const SignalKind SignalKind::Alarm{SIGALRM};
 #endif
 #ifdef SIGCHLD
@@ -36,10 +36,14 @@ const SignalKind SignalKind::User2{SIGUSR2};
 
 Signal::Signal(SignalKind kind)
     : m_kind(kind),
-      m_notified(ctx().runtime()->signalDriver().addSignalAndNotify(kind)) {}
+      m_notified() {}
 
 bool Signal::poll() {
-    return m_notified.poll();
+    if (!m_notified) {
+        m_notified = ctx().runtime()->signalDriver().addSignalAndNotify(m_kind);
+    }
+
+    return m_notified->poll();
 }
 
 }

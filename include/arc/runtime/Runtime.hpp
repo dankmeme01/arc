@@ -19,7 +19,12 @@ namespace arc {
 
 class Runtime {
 public:
-    Runtime(size_t workers = std::thread::hardware_concurrency());
+    Runtime(
+        size_t workers = std::thread::hardware_concurrency(),
+        bool timeDriver = true,
+        bool ioDriver = true,
+        bool signalDriver = true
+    );
     ~Runtime();
 
     /// Get the thread-local runtime context, returns nullptr if not inside a runtime.
@@ -31,17 +36,9 @@ public:
     Runtime(Runtime&&) = delete;
     Runtime& operator=(Runtime&&) = delete;
 
-    inline TimeDriver& timeDriver() noexcept {
-        return m_timeDriver;
-    }
-
-    inline SignalDriver& signalDriver() noexcept {
-        return m_signalDriver;
-    }
-
-    inline IoDriver& ioDriver() noexcept {
-        return m_ioDriver;
-    }
+    TimeDriver& timeDriver();
+    SignalDriver& signalDriver();
+    IoDriver& ioDriver();
 
     void enqueueTask(TaskBase* task);
 
@@ -85,9 +82,9 @@ private:
     };
 
     std::atomic<bool> m_stopFlag{false};
-    TimeDriver m_timeDriver{this};
-    SignalDriver m_signalDriver{this};
-    IoDriver m_ioDriver{this};
+    std::optional<TimeDriver> m_timeDriver;
+    std::optional<SignalDriver> m_signalDriver;
+    std::optional<IoDriver> m_ioDriver;
 
     std::mutex m_mtx;
     asp::SpinLock<std::unordered_set<TaskBase*>> m_tasks;

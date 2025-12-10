@@ -14,8 +14,20 @@ static constexpr size_t MAX_BLOCKING_WORKERS = 128;
 
 namespace arc {
 
-Runtime::Runtime(size_t workers) : m_stopFlag(false) {
+Runtime::Runtime(size_t workers, bool timeDriver, bool ioDriver, bool signalDriver) : m_stopFlag(false) {
     workers = std::clamp<size_t>(workers, 1, 128);
+
+    if (timeDriver) {
+        m_timeDriver.emplace(this);
+    }
+
+    if (ioDriver) {
+        m_ioDriver.emplace(this);
+    }
+
+    if (signalDriver) {
+        m_signalDriver.emplace(this);
+    }
 
     m_workers.reserve(workers);
     for (size_t i = 0; i < workers; ++i) {
@@ -40,6 +52,21 @@ Runtime::~Runtime() {
 
 Runtime* Runtime::current() {
     return ctx().runtime();
+}
+
+TimeDriver& Runtime::timeDriver() {
+    ARC_ASSERT(m_timeDriver, "attempted to use time features with time driver disabled");
+    return *m_timeDriver;
+}
+
+SignalDriver& Runtime::signalDriver() {
+    ARC_ASSERT(m_signalDriver, "attempted to use signal features with signal driver disabled");
+    return *m_signalDriver;
+}
+
+IoDriver& Runtime::ioDriver() {
+    ARC_ASSERT(m_ioDriver, "attempted to use io features with io driver disabled");
+    return *m_ioDriver;
 }
 
 void Runtime::enqueueTask(TaskBase* task) {
@@ -81,8 +108,8 @@ void Runtime::workerLoop(WorkerData& data) {
         auto now = Instant::now();
 
         // every once in a while, run timer and io drivers
-        if (now >= nextTimerTask) {
-            m_timeDriver.doWork();
+        if (m_timeDriver && now >= nextTimerTask) {
+            m_timeDriver->doWork();
 
             do {
                 timerTick++;
@@ -90,8 +117,8 @@ void Runtime::workerLoop(WorkerData& data) {
             } while (now >= nextTimerTask);
         }
 
-        if (now >= nextIoTask) {
-            m_ioDriver.doWork();
+        if (m_ioDriver && now >= nextIoTask) {
+            m_ioDriver->doWork();
 
             do {
                 ioTick++;
@@ -99,7 +126,13 @@ void Runtime::workerLoop(WorkerData& data) {
             } while (now >= nextIoTask);
         }
 
-        auto maxWait = (std::min)(nextTimerTask, nextIoTask).durationSince(now);
+        Duration maxWait = Duration::fromHours(1); // arbitrary long duration
+        if (m_timeDriver) {
+            maxWait = (std::min)(maxWait, nextTimerTask.durationSince(now));
+        }
+        if (m_ioDriver) {
+            maxWait = (std::min)(maxWait, nextIoTask.durationSince(now));
+        }
 
         TaskBase* task = nullptr;
         {

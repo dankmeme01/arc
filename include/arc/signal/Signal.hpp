@@ -49,7 +49,7 @@ struct SignalKind {
 
 struct ARC_NODISCARD Signal : PollableBase<Signal> {
     SignalKind m_kind;
-    Notified m_notified;
+    std::optional<Notified> m_notified;
 
     explicit Signal(SignalKind kind);
 
