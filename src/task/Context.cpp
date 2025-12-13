@@ -34,16 +34,16 @@ Waker TaskContext::cloneWaker() {
     return m_waker->clone();
 }
 
-void TaskContext::recordTaskRanNow() {
-    m_taskRanAt = Instant::now();
+void TaskContext::setTaskDeadline(Instant deadline) {
+    m_taskDeadline = deadline;
     m_futurePolls = 0;
 }
 
 bool TaskContext::shouldCoopYield() {
     // try to make this check as cheap as possible
     m_futurePolls++;
-    if (m_futurePolls % 128 == 0) {
-        return m_taskRanAt.elapsed() >= Duration::fromMillis(20);
+    if (m_futurePolls % 64 == 0) {
+        return m_taskDeadline && Instant::now() >= *m_taskDeadline;
     }
     return false;
 }

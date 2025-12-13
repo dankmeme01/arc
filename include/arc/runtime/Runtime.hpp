@@ -91,6 +91,7 @@ private:
     std::deque<TaskBase*> m_runQueue; // protected by m_mtx
     std::vector<WorkerData> m_workers;
     std::condition_variable m_cv;
+    asp::time::Duration m_taskDeadline;
 
     std::mutex m_blockingMtx;
     std::deque<BlockingTaskBase*> m_blockingTasks; // protected by m_blockingMtx

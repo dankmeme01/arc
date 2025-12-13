@@ -17,6 +17,8 @@ namespace arc {
 Runtime::Runtime(size_t workers, bool timeDriver, bool ioDriver, bool signalDriver) : m_stopFlag(false) {
     workers = std::clamp<size_t>(workers, 1, 128);
 
+    m_taskDeadline = Duration::fromMillis((uint64_t)(5.f * std::powf(workers, 0.9f)));
+
     if (timeDriver) {
         m_timeDriver.emplace(this);
     }
@@ -168,10 +170,12 @@ void Runtime::workerLoop(WorkerData& data) {
 
 
         TRACE("[Worker {}] driving task {}", data.id, (void*)task);
+        now = Instant::now();
+        auto deadline = now + m_taskDeadline;
 
-        ctx().recordTaskRanNow();
+        ctx().setTaskDeadline(deadline);
         task->m_vtable->run(task);
-        auto taken = ctx().m_taskRanAt.elapsed();
+        auto taken = now.elapsed();
 
         TRACE("[Worker {}] finished driving task", data.id);
 

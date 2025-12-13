@@ -13,17 +13,13 @@ struct PollableUniBase;
 struct TaskContext {
     Waker* m_waker = nullptr;
     Runtime* m_runtime = nullptr;
-    std::vector<const PollableUniBase*> m_stack;
-    std::vector<std::string> m_capturedStack;
-    asp::time::Instant m_taskRanAt;
-    size_t m_futurePolls = 0;
 
     TaskBase* currentTask();
     Runtime* runtime();
     void wake();
     Waker cloneWaker();
 
-    void recordTaskRanNow();
+    void setTaskDeadline(asp::time::Instant deadline);
     bool shouldCoopYield();
 
     void pushFrame(const PollableUniBase* pollable);
@@ -34,6 +30,10 @@ struct TaskContext {
 
 private:
     friend class Runtime;
+    std::optional<asp::time::Instant> m_taskDeadline;
+    size_t m_futurePolls = 0;
+    std::vector<const PollableUniBase*> m_stack;
+    std::vector<std::string> m_capturedStack;
 
     void dumpStack();
     void captureStack();
