@@ -75,13 +75,27 @@ protected:
         m_io.rio.reset();
     }
 
+    std::optional<qsox::Error> takeOrClearError() {
+        auto err = this->takeSocketError();
+        if (err == qsox::Error::Success) {
+            m_io.clearReadiness(Interest::Error);
+            return std::nullopt;
+        } else {
+            return err;
+        }
+    }
+
     std::optional<NetResult<size_t>> pollRead(uint64_t& id, void* buf, size_t size, PollReadFn readFn) {
         while (true) {
             auto ready = m_io.pollReady(Interest::Readable | Interest::Error, id);
             if (ready == 0) {
                 return std::nullopt;
             } else if (ready & Interest::Error) {
-                return Err(this->takeSocketError());
+                if (auto err = this->takeOrClearError()) {
+                    return Err(*err);
+                } else {
+                    continue;
+                }
             }
 
             auto res = readFn(buf, size);
@@ -105,7 +119,11 @@ protected:
             if (ready == 0) {
                 return std::nullopt;
             } else if (ready & Interest::Error) {
-                return Err(this->takeSocketError());
+                if (auto err = this->takeOrClearError()) {
+                    return Err(*err);
+                } else {
+                    continue;
+                }
             }
 
             auto res = writeFn(buf, size);
