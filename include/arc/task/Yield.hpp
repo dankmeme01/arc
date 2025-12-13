@@ -18,4 +18,14 @@ struct ARC_NODISCARD Never : PollableBase<Never> {
 
 Never never() noexcept;
 
+struct ARC_NODISCARD CoopYield : PollableBase<CoopYield> {
+    bool poll();
+
+private:
+    bool yielded = false;
+};
+
+/// Yields if the current task has been running for way too long without yielding.
+CoopYield coopYield() noexcept;
+
 }

@@ -1,5 +1,6 @@
 #include <arc/time/Sleep.hpp>
 #include <arc/runtime/Runtime.hpp>
+#include <arc/util/Trace.hpp>
 
 using namespace asp::time;
 
@@ -13,7 +14,7 @@ bool Sleep::poll() {
     } else {
         // only register if we aren't already registered
         if (m_id == 0) {
-            m_id = ctx().runtime()->timeDriver().addEntry(m_expiry, ctx().m_waker->clone());
+            m_id = ctx().runtime()->timeDriver().addEntry(m_expiry, ctx().cloneWaker());
         }
 
         return false;

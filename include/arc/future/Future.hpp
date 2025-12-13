@@ -29,6 +29,7 @@ struct ARC_NODISCARD Future : PollableLowLevelBase<Future<T>, T> {
     using promise_type = Promise<T>;
     using handle_type = std::coroutine_handle<promise_type>;
     handle_type m_handle;
+    bool m_yielding = false;
 
     Future(handle_type handle) : m_handle(handle) {
         // Override vtable, to set future to true in metadata
@@ -96,8 +97,23 @@ struct ARC_NODISCARD Future : PollableLowLevelBase<Future<T>, T> {
         return this->promise().m_child;
     }
 
+    bool coopYield() {
+        if (ctx().shouldCoopYield()) {
+            trace("[{}] cooperatively yielding", this->debugName());
+            ctx().wake();
+            return true;
+        }
+
+        return false;
+    }
+
     bool await_ready() noexcept {
         TRACE("[{}] await_ready(), done: {}", this->debugName(), m_handle ? m_handle.done() : true);
+        if (this->coopYield()) {
+            m_yielding = true;
+            return false;
+        }
+
         return m_handle ? m_handle.done() : true;
     }
 
@@ -107,12 +123,16 @@ struct ARC_NODISCARD Future : PollableLowLevelBase<Future<T>, T> {
         auto awaitingP = std::coroutine_handle<promise_type>::from_address(awaiting.address());
         awaitingP.promise().m_child = this;
 
+        if (m_yielding) {
+            m_yielding = false;
+            return true;
+        }
+
         bool doSuspend = true;
 
         // if we don't have a child, wake the current task immediately
         if (!this->child()) {
             TRACE("[{}] await_suspend(): no child, resuming immediately", this->debugName());
-
             ctx().pushFrame(this);
             m_handle.resume();
             this->maybeRethrow();

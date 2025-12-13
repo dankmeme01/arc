@@ -127,6 +127,16 @@ Future<> printer() {
     }
 }
 
+Future<> burner() {
+    auto otherFut = [] -> Future<> {
+        co_return;
+    };
+
+    while (true) {
+        co_await otherFut();
+    }
+}
+
 Future<> asyncMain(int argc, char** argv) {
     trace("Hello from asyncMain!");
 
@@ -163,4 +173,4 @@ Future<> asyncMain(int argc, char** argv) {
     co_return;
 }
 
-ARC_DEFINE_MAIN(asyncMain);
+ARC_DEFINE_MAIN_NT(asyncMain, 1);

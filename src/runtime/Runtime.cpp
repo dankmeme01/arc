@@ -166,9 +166,20 @@ void Runtime::workerLoop(WorkerData& data) {
             continue;
         }
 
+
         TRACE("[Worker {}] driving task {}", data.id, (void*)task);
+
+        ctx().recordTaskRanNow();
         task->m_vtable->run(task);
+        auto taken = ctx().m_taskRanAt.elapsed();
+
         TRACE("[Worker {}] finished driving task", data.id);
+
+#ifdef ARC_DEBUG
+        if (taken > Duration::fromMillis(100)) {
+            printWarn("[Worker {}] task {} took {} to yield", data.id, (void*)task, taken.toString());
+        }
+#endif
     }
 }
 

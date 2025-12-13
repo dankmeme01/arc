@@ -2,6 +2,8 @@
 #include <arc/task/Task.hpp>
 #include <arc/util/Assert.hpp>
 
+using namespace asp::time;
+
 namespace arc {
 
 TaskBase* TaskContext::currentTask() {
@@ -30,6 +32,20 @@ void TaskContext::wake() {
 Waker TaskContext::cloneWaker() {
     ARC_DEBUG_ASSERT(m_waker, "no current waker");
     return m_waker->clone();
+}
+
+void TaskContext::recordTaskRanNow() {
+    m_taskRanAt = Instant::now();
+    m_futurePolls = 0;
+}
+
+bool TaskContext::shouldCoopYield() {
+    // try to make this check as cheap as possible
+    m_futurePolls++;
+    if (m_futurePolls % 128 == 0) {
+        return m_taskRanAt.elapsed() >= Duration::fromMillis(20);
+    }
+    return false;
 }
 
 void TaskContext::pushFrame(const PollableUniBase* pollable) {
