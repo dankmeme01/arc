@@ -1,6 +1,7 @@
 #include <arc/sync/Notify.hpp>
 #include <arc/task/Context.hpp>
 #include <arc/util/Assert.hpp>
+#include <arc/util/Trace.hpp>
 #include <utility>
 
 using enum std::memory_order;
@@ -82,7 +83,8 @@ void Notify::notifyOne(bool store) const {
 }
 
 void Notify::notifyAll() const {
-    m_state->m_waiters.lock()->forAll([this](Waker& waker, Notified* awaiter) {
+    auto waiters = m_state->m_waiters.lock();
+    waiters->forAll([this](Waker& waker, Notified* awaiter) {
         this->notify(waker, awaiter);
     });
 }
