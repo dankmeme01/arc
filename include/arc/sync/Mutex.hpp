@@ -52,6 +52,11 @@ struct Mutex {
         co_return Guard{this};
     }
 
+    Guard blockingLock() noexcept {
+        m_sema.acquireBlocking();
+        return Guard{this};
+    }
+
     std::optional<Guard> tryLock() noexcept {
         if (m_sema.tryAcquire()) {
             return Guard{this};

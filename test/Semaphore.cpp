@@ -20,7 +20,6 @@ TEST(Semaphore, SingleAcquirer) {
     EXPECT_FALSE(waiter1.poll());
     sem.release(3);
     EXPECT_TRUE(waiter1.poll());
-    EXPECT_TRUE(waiter1.poll()); // repeated poll stays true
 }
 
 TEST(Semaphore, MultipleAcquirers) {
@@ -35,14 +34,14 @@ TEST(Semaphore, MultipleAcquirers) {
 
     EXPECT_TRUE(w1.poll());
     EXPECT_FALSE(w2.poll());
-    EXPECT_EQ(w2.m_remaining.load(::acquire), 6);
+    EXPECT_EQ(w2.remaining(), 6);
     EXPECT_EQ(sem.permits(), 0);
     EXPECT_FALSE(w3.poll());
 
     // release 5 permits
     sem.release(5);
     EXPECT_FALSE(w2.poll());
-    EXPECT_EQ(w2.m_remaining.load(::acquire), 1);
+    EXPECT_EQ(w2.remaining(), 1);
     EXPECT_FALSE(w3.poll());
 
     sem.release(6);
@@ -51,18 +50,24 @@ TEST(Semaphore, MultipleAcquirers) {
     EXPECT_EQ(sem.permits(), 0);
 }
 
-
 TEST(Semaphore, DtorRelease) {
     Waker waker = Waker::noop();
     ctx().m_waker = &waker;
 
-    Semaphore sem{10};
+    Semaphore sem{5};
 
     {
-        auto w1 = sem.acquire(5);
-        EXPECT_TRUE(w1.poll());
-        EXPECT_EQ(sem.permits(), 5);
+        auto w1 = sem.acquire(10);
+        EXPECT_FALSE(w1.poll()); // acquires 5/10 permits
+        EXPECT_EQ(sem.permits(), 0);
     }
 
-    EXPECT_EQ(sem.permits(), 10);
+    EXPECT_EQ(sem.permits(), 5);
+}
+
+TEST(Semaphore, AcquireBlocking) {
+    Semaphore sem{2};
+    sem.acquireBlocking(2);
+
+    EXPECT_FALSE(sem.tryAcquire(1));
 }

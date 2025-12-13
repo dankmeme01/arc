@@ -12,31 +12,26 @@ struct Semaphore {
     explicit Semaphore(size_t permits);
 
     struct ARC_NODISCARD AcquireAwaiter : PollableBase<AcquireAwaiter> {
-        enum class State : uint8_t {
-            Init,
-            Waiting,
-            Notified,
-        };
-
-        Semaphore& m_sem;
-        std::atomic<State> m_waitState{State::Init};
-        std::atomic<size_t> m_remaining;
-        size_t m_requested;
-
-        explicit AcquireAwaiter(Semaphore& sem, size_t permits) : m_sem(sem), m_remaining(permits), m_requested(permits) {}
+        explicit AcquireAwaiter(Semaphore& sem, size_t permits) : m_sem(sem), m_requested(permits) {}
 
         bool poll();
         AcquireAwaiter(AcquireAwaiter&&) noexcept;
-        AcquireAwaiter& operator=(AcquireAwaiter&&) noexcept;
+        AcquireAwaiter& operator=(AcquireAwaiter&&) noexcept = delete;
         ~AcquireAwaiter();
 
-    private:
-        void reset();
-        bool tryAcquireSafe();
+        size_t remaining() const;
 
+    private:
+        friend struct Semaphore;
+        Semaphore& m_sem;
+        bool m_registered = false;
+        size_t m_acquired = 0;
+        size_t m_requested;
+        asp::SpinLock<> m_lock;
     };
 
     AcquireAwaiter acquire(size_t permits = 1) noexcept;
+    void acquireBlocking(size_t permits = 1) noexcept;
     bool tryAcquire(size_t permits = 1) noexcept;
     void release() noexcept;
     void release(size_t n) noexcept;
@@ -57,7 +52,8 @@ private:
     Runtime* m_runtime = nullptr;
 
     /// Acquires from 0 to n permits, returning the acquired amount
-    size_t tryAcquireAtMost(size_t maxp) noexcept;
+    size_t tryAcquireOrRegister(size_t maxp, AcquireAwaiter* awaiter);
+    bool assignPermitsTo(size_t& remaining, AcquireAwaiter* waiter);
 };
 
 }
