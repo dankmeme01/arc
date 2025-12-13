@@ -66,6 +66,7 @@ struct RegisteredIo {
     asp::SpinLock<std::vector<RegisteredIoWaiter>> waiters; // TODO: slab kind of thing
     std::atomic<bool> anyWrite{false}, anyRead{false};
     std::atomic<uint8_t> readiness{0};
+    IoDriver* driver = nullptr;
 };
 
 struct Registration {

@@ -135,6 +135,7 @@ IoDriver::~IoDriver() {}
 
 Registration IoDriver::registerIo(SockFd fd, Interest interest) {
     auto rio = std::make_shared<RegisteredIo>();
+    rio->driver = this;
     rio->fd = fd;
 
     trace("IoDriver: registered fd {}", fmtFd(fd));
