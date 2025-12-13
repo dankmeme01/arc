@@ -8,7 +8,7 @@ bool CancellationToken::Awaiter::poll() {
     }
 
     if (!m_notified) {
-        m_notified = m_token->m_notify.notified();
+        m_notified.emplace(m_token->m_notify.notified());
     }
 
     return m_token->isCancelled();

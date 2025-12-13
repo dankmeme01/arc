@@ -2,6 +2,7 @@
 
 #include <arc/future/Pollable.hpp>
 #include <arc/task/WaitList.hpp>
+#include <asp/sync/Mutex.hpp>
 #include <memory>
 #include <atomic>
 
@@ -10,8 +11,11 @@ namespace arc {
 struct Notified;
 
 struct NotifyState {
-    WaitList<Notified> m_waiters;
-    std::atomic<bool> m_storedPermit{false};
+    asp::Mutex<WaitList<Notified>> m_waiters;
+    bool m_storedPermit = false; // also guarded by m_waiters
+
+    bool claimStoredOrRegister(Notified* notified);
+    void unregister(Notified* notified);
 };
 
 struct ARC_NODISCARD Notified : PollableBase<Notified> {
@@ -28,13 +32,12 @@ struct ARC_NODISCARD Notified : PollableBase<Notified> {
 
     // Because atomic cannot be moved, we must manually define move constructors
     Notified(Notified&&) noexcept;
-    Notified& operator=(Notified&&) noexcept;
+    Notified& operator=(Notified&&) noexcept = delete;
 
     ~Notified();
 
     bool poll();
     void reset();
-    bool claimStored();
 };
 
 class Notify {
@@ -53,6 +56,8 @@ public:
 
 private:
     std::shared_ptr<NotifyState> m_state;
+
+    void notify(Waker& waker, Notified* waiter) const;
 };
 
 }
