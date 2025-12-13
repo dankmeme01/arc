@@ -482,7 +482,7 @@ struct ARC_NODISCARD RecvAwaiter : PollableBase<RecvAwaiter<T>, RecvResult<T>> {
             // completed!
             auto val = std::move(*m_value);
             m_value.reset();
-            return Ok(val);
+            return Ok(std::move(val));
         }
     }
 
