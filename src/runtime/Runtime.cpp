@@ -71,6 +71,11 @@ IoDriver& Runtime::ioDriver() {
     return *m_ioDriver;
 }
 
+void Runtime::setTerminateHandler(TerminateHandler handler) {
+    auto lock = m_terminateHandler.lock();
+    lock = std::move(handler);
+}
+
 void Runtime::enqueueTask(TaskBase* task) {
     TRACE("[Runtime] enqueuing task {}", (void*)task);
     {
@@ -88,7 +93,13 @@ void Runtime::workerLoopWrapper(WorkerData& data) {
     } catch (const std::exception& e) {
         printError("[Worker {}] terminating due to uncaught exception: {}", data.id, e.what());
         ctx().dumpStack();
-        std::terminate();
+
+        auto handler = m_terminateHandler.lock();
+        if (*handler) {
+            (*handler)(e);
+        } else {
+            throw; // rethrow
+        }
     }
 }
 

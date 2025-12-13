@@ -62,8 +62,8 @@ void TaskContext::popFrame() {
 void TaskContext::onUnhandledException() {
     // capture the stack trace, as later when dumpStack() is invoked,
     // futures might already be destroyed and we will run into UB
-    if (!m_capturedStack.empty()) {
-        return;
+    if (m_capturedStack.empty()) {
+        this->captureStack();
     }
 }
 

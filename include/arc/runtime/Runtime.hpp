@@ -40,6 +40,11 @@ public:
     SignalDriver& signalDriver();
     IoDriver& ioDriver();
 
+    using TerminateHandler = std23::move_only_function<void(const std::exception&)>;
+    /// Set the function that is called when an uncaught exception causes runtime termination.
+    /// By default, this function just rethrows the exception to call std::terminate().
+    void setTerminateHandler(TerminateHandler handler);
+
     void enqueueTask(TaskBase* task);
 
     template <Pollable F, typename T = typename F::Output>
@@ -85,6 +90,7 @@ private:
     std::optional<TimeDriver> m_timeDriver;
     std::optional<SignalDriver> m_signalDriver;
     std::optional<IoDriver> m_ioDriver;
+    asp::SpinLock<TerminateHandler> m_terminateHandler;
 
     std::mutex m_mtx;
     asp::SpinLock<std::unordered_set<TaskBase*>> m_tasks;
