@@ -22,8 +22,15 @@ struct TaskContext {
 
     void pushFrame(const PollableUniBase* pollable);
     void popFrame();
+
+    void printFutureStack();
     void onUnhandledException();
+
+private:
+    friend class Runtime;
+
     void dumpStack();
+    void captureStack();
 };
 
 inline TaskContext& ctx() {

@@ -49,6 +49,17 @@ void TaskContext::onUnhandledException() {
     if (!m_capturedStack.empty()) {
         return;
     }
+}
+
+void TaskContext::printFutureStack() {
+    auto prevStack = std::move(m_capturedStack);
+    this->captureStack();
+    this->dumpStack();
+    m_capturedStack = std::move(prevStack);
+}
+
+void TaskContext::captureStack() {
+    m_capturedStack.clear();
 
     for (auto it = m_stack.rbegin(); it != m_stack.rend(); ++it) {
         auto pollable = *it;
