@@ -3,16 +3,17 @@
 
 namespace arc {
 
-auto scopeDtor(auto&& func) {
+template <typename F>
+auto scopeDtor(F&& func) {
     struct ScopeDtor {
-        decltype(func) m_func;
+        std::decay_t<F> m_func;
 
         ~ScopeDtor() {
             m_func();
         }
     };
 
-    return ScopeDtor{std::forward<decltype(func)>(func)};
+    return ScopeDtor{std::forward<F>(func)};
 }
 
 }
