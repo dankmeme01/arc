@@ -147,7 +147,8 @@ Registration IoDriver::registerIo(SockFd fd, Interest interest) {
 }
 
 void IoDriver::unregisterIo(const std::shared_ptr<RegisteredIo>& rio) {
-    if (ctx().runtime()->isShuttingDown()) return;
+    auto rt = ctx().runtime();
+    if (rt && rt->isShuttingDown()) return;
 
     auto ios = m_ios.lock();
 

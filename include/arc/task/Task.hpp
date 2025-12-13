@@ -257,6 +257,8 @@ struct Task : TaskTypedBase<typename P::Output> {
 
         TRACE("[Task {}] running, state: {}", (void*)this, state);
 
+        ctx().m_runtime = this->m_runtime;
+
         // update task state
         while (true) {
             if (state & TASK_CLOSED) {
