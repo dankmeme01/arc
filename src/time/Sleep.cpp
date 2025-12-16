@@ -7,6 +7,10 @@ using namespace asp::time;
 namespace arc {
 
 bool Sleep::poll() {
+    if (ctx().shouldCoopYield()) {
+        return false;
+    }
+
     auto now = Instant::now();
     if (now >= m_expiry) {
         m_id = 0;
