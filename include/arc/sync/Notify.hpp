@@ -40,9 +40,14 @@ struct ARC_NODISCARD Notified : PollableBase<Notified> {
     void reset();
 };
 
+/// Synchronization primitive that allows a task to wait for notifications, be it from another task or synchronous code.
+/// Notify can safely be copied around, and it will still reference the same internal state.
 class Notify {
 public:
     Notify();
+
+    Notify(const Notify& other) = default;
+    Notify& operator=(const Notify& other) = default;
 
     /// Returns an awaitable future that completes when notified.
     Notified notified() const;
