@@ -41,4 +41,13 @@ void printError(fmt::format_string<Args...> fmt, Args&&... args) {
     doLogMessage(std::move(message), LogLevel::Error);
 }
 
+inline std::string_view levelToString(LogLevel level) {
+    switch (level) {
+        case LogLevel::Trace: return "TRACE";
+        case LogLevel::Warn: return "WARN";
+        case LogLevel::Error: return "ERROR";
+    }
+    return "UNKNOWN";
+}
+
 }
