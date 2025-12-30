@@ -87,12 +87,6 @@ struct ARC_NODISCARD Future : PollableLowLevelBase<Future<T>, T> {
         return m_handle.promise();
     }
 
-    void maybeRethrow() {
-        if (this->promise().m_exception) {
-            std::rethrow_exception(this->promise().m_exception);
-        }
-    }
-
     PollableUniBase* child() {
         return this->promise().m_child;
     }
@@ -133,10 +127,12 @@ struct ARC_NODISCARD Future : PollableLowLevelBase<Future<T>, T> {
         // if we don't have a child, wake the current task immediately
         if (!this->child()) {
             TRACE("[{}] await_suspend(): no child, resuming immediately", this->debugName());
-            ctx().pushFrame(this);
+            auto& cx = ctx();
+
+            cx.pushFrame(this);
             m_handle.resume();
-            this->maybeRethrow();
-            ctx().popFrame();
+            cx.maybeRethrow();
+            cx.popFrame();
 
             if (m_handle.done()) {
                 doSuspend = false;
@@ -156,7 +152,7 @@ struct ARC_NODISCARD Future : PollableLowLevelBase<Future<T>, T> {
         auto resume = [&] {
             m_handle.resume();
             if (m_handle.done()) {
-                this->maybeRethrow();
+                ctx().maybeRethrow();
                 return true;
             }
             return false;
@@ -180,7 +176,7 @@ struct ARC_NODISCARD Future : PollableLowLevelBase<Future<T>, T> {
     }
 
     T getOutput() {
-        this->maybeRethrow();
+        ctx().maybeRethrow();
 
         if constexpr (!std::is_void_v<T>) {
             return std::move(*this->promise().m_value);
@@ -226,8 +222,8 @@ struct Promise : PromiseBase<T> {
 
     void unhandled_exception() {
         TRACE("[Promise {}] unhandled_exception()", (void*)this);
-        m_exception = std::current_exception();
-        ctx().onUnhandledException();
+
+        ctx().onUnhandledException(std::current_exception());
     }
 
     Future<T> get_return_object() {
@@ -257,7 +253,6 @@ struct Promise : PromiseBase<T> {
     }
 
     std::optional<value_type> m_value;
-    std::exception_ptr m_exception;
     std::string m_debugName;
 };
 

@@ -50,7 +50,7 @@ bool TaskContext::shouldCoopYield() {
 
 void TaskContext::pushFrame(const PollableUniBase* pollable) {
     // trace("pushing frame {}", (void*)pollable);
-    m_stack.push_back(pollable);
+    m_stack.push_back(StackEntry { pollable, "" });
 }
 
 void TaskContext::popFrame() {
@@ -59,11 +59,31 @@ void TaskContext::popFrame() {
     m_stack.pop_back();
 }
 
-void TaskContext::onUnhandledException() {
+void TaskContext::markFrame(std::string name) {
+    if (m_stack.empty()) {
+        return;
+    }
+
+    m_stack.back().name = std::move(name);
+}
+
+void TaskContext::markFrameFromSource(const std::source_location& loc) {
+    this->markFrame(fmt::format("{} ({}:{})", loc.function_name(), loc.file_name(), loc.line()));
+}
+
+void TaskContext::onUnhandledException(std::exception_ptr ptr) {
     // capture the stack trace, as later when dumpStack() is invoked,
     // futures might already be destroyed and we will run into UB
     if (m_capturedStack.empty()) {
         this->captureStack();
+    }
+    printWarn("Captured exception {}", *(void**)&ptr);
+    m_currentException = ptr;
+}
+
+void TaskContext::maybeRethrow() {
+    if (m_currentException) {
+        std::rethrow_exception(m_currentException);
     }
 }
 
@@ -78,17 +98,22 @@ void TaskContext::captureStack() {
     m_capturedStack.clear();
 
     for (auto it = m_stack.rbegin(); it != m_stack.rend(); ++it) {
-        auto pollable = *it;
+        auto pollable = it->pollable;
+        auto marker = it->name;
         auto meta = pollable->m_vtable->metadata;
+
+        std::string description{marker};
+        if (description.empty()) {
+            description = meta->typeName;
+        }
 
         if (meta->isFuture) {
             struct DummyFuture : Future<> {};
-
             auto handle = reinterpret_cast<const DummyFuture*>(pollable)->m_handle;
-            m_capturedStack.push_back(fmt::format("{} (handle: {})", meta->typeName, (void*)handle.address()));
-        } else {
-            m_capturedStack.push_back(fmt::format("{}", meta->typeName));
+            description += fmt::format(" (handle: {})", (void*)handle.address());
         }
+
+        m_capturedStack.push_back(std::move(description));
     }
 }
 
@@ -102,8 +127,14 @@ void TaskContext::dumpStack() {
     }
 
     for (auto it = m_stack.rbegin(); it != m_stack.rend(); ++it) {
-        auto pollable = *it;
-        printError(" - <unknown pollable at {}>", (void*)pollable);
+        auto pollable = it->pollable;
+        auto marker = it->name;
+
+        if (marker.empty()) {
+            printError(" - <unknown pollable @ {}>", (void*)pollable);
+        } else {
+            printError(" - {} (@ {})", marker, (void*)pollable);
+        }
     }
 
     printError("NOTE: captured stack trace was unavailable.");
