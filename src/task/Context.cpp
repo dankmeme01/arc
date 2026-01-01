@@ -77,13 +77,20 @@ void TaskContext::onUnhandledException(std::exception_ptr ptr) {
     if (m_capturedStack.empty()) {
         this->captureStack();
     }
-    printWarn("Captured exception {}", *(void**)&ptr);
+    printWarn("Captured exception (valid: {})", !!ptr);
     m_currentException = ptr;
 }
 
 void TaskContext::maybeRethrow() {
     if (m_currentException) {
-        std::rethrow_exception(m_currentException);
+        auto exc = *m_currentException;
+        m_currentException = std::nullopt;
+
+        if (exc) {
+            std::rethrow_exception(exc);
+        } else {
+            throw std::runtime_error("unknown exception, null when rethrowing");
+        }
     }
 }
 

@@ -45,7 +45,7 @@ private:
     size_t m_futurePolls = 0;
     std::vector<StackEntry> m_stack;
     std::vector<std::string> m_capturedStack;
-    std::exception_ptr m_currentException{};
+    std::optional<std::exception_ptr> m_currentException;
 
     void dumpStack();
     void captureStack();
