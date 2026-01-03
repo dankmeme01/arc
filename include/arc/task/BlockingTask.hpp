@@ -14,11 +14,11 @@ struct BlockingTaskVtable {
 };
 
 struct BlockingTaskBase {
-    Runtime* m_runtime;
+    std::weak_ptr<Runtime> m_runtime;
     const BlockingTaskVtable* m_vtable;
 
-    BlockingTaskBase(Runtime* runtime, const BlockingTaskVtable* vtable)
-        : m_runtime(runtime), m_vtable(vtable) {}
+    BlockingTaskBase(std::weak_ptr<Runtime> runtime, const BlockingTaskVtable* vtable)
+        : m_runtime(std::move(runtime)), m_vtable(vtable) {}
 
     void execute() {
         m_vtable->execute(this);
@@ -27,12 +27,12 @@ struct BlockingTaskBase {
 
 template <typename T>
 struct BlockingTask : BlockingTaskBase {
-    static std::shared_ptr<BlockingTask> create(Runtime* runtime, std23::move_only_function<T()> func) {
-        return std::make_shared<BlockingTask>(runtime, std::move(func));
+    static std::shared_ptr<BlockingTask> create(std::weak_ptr<Runtime> runtime, std23::move_only_function<T()> func) {
+        return std::make_shared<BlockingTask>(std::move(runtime), std::move(func));
     }
 
-    BlockingTask(Runtime* runtime, std23::move_only_function<T()> func)
-        : BlockingTaskBase(runtime, &vtable), m_func(std::move(func)) {}
+    BlockingTask(std::weak_ptr<Runtime> runtime, std23::move_only_function<T()> func)
+        : BlockingTaskBase(std::move(runtime), &vtable), m_func(std::move(func)) {}
 
     std::optional<T> pollTask() {
         auto data = m_data.lock();
@@ -81,12 +81,12 @@ private:
 // Specialization for void
 template <>
 struct BlockingTask<void> : BlockingTaskBase {
-    static std::shared_ptr<BlockingTask> create(Runtime* runtime, std23::move_only_function<void()> func) {
-        return std::make_shared<BlockingTask>(runtime, std::move(func));
+    static std::shared_ptr<BlockingTask> create(std::weak_ptr<Runtime> runtime, std23::move_only_function<void()> func) {
+        return std::make_shared<BlockingTask>(std::move(runtime), std::move(func));
     }
 
-    BlockingTask(Runtime* runtime, std23::move_only_function<void()> func)
-        : BlockingTaskBase(runtime, &vtable), m_func(std::move(func)) {}
+    BlockingTask(std::weak_ptr<Runtime> runtime, std23::move_only_function<void()> func)
+        : BlockingTaskBase(std::move(runtime), &vtable), m_func(std::move(func)) {}
 
     bool pollTask() {
         auto data = m_data.lock();

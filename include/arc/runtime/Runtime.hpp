@@ -17,14 +17,28 @@
 
 namespace arc {
 
-class Runtime {
+class Runtime : public std::enable_shared_from_this<Runtime> {
+private:
+    struct ctor_tag {};
+
 public:
-    Runtime(
+    // Creates a runtime
+    static std::shared_ptr<Runtime> create(
         size_t workers = std::thread::hardware_concurrency(),
         bool timeDriver = true,
         bool ioDriver = true,
         bool signalDriver = true
     );
+
+    // Internal constructor, use `create` instead
+    Runtime(
+        ctor_tag,
+        size_t workers,
+        bool timeDriver,
+        bool ioDriver,
+        bool signalDriver
+    );
+
     ~Runtime();
 
     /// Get the thread-local runtime context, returns nullptr if not inside a runtime.
@@ -32,7 +46,6 @@ public:
 
     Runtime(const Runtime&) = delete;
     Runtime& operator=(const Runtime&) = delete;
-    // pin the runtime to a specific location in memory
     Runtime(Runtime&&) = delete;
     Runtime& operator=(Runtime&&) = delete;
 
@@ -49,7 +62,7 @@ public:
 
     template <Pollable F, typename T = typename F::Output>
     TaskHandle<T> spawn(F fut) {
-        auto* task = Task<F>::create(this, std::move(fut));
+        auto* task = Task<F>::create(weak_from_this(), std::move(fut));
         m_tasks.lock()->insert(task);
         task->schedule();
 
@@ -58,7 +71,7 @@ public:
 
     template <typename T>
     BlockingTaskHandle<T> spawnBlocking(std23::move_only_function<T()> func) {
-        BlockingTaskHandle<T> handle{ BlockingTask<T>::create(this, std::move(func)) };
+        BlockingTaskHandle<T> handle{ BlockingTask<T>::create(weak_from_this(), std::move(func)) };
 
         std::unique_lock lock(m_blockingMtx);
         auto& btasks = m_blockingTasks;
@@ -80,6 +93,7 @@ public:
 private:
     template <Pollable P>
     friend struct Task;
+
 
     struct WorkerData {
         std::thread thread;

@@ -14,21 +14,30 @@ static constexpr size_t MAX_BLOCKING_WORKERS = 128;
 
 namespace arc {
 
-Runtime::Runtime(size_t workers, bool timeDriver, bool ioDriver, bool signalDriver) : m_stopFlag(false) {
+std::shared_ptr<Runtime> Runtime::create(
+    size_t workers,
+    bool timeDriver,
+    bool ioDriver,
+    bool signalDriver
+) {
+    return std::make_shared<Runtime>(ctor_tag{}, workers, timeDriver, ioDriver, signalDriver);
+}
+
+Runtime::Runtime(ctor_tag, size_t workers, bool timeDriver, bool ioDriver, bool signalDriver) : m_stopFlag(false) {
     workers = std::clamp<size_t>(workers, 1, 128);
 
     m_taskDeadline = Duration::fromMillis((uint64_t)(5.f * std::powf(workers, 0.9f)));
 
     if (timeDriver) {
-        m_timeDriver.emplace(this);
+        m_timeDriver.emplace(weak_from_this());
     }
 
     if (ioDriver) {
-        m_ioDriver.emplace(this);
+        m_ioDriver.emplace(weak_from_this());
     }
 
     if (signalDriver) {
-        m_signalDriver.emplace(this);
+        m_signalDriver.emplace(weak_from_this());
     }
 
     m_workers.reserve(workers);

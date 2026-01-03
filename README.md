@@ -34,14 +34,14 @@ arc::Future<int> myFuture() {
     co_return 42;
 }
 
-arc::Runtime rt{4}; // use 4 threads, omit to use the CPU thread count
+auto rt = arc::Runtime::create(4); // use 4 threads, omit to use the CPU thread count
 
 // this will wait for `myFuture` to finish and return its result
-int value = rt.blockOn(myFuture());
+int value = rt->blockOn(myFuture());
 
 // this will spawn the future independently and not block
 // note that the future will be aborted if the runtime is destroyed
-auto handle = rt.spawn(myFuture());
+auto handle = rt->spawn(myFuture());
 ```
 
 If you are an application developer, you can use a helper macro to automatically make a runtime for you:

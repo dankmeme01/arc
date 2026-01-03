@@ -103,7 +103,10 @@ void TaskBase::vSchedule(void* self) {
     // trace("[Task {}] scheduling", self);
 
     auto task = static_cast<TaskBase*>(self);
-    task->m_runtime->enqueueTask(task);
+    auto rt = task->m_runtime.lock();
+    if (rt && !rt->isShuttingDown()) {
+        rt->enqueueTask(task);
+    }
 }
 
 void TaskBase::vDropRef(void* self) {

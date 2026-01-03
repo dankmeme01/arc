@@ -71,7 +71,10 @@ protected:
 
     void unregister() {
         if (!m_io.rio) return;
-        m_io.rio->driver->unregisterIo(m_io.rio);
+        auto rt = m_io.rio->runtime.lock();
+        if (!rt || rt->isShuttingDown()) return;
+
+        rt->ioDriver().unregisterIo(m_io.rio);
         m_io.rio.reset();
     }
 

@@ -35,8 +35,10 @@ if (ARC_BUILD_TESTS)
     target_link_libraries(arc_tester PRIVATE arc asp fmt std23::nontype_functional)
 
     # add asan
-    target_compile_options(arc_tester PRIVATE -fsanitize=address -fsanitize=leak -fno-omit-frame-pointer -g)
-    target_link_options(arc_tester PRIVATE -fsanitize=address -fsanitize=leak)
+    if (NOT WIN32)
+        target_compile_options(arc_tester PRIVATE -fsanitize=address -fsanitize=leak -fno-omit-frame-pointer -g)
+        target_link_options(arc_tester PRIVATE -fsanitize=address -fsanitize=leak)
+    endif()
 
     # unit tests (gtest)
 
@@ -55,6 +57,12 @@ if (ARC_BUILD_TESTS)
         test/Task.cpp
     )
     target_link_libraries(arc_tests PRIVATE arc gtest_main GeodeResult)
+
+    if (NOT WIN32)
+        target_compile_options(arc_tests PRIVATE -fsanitize=address -fsanitize=leak -fno-omit-frame-pointer -g)
+        target_link_options(arc_tests PRIVATE -fsanitize=address -fsanitize=leak)
+    endif()
+
     include(GoogleTest)
     gtest_discover_tests(arc_tests)
 endif()

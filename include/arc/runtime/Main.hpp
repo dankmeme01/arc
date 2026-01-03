@@ -9,14 +9,14 @@ inline int _mainWrapper(int argc, char** argv, auto mainFut, std::optional<size_
     const char** cargv = const_cast<const char**>(argv);
     int ret = 0;
 
-    arc::Runtime runtime{numThreads.value_or(std::thread::hardware_concurrency())};
+    auto runtime = arc::Runtime::create(numThreads.value_or(std::thread::hardware_concurrency()));
 
     auto runVoidMain = [&](auto&& fut) {
-        runtime.blockOn(std::forward<std::decay_t<decltype(fut)>>(fut));
+        runtime->blockOn(std::forward<std::decay_t<decltype(fut)>>(fut));
     };
 
     auto runNVMain = [&](auto&& fut) {
-        decltype(auto) mainRet = runtime.blockOn(std::forward<std::decay_t<decltype(fut)>>(fut));
+        decltype(auto) mainRet = runtime->blockOn(std::forward<std::decay_t<decltype(fut)>>(fut));
 
         if constexpr (std::is_convertible_v<decltype(mainRet), int>) {
             ret = static_cast<int>(mainRet);

@@ -4,6 +4,7 @@
 #include <asp/time/Instant.hpp>
 #include <asp/sync/SpinLock.hpp>
 #include <map>
+#include <memory>
 
 namespace arc {
 
@@ -22,7 +23,7 @@ using TimerQueue = std::map<TimerEntryKey, Waker, std::less<TimerEntryKey>>;
 
 class TimeDriver {
 public:
-    TimeDriver(Runtime* runtime);
+    TimeDriver(std::weak_ptr<Runtime> runtime);
     ~TimeDriver();
 
     uint64_t addEntry(asp::time::Instant expiry, Waker waker);
@@ -32,7 +33,7 @@ private:
     friend class Runtime;
 
     std::atomic<uint64_t> m_nextTimerId{1};
-    Runtime* m_runtime;
+    std::weak_ptr<Runtime> m_runtime;
     asp::SpinLock<TimerQueue> m_timers;
 
     void doWork();

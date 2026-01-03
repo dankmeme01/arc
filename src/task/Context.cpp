@@ -19,7 +19,8 @@ Runtime* TaskContext::runtime() {
 
     auto task = this->currentTask();
     if (task) {
-        return task->m_runtime;
+        auto rt = task->m_runtime.lock();
+        return rt.get();
     }
 
     return nullptr;

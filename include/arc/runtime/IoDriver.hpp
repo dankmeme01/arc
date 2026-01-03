@@ -66,7 +66,7 @@ struct RegisteredIo {
     asp::SpinLock<std::vector<RegisteredIoWaiter>> waiters; // TODO: slab kind of thing
     std::atomic<bool> anyWrite{false}, anyRead{false};
     std::atomic<uint8_t> readiness{0};
-    IoDriver* driver = nullptr;
+    std::weak_ptr<Runtime> runtime;
 };
 
 struct Registration {
@@ -86,7 +86,7 @@ struct Registration {
 
 class IoDriver {
 public:
-    IoDriver(Runtime* runtime);
+    IoDriver(std::weak_ptr<Runtime> runtime);
     ~IoDriver();
 
     Registration registerIo(SockFd fd, Interest interest);
@@ -95,7 +95,7 @@ public:
 private:
     friend class Runtime;
 
-    Runtime* m_runtime;
+    std::weak_ptr<Runtime> m_runtime;
     std::atomic<uint64_t> m_tick{0};
     asp::Mutex<std::vector<std::shared_ptr<RegisteredIo>>> m_ios;
     asp::SpinLock<std::vector<Registration>> m_ioPendingQueue;

@@ -2,9 +2,9 @@
 #include <gtest/gtest.h>
 
 TEST(task, SpawnAwaitResult) {
-    arc::Runtime runtime{1};
+    auto runtime = arc::Runtime::create(1);
 
-    int result = runtime.blockOn([] -> arc::Future<int> {
+    int result = runtime->blockOn([] -> arc::Future<int> {
         auto task = arc::spawn([] -> arc::Future<int> {
             co_return 42;
         }());
@@ -16,9 +16,9 @@ TEST(task, SpawnAwaitResult) {
 }
 
 TEST(task, SpawnBlockingResult) {
-    arc::Runtime runtime{1};
+    auto runtime = arc::Runtime::create(1);
 
-    int result = runtime.blockOn([] -> arc::Future<int> {
+    int result = runtime->blockOn([] -> arc::Future<int> {
         auto task = arc::spawnBlocking<int>([] {
             return 42;
         });

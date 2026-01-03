@@ -18,6 +18,7 @@
 #include <utility>
 #include <atomic>
 #include <limits>
+#include <memory>
 #include <cstdlib>
 #include <optional>
 #include <stdexcept>
@@ -49,7 +50,7 @@ struct TaskVtable {
 
 struct TaskBase {
     std::atomic<uint64_t> m_state{TASK_SCHEDULED | TASK_REFERENCE | TASK_TASK};
-    Runtime* m_runtime;
+    std::weak_ptr<Runtime> m_runtime;
     const TaskVtable* m_vtable;
     std::optional<Waker> m_awaiter;
 
@@ -145,10 +146,10 @@ struct Task : TaskTypedBase<typename P::Output> {
     ManuallyDrop<P> m_future;
     bool m_droppedFuture = false;
 
-    static Task* create(Runtime* runtime, P&& fut) {
+    static Task* create(std::weak_ptr<Runtime> runtime, P&& fut) {
         auto task = new Task{
             {{
-                .m_runtime = runtime,
+                .m_runtime = std::move(runtime),
                 .m_vtable = &vtable,
             }},
             std::move(fut),
@@ -174,7 +175,10 @@ struct Task : TaskTypedBase<typename P::Output> {
     static void vDestroy(void* self) {
         TRACE("[Task {}] destroying", self);
         auto task = static_cast<Task*>(self);
-        task->m_runtime->removeTask(task);
+        auto rt = task->m_runtime.lock();
+        if (rt) {
+            rt->removeTask(task);
+        }
         delete task;
     }
 
@@ -257,7 +261,9 @@ struct Task : TaskTypedBase<typename P::Output> {
 
         TRACE("[Task {}] running, state: {}", (void*)this, state);
 
-        ctx().m_runtime = this->m_runtime;
+        auto rt = this->m_runtime.lock();
+        ARC_DEBUG_ASSERT(rt, "task runtime is null");
+        ctx().m_runtime = rt.get();
 
         // update task state
         while (true) {

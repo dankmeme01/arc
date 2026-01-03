@@ -49,7 +49,6 @@ private:
 
     std::atomic<size_t> m_permits;
     asp::Mutex<WaitList<AcquireAwaiter>> m_waiters;
-    Runtime* m_runtime = nullptr;
 
     /// Acquires from 0 to n permits, returning the acquired amount
     size_t tryAcquireOrRegister(size_t maxp, AcquireAwaiter* awaiter);

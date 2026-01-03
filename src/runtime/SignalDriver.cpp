@@ -4,7 +4,7 @@
 
 namespace arc {
 
-SignalDriver::SignalDriver(Runtime* runtime) : m_runtime(runtime) {}
+SignalDriver::SignalDriver(std::weak_ptr<Runtime> runtime) : m_runtime(std::move(runtime)) {}
 
 SignalDriver::~SignalDriver() {}
 

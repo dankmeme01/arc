@@ -129,13 +129,13 @@ void Registration::clearReadiness(Interest interest) {
     rio->readiness.store(newReady, release);
 }
 
-IoDriver::IoDriver(Runtime* runtime) : m_runtime(runtime) {}
+IoDriver::IoDriver(std::weak_ptr<Runtime> runtime) : m_runtime(std::move(runtime)) {}
 
 IoDriver::~IoDriver() {}
 
 Registration IoDriver::registerIo(SockFd fd, Interest interest) {
     auto rio = std::make_shared<RegisteredIo>();
-    rio->driver = this;
+    rio->runtime = m_runtime;
     rio->fd = fd;
 
     trace("IoDriver: registered fd {}", fmtFd(fd));

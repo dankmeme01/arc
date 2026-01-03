@@ -205,12 +205,12 @@ TEST(mpsc, MoveFuture) {
 }
 
 TEST(mpsc, LargeVolumeSmallChannel) {
-    arc::Runtime rt{4};
+    auto rt = arc::Runtime::create(4);
     auto [tx, rx] = mpsc::channel<int>(8);
     auto [outTx, outRx] = mpsc::channel<uint64_t>(1);
 
 
-    auto [a, b] = rt.blockOn([&](this auto self) -> arc::Future<std::pair<uint64_t, uint64_t>> {
+    auto [a, b] = rt->blockOn([&](this auto self) -> arc::Future<std::pair<uint64_t, uint64_t>> {
         // spawn consumer thread
         arc::spawn([outTx, rx = std::move(rx)](this auto self) -> arc::Future<> {
             uint64_t sum = 0;
@@ -244,12 +244,12 @@ TEST(mpsc, LargeVolumeSmallChannel) {
 
 
 TEST(mpsc, LargeVolumeLargeChannel) {
-    arc::Runtime rt{4};
+    auto rt = arc::Runtime::create(4);
     auto [tx, rx] = mpsc::channel<int>(8192);
     auto [outTx, outRx] = mpsc::channel<uint64_t>(1);
 
     // produce a large amount of data
-    auto [a, b] = rt.blockOn([&](this auto self) -> arc::Future<std::pair<uint64_t, uint64_t>> {
+    auto [a, b] = rt->blockOn([&](this auto self) -> arc::Future<std::pair<uint64_t, uint64_t>> {
         // spawn consumer thread
         arc::spawn([outTx, rx = std::move(rx)](this auto self) -> arc::Future<> {
             uint64_t sum = 0;
