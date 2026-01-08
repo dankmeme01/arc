@@ -4,6 +4,7 @@
 #include <arc/util/Assert.hpp>
 #include <arc/util/Trace.hpp>
 #include <fmt/format.h>
+#include <asp/collections/SmallVec.hpp>
 
 #ifdef _WIN32
 # include <winsock2.h>
@@ -239,7 +240,7 @@ void IoDriver::doWork() {
 
     trace("IoDriver: poll returned {} fds", ret);
 
-    static thread_local std::vector<Waker> toWake;
+    asp::SmallVec<Waker, 32> toWake;
 
     for (int i = 0; i < count; i++) {
         auto& rio = (*ios)[indices[i]];
@@ -274,7 +275,6 @@ void IoDriver::doWork() {
     for (auto& waker : toWake) {
         waker.wake();
     }
-    toWake.clear();
 }
 
 }
