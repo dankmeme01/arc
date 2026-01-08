@@ -30,8 +30,12 @@ struct ARC_NODISCARD Timeout : PollableBase<Timeout<Fut>, Output> {
         }
     }
 
-    Timeout(Timeout&& other) noexcept {
-        *this = std::move(other);
+    Timeout(Timeout&& other) noexcept :
+        m_future(std::move(other.m_future)),
+        m_expiry(other.m_expiry),
+        m_id(other.m_id)
+    {
+        other.m_id = 0;
     }
 
     Timeout& operator=(Timeout&& other) noexcept {
