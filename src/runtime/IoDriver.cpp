@@ -52,19 +52,28 @@ Interest Registration::pollReady(Interest interest, uint64_t& outId) {
         return readiness;
     }
 
-    // if the id is nonzero, assume we are already registered
+    // if the id is nonzero, assume we are already registered, so don't do extra work
     if (outId != 0) {
         return 0;
     }
 
-    outId = nextId();
-
+    // lock the wait list
     auto waiters = rio->waiters.lock();
+
+    // check for a lost wakeup now that we are holding the lock
+    curr = rio->readiness.load(acquire);
+    readiness = (curr & static_cast<uint8_t>(interest));
+    if (readiness != 0) {
+        return readiness;
+    }
+
+    outId = nextId();
     waiters->push_back(RegisteredIoWaiter {
         .waker = ctx().m_waker ? std::make_optional(ctx().m_waker->clone()) : std::nullopt,
         .id = outId,
         .interest = interest,
     });
+
     waiters.unlock();
 
     trace("IoDriver: added waiter for fd {}: id {}, interest {}", fmtFd(rio->fd), outId, static_cast<uint8_t>(interest));
