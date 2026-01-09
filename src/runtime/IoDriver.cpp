@@ -229,11 +229,11 @@ void IoDriver::doWork() {
         auto msg = fmt::format("Error in IO driver: poll failed: {}", WSAGetLastError());
 #endif
 
-        arc::printError("{}", msg);
-        arc::printError("Polled fds:");
+        arc::printWarn("{}", msg);
+        arc::printWarn("Polled fds:");
         for (int i = 0; i < count; i++) {
             auto pfd = fds[i].fd;
-            arc::printError(" - {}", fmtFd(pfd));
+            arc::printWarn(" - {}", fmtFd(pfd));
         }
         return;
     }
