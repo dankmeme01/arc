@@ -139,7 +139,9 @@ void Registration::clearReadiness(Interest interest) {
     rio->readiness.store(newReady, release);
 }
 
-IoDriver::IoDriver(std::weak_ptr<Runtime> runtime) : m_runtime(std::move(runtime)) {}
+IoDriver::IoDriver(std::weak_ptr<Runtime> runtime) : m_runtime(std::move(runtime)) {
+    ARC_DEBUG_ASSERT(!m_runtime.expired());
+}
 
 IoDriver::~IoDriver() {}
 
@@ -157,9 +159,6 @@ Registration IoDriver::registerIo(SockFd fd, Interest interest) {
 }
 
 void IoDriver::unregisterIo(const std::shared_ptr<RegisteredIo>& rio) {
-    auto rt = ctx().runtime();
-    if (rt && rt->isShuttingDown()) return;
-
     auto ios = m_ios.lock();
 
     auto it = std::find(ios->begin(), ios->end(), rio);

@@ -31,14 +31,7 @@ public:
     );
 
     // Internal constructor, use `create` instead
-    Runtime(
-        ctor_tag,
-        size_t workers,
-        bool timeDriver,
-        bool ioDriver,
-        bool signalDriver
-    );
-
+    Runtime(ctor_tag, size_t workers);
     ~Runtime();
 
     /// Get the thread-local runtime context, returns nullptr if not inside a runtime.
@@ -100,6 +93,7 @@ private:
         size_t id;
     };
 
+    size_t m_workerCount;
     std::atomic<bool> m_stopFlag{false};
     std::optional<TimeDriver> m_timeDriver;
     std::optional<SignalDriver> m_signalDriver;
@@ -120,6 +114,7 @@ private:
     std::atomic<size_t> m_freeBlockingWorkers{0};
     std::atomic<size_t> m_nextBlockingWorkerId{0};
 
+    void init(bool timeDriver, bool ioDriver, bool signalDriver);
     void shutdown();
 
     void workerLoop(WorkerData& data);

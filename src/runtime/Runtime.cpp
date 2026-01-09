@@ -20,13 +20,21 @@ std::shared_ptr<Runtime> Runtime::create(
     bool ioDriver,
     bool signalDriver
 ) {
-    return std::make_shared<Runtime>(ctor_tag{}, workers, timeDriver, ioDriver, signalDriver);
+    auto rt = std::make_shared<Runtime>(ctor_tag{}, workers);
+    rt->init(timeDriver, ioDriver, signalDriver);
+    return rt;
 }
 
-Runtime::Runtime(ctor_tag, size_t workers, bool timeDriver, bool ioDriver, bool signalDriver) : m_stopFlag(false) {
-    workers = std::clamp<size_t>(workers, 1, 128);
+Runtime::Runtime(ctor_tag, size_t workers)
+    : m_stopFlag(false),
+      m_workerCount(std::clamp<size_t>(workers, 1, 128)),
+      m_taskDeadline(Duration::fromMillis((uint64_t)(5.f * std::powf(m_workerCount, 0.9f))))
+{
+}
 
-    m_taskDeadline = Duration::fromMillis((uint64_t)(5.f * std::powf(workers, 0.9f)));
+void Runtime::init(bool timeDriver, bool ioDriver, bool signalDriver) {
+    // most of the initialization is deferred until here,
+    // because weak_from_this() does not work inside constructor
 
     if (timeDriver) {
         m_timeDriver.emplace(weak_from_this());
@@ -40,14 +48,14 @@ Runtime::Runtime(ctor_tag, size_t workers, bool timeDriver, bool ioDriver, bool 
         m_signalDriver.emplace(weak_from_this());
     }
 
-    m_workers.reserve(workers);
-    for (size_t i = 0; i < workers; ++i) {
+    m_workers.reserve(m_workerCount);
+    for (size_t i = 0; i < m_workerCount; ++i) {
         m_workers.emplace_back(WorkerData{
             .id = i,
         });
     }
 
-    for (size_t i = 0; i < workers; ++i) {
+    for (size_t i = 0; i < m_workerCount; ++i) {
         auto& worker = m_workers[i];
         worker.thread = std::thread([this, &worker] {
             asp::_setThreadName(fmt::format("arc-worker-{}", worker.id));
