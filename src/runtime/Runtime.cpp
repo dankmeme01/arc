@@ -134,7 +134,7 @@ void Runtime::workerLoop(WorkerData& data) {
     uint64_t timerTick = 0;
     uint64_t ioTick = 0;
 
-    while (true) {
+    while (!m_stopFlag.load(::acquire)) {
         auto now = Instant::now();
 
         // every once in a while, run timer and io drivers

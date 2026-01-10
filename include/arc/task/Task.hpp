@@ -262,7 +262,8 @@ struct Task : TaskTypedBase<typename P::Output> {
         TRACE("[Task {}] running, state: {}", (void*)this, state);
 
         auto rt = this->m_runtime.lock();
-        ARC_DEBUG_ASSERT(rt, "task runtime is null");
+        if (!rt) return false; // might happen if the runtime is shutting down
+
         ctx().m_runtime = rt.get();
 
         // update task state
