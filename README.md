@@ -159,7 +159,7 @@ arc::Future<> asyncMain() {
 
         // notify the other task and wait a bit before unlocking
         fmt::println("Notifying task");
-        co_await notify.notified();
+        notify.notifyOne();
         co_await arc::sleep(Duration::fromSecs(1));
 
         fmt::println("Unlocking mutex in main");
