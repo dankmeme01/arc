@@ -21,7 +21,10 @@ Interval::Interval(Duration period)
 
 Interval::~Interval() {
     if (m_id != 0) {
-        ctx().runtime()->timeDriver().removeEntry(m_current, m_id);
+        auto rt = ctx().runtime();
+        if (!rt->isShuttingDown()) {
+            rt->timeDriver().removeEntry(m_current, m_id);
+        }
     }
 }
 

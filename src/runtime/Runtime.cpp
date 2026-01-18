@@ -329,6 +329,11 @@ void Runtime::shutdown() {
     m_workers.clear();
     m_blockingTasks.clear();
 
+    // free all drivers
+    m_timeDriver.reset();
+    m_ioDriver.reset();
+    m_signalDriver.reset();
+
     // deallocate all tasks
     ctx().m_runtime = this;
 

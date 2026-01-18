@@ -27,7 +27,10 @@ bool Sleep::poll() {
 
 Sleep::~Sleep() {
     if (m_id != 0) {
-        ctx().runtime()->timeDriver().removeEntry(m_expiry, m_id);
+        auto rt = ctx().runtime();
+        if (!rt->isShuttingDown()) {
+            rt->timeDriver().removeEntry(m_expiry, m_id);
+        }
     }
 }
 
