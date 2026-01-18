@@ -307,9 +307,16 @@ bool Runtime::isShuttingDown() const noexcept {
     return m_stopFlag.load(::acquire);
 }
 
+void Runtime::safeShutdown() {
+    this->shutdown();
+}
+
 void Runtime::shutdown() {
+    if (m_stopFlag.exchange(true, ::acq_rel)) {
+        return;
+    }
+
     TRACE("[Runtime] shutting down");
-    m_stopFlag.store(true, ::release);
     m_cv.notify_all();
     m_blockingCv.notify_all();
 

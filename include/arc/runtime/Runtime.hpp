@@ -83,6 +83,11 @@ public:
 
     bool isShuttingDown() const noexcept;
 
+    /// Safely shuts down the runtime and blocks until it is complete.
+    /// A runtime can often be shutdown by simply dropping all references to it,
+    /// but this method ensures all tasks and worker threads are immediately destroyed before returning.
+    void safeShutdown();
+
 private:
     template <Pollable P>
     friend struct Task;
