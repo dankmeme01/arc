@@ -62,6 +62,8 @@ inline int _mainWrapper(int argc, char** argv, auto mainFut, std::optional<size_
         static_assert(!std::is_same_v<decltype(mainFut), decltype(mainFut)>, "main function has invalid signature, see readme");
     }
 
+    runtime->safeShutdown();
+
     trace("arc main wrapper exiting with code {}", ret);
 
     return ret;
