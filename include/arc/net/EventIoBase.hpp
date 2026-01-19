@@ -89,20 +89,8 @@ protected:
     }
 
     std::optional<NetResult<size_t>> pollRead(uint64_t& id, void* buf, size_t size, PollReadFn readFn) {
-        while (true) {
-            auto ready = m_io.pollReady(Interest::Readable | Interest::Error, id);
-            if (ready == 0) {
-                return std::nullopt;
-            } else if (ready & Interest::Error) {
-                if (auto err = this->takeOrClearError()) {
-                    return Err(*err);
-                } else {
-                    continue;
-                }
-            }
-
+        return this->pollCustom<size_t>(id, Interest::Readable, [&] -> NetResult<std::optional<size_t>> {
             auto res = readFn(buf, size);
-
             if (res.isOk()) {
                 return Ok(res.unwrap());
             }
@@ -110,25 +98,15 @@ protected:
             auto err = res.unwrapErr();
             if (err == qsox::Error::WouldBlock) {
                 m_io.clearReadiness(Interest::Readable);
+                return Ok(std::nullopt);
             } else {
                 return Err(err);
             }
-        }
+        });
     }
 
     std::optional<NetResult<size_t>> pollWrite(uint64_t& id, const void* buf, size_t size, PollWriteFn writeFn) {
-        while (true) {
-            auto ready = m_io.pollReady(Interest::Writable | Interest::Error, id);
-            if (ready == 0) {
-                return std::nullopt;
-            } else if (ready & Interest::Error) {
-                if (auto err = this->takeOrClearError()) {
-                    return Err(*err);
-                } else {
-                    continue;
-                }
-            }
-
+        return this->pollCustom<size_t>(id, Interest::Writable, [&] -> NetResult<std::optional<size_t>> {
             auto res = writeFn(buf, size);
 
             if (res.isOk()) {
@@ -144,9 +122,40 @@ protected:
 
             auto err = res.unwrapErr();
             if (err == qsox::Error::WouldBlock) {
-                m_io.clearReadiness(Interest::Writable);
+                m_io.clearReadiness(Interest::Readable);
+                return Ok(std::nullopt);
             } else {
                 return Err(err);
+            }
+        });
+    }
+
+    /// A version of pollRead/pollWrite that allows you to more manually manage socket readiness.
+    /// Does not clear readiness and simply passes on the result of the invoked function when ready.
+    /// The function must return a NetResult<optional<T>>, if the inner value is non null, then the function immediately returns.
+    /// Otherwise it loops, then calls pollReady and your function again.
+    template <typename T = std::monostate>
+    std::optional<NetResult<T>> pollCustom(uint64_t& id, Interest interest, auto fn) {
+        while (true) {
+            auto ready = m_io.pollReady(interest | Interest::Error, id);
+            if (ready == 0) {
+                return std::nullopt;
+            } else if (ready & Interest::Error) {
+                if (auto err = this->takeOrClearError()) {
+                    return Err(*err);
+                } else {
+                    continue;
+                }
+            }
+
+            auto res = fn();
+            if (res.isErr()) {
+                return Err(std::move(res).unwrapErr());
+            }
+
+            auto opt = std::move(res).unwrap();
+            if (opt.has_value()) {
+                return Ok(std::move(*opt));
             }
         }
     }

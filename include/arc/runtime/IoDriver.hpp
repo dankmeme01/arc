@@ -27,6 +27,10 @@ struct Interest {
         return Interest(static_cast<Type>(m_type | other.m_type));
     }
 
+    Interest operator|(Type other) const {
+        return Interest(static_cast<Type>(m_type | other));
+    }
+
     Interest operator&(uint8_t other) const {
         return Interest(static_cast<Type>(m_type & other));
     }
