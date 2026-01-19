@@ -53,11 +53,6 @@ Interest Registration::pollReady(Interest interest, uint64_t& outId) {
         return readiness;
     }
 
-    // if the id is nonzero, assume we are already registered, so don't do extra work
-    if (outId != 0) {
-        return 0;
-    }
-
     // lock the wait list
     auto waiters = rio->waiters.lock();
 
@@ -67,6 +62,22 @@ Interest Registration::pollReady(Interest interest, uint64_t& outId) {
     if (readiness != 0) {
         return readiness;
     }
+
+    // if the id is nonzero, assume we are already registered,
+    // so only make sure that our waker is non null
+    if (outId != 0) {
+        auto it = std::find_if(waiters->begin(), waiters->end(), [outId](const RegisteredIoWaiter& waiter) {
+            return waiter.id == outId;
+        });
+
+        ARC_ASSERT(it != waiters->end(), "IoDriver: pollReady called with invalid registration id");
+        if (!it->waker) {
+            it->waker = ctx().m_waker ? std::make_optional(ctx().m_waker->clone()) : std::nullopt;
+        }
+
+        return 0;
+    }
+
 
     outId = nextId();
     waiters->push_back(RegisteredIoWaiter {
