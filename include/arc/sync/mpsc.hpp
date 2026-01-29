@@ -2,145 +2,38 @@
 #include <arc/future/Pollable.hpp>
 #include <arc/task/Context.hpp>
 #include <arc/task/Waker.hpp>
-#include <arc/util/Assert.hpp>
-#include <arc/util/Result.hpp>
 #include <arc/util/Trace.hpp>
 #include <asp/sync/SpinLock.hpp>
-#include <Geode/Result.hpp>
+#include "ChannelBase.hpp"
 #include <atomic>
 #include <memory>
-#include <deque>
 
 namespace arc::mpsc {
 
-struct ClosedError {};
-
-template <typename T>
-using RecvResult = Result<T, ClosedError>;
-template <typename T>
-using SendResult = Result<void, T>;
+using namespace arc::chan;
 
 template <typename T>
 struct SendAwaiter;
 template <typename T>
 struct RecvAwaiter;
-
-enum class TrySendOutcome {
-    Success,
-    Full,
-    Closed
-};
-
-enum class TryRecvOutcome {
-    Success,
-    Empty,
-    Closed
-};
+template <typename T>
+using Storage = MpscStorage<T, SendAwaiter<T>, RecvAwaiter<T>>;
 
 template <typename T>
-struct ChannelData {
-    explicit ChannelData(std::optional<size_t> capacity) : capacity(capacity) {}
-
-    std::deque<T> queue;
-    std::deque<SendAwaiter<T>*> sendWaiters;
-    RecvAwaiter<T>* recvWaiter = nullptr;
-    std::optional<size_t> capacity;
-
-    bool hasCapacity() const noexcept {
-        // check for either a receiver, an unbounded channel, or free space in the queue
-        return recvWaiter || !capacity || queue.size() < *capacity;
-    }
-
-    void clear() {
-        queue.clear();
-    }
-
-    void registerSendWaiter(SendAwaiter<T>* waiter) {
-        sendWaiters.push_back(waiter);
-    }
-
-    void registerRecvWaiter(RecvAwaiter<T>* waiter) {
-        recvWaiter = waiter;
-    }
+struct ChannelData : Storage<T> {
+    using Storage<T>::Storage;
 
     void wakeAll() {
-        if (recvWaiter) {
-            recvWaiter->m_waker->wake();
+        if (this->recvWaiter) {
+            this->recvWaiter->m_waker->wake();
         }
 
-        for (auto& waiter : sendWaiters) {
+        for (auto& waiter : this->sendWaiters) {
             waiter->m_waker->wake();
         }
 
-        recvWaiter = nullptr;
-        sendWaiters.clear();
-    }
-
-    /// Pops and returns a value from the queue if one is present.
-    /// Unblocks a waiting sender if applicable.
-    std::optional<T> pop() {
-        if (!queue.empty()) {
-            T value = std::move(queue.front());
-            queue.pop_front();
-
-            // before returning, wake one waiting sender
-            this->unblockSender();
-
-            return value;
-        }
-
-        // the queue is empty, let's see if we can snatch a value directly from a sender
-        return this->takeFromSender();
-    }
-
-    /// Attempts to push a value directly into the receiver's slot if one is present,
-    /// otherwise attempts to push into the queue.
-    /// If everything fails, returns false.
-    bool push(T& value, bool back = true) {
-        if (this->deliverToReceiver(value)) {
-            return true;
-        }
-
-        // push into the queue if possible
-        if (!capacity || queue.size() < *capacity) {
-            if (back) {
-                queue.push_back(std::move(value));
-            } else {
-                queue.push_front(std::move(value));
-            }
-            return true;
-        }
-
-        return false; // either full or zero capacity; no receiver waiting so can't deliver
-    }
-
-private:
-    bool deliverToReceiver(T& value) {
-        if (recvWaiter && recvWaiter->tryDeliver(value)) {
-            recvWaiter = nullptr;
-            return true;
-        }
-
-        return false;
-    }
-
-    /// Unblocks a sender, takes their value and pushes to the queue
-    void unblockSender() {
-        if (auto val = this->takeFromSender()) {
-            queue.push_back(std::move(*val));
-        }
-    }
-
-    std::optional<T> takeFromSender() {
-        if (sendWaiters.empty()) {
-            return std::nullopt;
-        }
-
-        auto waiter = sendWaiters.front();
-        sendWaiters.pop_front();
-
-        // in theory this can never fail?
-        return waiter->tryTake();
+        this->recvWaiter = nullptr;
+        this->sendWaiters.clear();
     }
 };
 
@@ -334,6 +227,7 @@ struct ARC_NODISCARD SendAwaiter : PollableBase<SendAwaiter<T>, SendResult<T>> {
 
 private:
     friend struct ChannelData<T>;
+    friend struct MpscStorage<T, SendAwaiter<T>, RecvAwaiter<T>>;
     friend struct Shared<T>;
     std::shared_ptr<Shared<T>> m_data;
     std::optional<Waker> m_waker;
@@ -488,6 +382,7 @@ struct ARC_NODISCARD RecvAwaiter : PollableBase<RecvAwaiter<T>, RecvResult<T>> {
 
 private:
     friend struct ChannelData<T>;
+    friend struct MpscStorage<T, SendAwaiter<T>, RecvAwaiter<T>>;
     friend struct Shared<T>;
     std::shared_ptr<Shared<T>> m_data;
     std::optional<Waker> m_waker;
@@ -512,8 +407,15 @@ struct Receiver {
     Receiver(std::shared_ptr<Shared<T>> data) : m_data(std::move(data)) {}
     Receiver(const Receiver&) = delete;
     Receiver& operator=(const Receiver&) = delete;
-    Receiver(Receiver&&) = default;
-    Receiver& operator=(Receiver&&) = default;
+    Receiver(Receiver&&) noexcept = default;
+
+    Receiver& operator=(Receiver&& other) noexcept {
+        if (this != &other) {
+            if (m_data) m_data->receiverDropped();
+            m_data = std::move(other.m_data);
+        }
+        return *this;
+    }
 
     ~Receiver() {
         if (m_data) m_data->receiverDropped();
