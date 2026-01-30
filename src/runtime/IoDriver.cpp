@@ -56,8 +56,6 @@ void IoWaiter::wake() {
 Registration::Registration(std::shared_ptr<IoEntry> rio) : rio(std::move(rio)) {}
 
 Interest Registration::pollReady(Interest interest, uint64_t& outId) {
-    ARC_ASSERT(interest != Interest::ReadWrite);
-
     // not in a runtime?
     if (!ctx().m_runtime) {
         return 0;
@@ -198,7 +196,7 @@ void IoDriver::unregisterIo(SockFd fd) {
 
 void IoDriver::doWork() {
     ARC_POLLFD fds[64];
-    uint16_t indices[64];
+    IoEntry* entries[64];
     int count = 0;
 
     auto ios = m_ios.lock();
@@ -213,9 +211,8 @@ void IoDriver::doWork() {
         pending->clear();
     }
 
-    for (size_t i = 0; i < std::min<size_t>(ios->size(), 64); i++) {
-        auto& rio = (*ios)[i];
-        ARC_DEBUG_ASSERT(rio);
+    for (auto& [fd, rio] : *ios) {
+        ARC_DEBUG_ASSERT(rio && fd == rio->fd);
 
         bool read = rio->anyRead.load(std::memory_order::acquire);
         bool write = rio->anyWrite.load(std::memory_order::acquire);
@@ -232,7 +229,7 @@ void IoDriver::doWork() {
         if (read) fds[count].events |= POLLIN;
         if (write) fds[count].events |= POLLOUT;
 
-        indices[count] = i;
+        entries[count] = rio.get();
         count++;
     }
 
@@ -269,7 +266,7 @@ void IoDriver::doWork() {
     trace("IoDriver: poll returned {} fds", ret);
 
     for (int i = 0; i < count; i++) {
-        auto& rio = (*ios)[indices[i]];
+        auto rio = entries[i];
         auto& pfd = fds[i];
 
         Interest ready{};
