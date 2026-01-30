@@ -31,7 +31,7 @@ void TaskContext::wake() {
 }
 
 Waker TaskContext::cloneWaker() {
-    ARC_DEBUG_ASSERT(m_waker, "no current waker");
+    ARC_ASSERT(m_waker, "no current waker");
     return m_waker->clone();
 }
 

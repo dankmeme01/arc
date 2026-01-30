@@ -61,6 +61,11 @@ struct IoWaiter {
     IoWaiter(Waker waker, uint64_t id, Interest interest);
     IoWaiter(std23::move_only_function<void()> eventCallback, uint64_t id, Interest interest);
 
+    IoWaiter(IoWaiter&&) noexcept = default;
+    IoWaiter& operator=(IoWaiter&&) noexcept = default;
+    IoWaiter(const IoWaiter&) = delete;
+    IoWaiter& operator=(const IoWaiter&) = delete;
+
     bool willWake(const Waker& other) const;
     bool satisfiedBy(Interest ready) const;
     void wake();
@@ -93,6 +98,9 @@ struct Registration {
     Registration(const Registration&) = default;
     Registration& operator=(const Registration&) = default;
 
+    /// Polls the IO for readiness, if not ready then registers the task, cloning the waker,
+    /// and returning the registration ID. If outId is set to a non-zero value, you must call `unregister`.
+    /// Once woken up, you must call `unregister` or `pollReady` again to be woken up again.
     Interest pollReady(Interest interest, uint64_t& outId);
     void unregister(uint64_t id);
     void clearReadiness(Interest interest);

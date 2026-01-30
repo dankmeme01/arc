@@ -49,7 +49,11 @@ bool IoWaiter::satisfiedBy(Interest ready) const {
 }
 
 void IoWaiter::wake() {
-    if (waker) waker->wake();
+    if (waker) {
+        // wake consumes the waker, so set it back to null
+        waker->wake();
+        waker.reset();
+    }
     if (eventCallback) eventCallback();
 }
 
