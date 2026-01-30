@@ -147,10 +147,17 @@ struct Shared {
         m_data.lock()->recvWaiter = nullptr;
     }
 
-    void drain() {
+    std::deque<T> drain() {
+        std::deque<T> empty;
         auto data = m_data.lock();
-        data->clear();
+        empty.swap(data->queue);
+
         data->wakeAll();
+        return empty;
+    }
+
+    bool empty() const {
+        return m_data.lock()->queue.empty();
     }
 
 private:
@@ -429,8 +436,12 @@ struct Receiver {
         return m_data->tryRecv();
     }
 
-    void drain() {
-        m_data->drain();
+    std::deque<T> drain() {
+        return m_data->drain();
+    }
+
+    bool empty() const {
+        return m_data->empty();
     }
 
 private:
