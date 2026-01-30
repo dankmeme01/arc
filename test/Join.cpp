@@ -32,5 +32,32 @@ TEST(join, MpscMultiTxJoin) {
     for (int i = 0; i < 2; i++) {
         EXPECT_TRUE(output[i].isOk());
     }
+}
 
+TEST(join, JoinDyn) {
+    Waker waker = Waker::noop();
+    ctx().m_waker = &waker;
+
+    arc::Notify notify;
+
+    std::vector<Future<int>> futures;
+    for (size_t i = 0; i < 5; i++) {
+        futures.push_back([&](this auto self) -> Future<int> {
+            co_await notify.notified();
+            co_return 42;
+        }());
+    }
+
+    auto joined = arc::joinAll(std::move(futures));
+    EXPECT_FALSE(joined.poll());
+
+    notify.notifyAll();
+
+    auto pollRes = joined.poll();
+    EXPECT_TRUE(pollRes.has_value());
+    auto output = std::move(pollRes).value();
+    EXPECT_EQ(output.size(), 5);
+    for (const auto& val : output) {
+        EXPECT_EQ(val, 42);
+    }
 }

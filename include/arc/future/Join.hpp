@@ -21,6 +21,8 @@ struct JoinAllFuture {
 private:
     template <typename FRet, typename... F>
     friend struct JoinAll;
+    template <typename FRet, typename Fut>
+    friend struct JoinAllDyn;
 
     Future<Output> future;
     std::optional<StoredOutput> output;
@@ -99,6 +101,57 @@ private:
     std::optional<std::tuple<Futures...>> m_futures;
 };
 
+template <typename FRet, typename Fut>
+struct ARC_NODISCARD JoinAllDyn : PollableBase<JoinAllDyn<FRet, Fut>, std::vector<FRet>> {
+    using JoinAllOutput = std::vector<FRet>;
+    using TransformedFut = JoinAllFuture<FRet>;
+
+    explicit JoinAllDyn(std::vector<Fut>&& futs, FRet*) {
+        for (auto& fut : futs) {
+            m_futures.emplace_back(TransformedFut{std::move(fut)});
+        }
+        futs.clear();
+    }
+
+    std::optional<JoinAllOutput> poll() {
+        bool allDone = true;
+
+        for (size_t i = 0; i < m_futures.size(); i++) {
+            auto& fut = m_futures[i];
+
+            trace("[JoinAll] checking future {}, active: {}", i, !fut.output.has_value());
+
+            if (!fut.output) {
+                auto res = fut.future.vPoll();
+                if (res) {
+                    fut.output = fut.future.getOutput();
+                    trace("[JoinAll] future {} finished!", i);
+                } else {
+                    allDone = false;
+                }
+            }
+        }
+
+        if (!allDone) {
+            return std::nullopt;
+        }
+
+        JoinAllOutput out;
+        out.reserve(m_futures.size());
+
+        for (auto& fut : m_futures) {
+            if constexpr (!TransformedFut::IsVoid) {
+                out.emplace_back(std::move(*fut.output));
+            }
+        }
+
+        return std::make_optional<JoinAllOutput>(std::move(out));
+    }
+
+private:
+    std::vector<TransformedFut> m_futures;
+};
+
 template <typename F, typename... Rest>
 struct MultiFutureExtractRet {
     using type = typename FutureTraits<std::decay_t<F>>::Output;
@@ -116,5 +169,14 @@ auto joinAll(Futures... futs) {
     return joinAll;
 }
 
+template <typename Fut>
+auto joinAll(std::vector<Fut> futs) {
+    using Output = typename FutureTraits<std::decay_t<Fut>>::Output;
+    using JoinAllFuture = JoinAllFuture<Output>;
+    using NVOutput = typename JoinAllFuture::StoredOutput;
+
+    JoinAllDyn joinAll{std::move(futs), static_cast<NVOutput*>(nullptr)};
+    return joinAll;
+}
 
 }
