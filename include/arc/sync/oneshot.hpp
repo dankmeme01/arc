@@ -24,9 +24,9 @@ struct ChannelData : Storage<T> {
     using Storage<T>::Storage;
 
     void wakeWaiter() {
-        if (this->recvAwaiter) {
-            this->recvAwaiter->m_waker->wake();
-            this->recvAwaiter = nullptr;
+        if (this->recvWaiter) {
+            this->recvWaiter->m_waker->wake();
+            this->recvWaiter = nullptr;
         }
     }
 };
@@ -83,6 +83,10 @@ struct Shared {
         m_data.lock()->recvWaiter = nullptr;
     }
 
+    bool isClosed() const noexcept {
+        return m_closed.load(std::memory_order::acquire);
+    }
+
 private:
     asp::SpinLock<ChannelData<T>> m_data;
     std::atomic<bool> m_closed{false};
@@ -90,10 +94,6 @@ private:
     void close() {
         m_closed.store(true, std::memory_order::release);
         m_data.lock()->wakeWaiter();
-    }
-
-    bool isClosed() const noexcept {
-        return m_closed.load(std::memory_order::acquire);
     }
 };
 
@@ -194,6 +194,7 @@ struct ARC_NODISCARD RecvAwaiter : PollableBase<RecvAwaiter<T>, RecvResult<T>> {
 
 private:
     friend struct ChannelData<T>;
+    friend struct OneshotStorage<T, RecvAwaiter<T>>;
     friend struct Shared<T>;
     std::shared_ptr<Shared<T>> m_data;
     std::optional<Waker> m_waker;
