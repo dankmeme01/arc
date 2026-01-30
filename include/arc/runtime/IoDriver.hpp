@@ -3,6 +3,7 @@
 #include <qsox/BaseSocket.hpp>
 #include <asp/sync/SpinLock.hpp>
 #include <asp/sync/Mutex.hpp>
+#include <std23/move_only_function.h>
 #include <memory>
 #include <vector>
 #include <atomic>
@@ -56,28 +57,37 @@ private:
 class Runtime;
 class IoDriver;
 
-struct RegisteredIoWaiter {
+struct IoWaiter {
+    IoWaiter(Waker waker, uint64_t id, Interest interest);
+    IoWaiter(std23::move_only_function<void()> eventCallback, uint64_t id, Interest interest);
+
+    bool willWake(const Waker& other) const;
+    bool satisfiedBy(Interest ready) const;
+    void wake();
+
+    uint64_t getId() const { return id; }
+
+private:
+    friend class Registration;
+
     std::optional<Waker> waker;
     uint64_t id;
+    std23::move_only_function<void()> eventCallback;
     Interest interest;
-
-    bool satisfiedBy(Interest ready) const;
 };
 
-struct RegisteredIo {
+struct IoEntry {
     SockFd fd;
-    // uint64_t lastTick{0};
-    asp::SpinLock<std::vector<RegisteredIoWaiter>> waiters; // TODO: slab kind of thing
+    asp::SpinLock<std::vector<IoWaiter>> waiters; // TODO: slab kind of thing
     std::atomic<bool> anyWrite{false}, anyRead{false};
     std::atomic<uint8_t> readiness{0};
     std::weak_ptr<Runtime> runtime;
 };
 
 struct Registration {
-    std::shared_ptr<RegisteredIo> rio;
+    std::shared_ptr<IoEntry> rio;
 
-    Registration(std::shared_ptr<RegisteredIo> rio) : rio(std::move(rio)) {}
-
+    Registration(std::shared_ptr<IoEntry> rio);
     Registration(Registration&& other) noexcept = default;
     Registration& operator=(Registration&& other) noexcept = default;
     Registration(const Registration&) = default;
@@ -94,15 +104,16 @@ public:
     ~IoDriver();
 
     Registration registerIo(SockFd fd, Interest interest);
-    void unregisterIo(const std::shared_ptr<RegisteredIo>& rio);
+    void unregisterIo(const Registration& rio);
+    void unregisterIo(SockFd fd);
 
 private:
     friend class Runtime;
 
     std::weak_ptr<Runtime> m_runtime;
     std::atomic<uint64_t> m_tick{0};
-    asp::Mutex<std::vector<std::shared_ptr<RegisteredIo>>> m_ios;
-    asp::SpinLock<std::vector<Registration>> m_ioPendingQueue;
+    asp::Mutex<std::unordered_map<SockFd, std::shared_ptr<IoEntry>>> m_ios;
+    asp::SpinLock<std::vector<std::shared_ptr<IoEntry>>> m_ioPendingQueue;
 
     void doWork();
 };

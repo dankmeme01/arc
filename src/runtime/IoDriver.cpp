@@ -35,13 +35,33 @@ static uint64_t nextId() {
     return m_nextId.fetch_add(1, std::memory_order::relaxed);
 }
 
-bool RegisteredIoWaiter::satisfiedBy(Interest ready) const {
+IoWaiter::IoWaiter(Waker waker, uint64_t id, Interest interest)
+    : waker(std::move(waker)), id(id), interest(interest) {}
+IoWaiter::IoWaiter(std23::move_only_function<void()> eventCallback, uint64_t id, Interest interest)
+    : eventCallback(std::move(eventCallback)), id(id), interest(interest) {}
+
+bool IoWaiter::willWake(const Waker& other) const {
+    return waker && waker->equals(other);
+}
+
+bool IoWaiter::satisfiedBy(Interest ready) const {
     return (ready & interest) != 0;
 }
 
+void IoWaiter::wake() {
+    if (waker) waker->wake();
+    if (eventCallback) eventCallback();
+}
+
+Registration::Registration(std::shared_ptr<IoEntry> rio) : rio(std::move(rio)) {}
+
 Interest Registration::pollReady(Interest interest, uint64_t& outId) {
-    ARC_ASSERT(rio);
     ARC_ASSERT(interest != Interest::ReadWrite);
+
+    // not in a runtime?
+    if (!ctx().m_runtime) {
+        return 0;
+    }
 
     auto curr = rio->readiness.load(acquire);
 
@@ -66,7 +86,7 @@ Interest Registration::pollReady(Interest interest, uint64_t& outId) {
     // if the id is nonzero, assume we are already registered,
     // so only make sure that our waker is non null
     if (outId != 0) {
-        auto it = std::find_if(waiters->begin(), waiters->end(), [outId](const RegisteredIoWaiter& waiter) {
+        auto it = std::find_if(waiters->begin(), waiters->end(), [outId](const IoWaiter& waiter) {
             return waiter.id == outId;
         });
 
@@ -78,17 +98,11 @@ Interest Registration::pollReady(Interest interest, uint64_t& outId) {
         return 0;
     }
 
-
     outId = nextId();
-    waiters->push_back(RegisteredIoWaiter {
-        .waker = ctx().m_waker ? std::make_optional(ctx().m_waker->clone()) : std::nullopt,
-        .id = outId,
-        .interest = interest,
-    });
-
+    waiters->emplace_back(IoWaiter(ctx().cloneWaker(), outId, interest));
     waiters.unlock();
 
-    trace("IoDriver: added waiter for fd {}: id {}, interest {}", fmtFd(rio->fd), outId, static_cast<uint8_t>(interest));
+    trace("IoDriver: added waiter for fd {}: interest {}", fmtFd(rio->fd), static_cast<uint8_t>(interest));
 
     if ((interest & Interest::Readable) != 0) {
         rio->anyRead.store(true, release);
@@ -107,7 +121,7 @@ void Registration::unregister(uint64_t id) {
 
     auto waiters = rio->waiters.lock();
 
-    auto it = std::find_if(waiters->begin(), waiters->end(), [id](const RegisteredIoWaiter& waiter) {
+    auto it = std::find_if(waiters->begin(), waiters->end(), [id](const IoWaiter& waiter) {
         return waiter.id == id;
     });
 
@@ -157,27 +171,29 @@ IoDriver::IoDriver(std::weak_ptr<Runtime> runtime) : m_runtime(std::move(runtime
 IoDriver::~IoDriver() {}
 
 Registration IoDriver::registerIo(SockFd fd, Interest interest) {
-    auto rio = std::make_shared<RegisteredIo>();
-    rio->runtime = m_runtime;
-    rio->fd = fd;
+    auto entry = std::make_shared<IoEntry>();
+    entry->fd = fd;
+    entry->runtime = m_runtime;
 
     trace("IoDriver: registered fd {}", fmtFd(fd));
 
-    Registration reg{std::move(rio)};
-
-    m_ioPendingQueue.lock()->push_back(reg);
-    return reg;
+    m_ioPendingQueue.lock()->push_back(entry);
+    return Registration{std::move(entry)};
 }
 
-void IoDriver::unregisterIo(const std::shared_ptr<RegisteredIo>& rio) {
+void IoDriver::unregisterIo(const Registration& rio) {
+    this->unregisterIo(rio.rio->fd);
+}
+
+void IoDriver::unregisterIo(SockFd fd) {
     auto ios = m_ios.lock();
 
-    auto it = std::find(ios->begin(), ios->end(), rio);
+    auto it = ios->find(fd);
     if (it != ios->end()) {
         ios->erase(it);
     }
 
-    trace("IoDriver: unregistered fd {}", fmtFd(rio->fd));
+    trace("IoDriver: unregistered fd {}", fmtFd(fd));
 }
 
 void IoDriver::doWork() {
@@ -191,7 +207,7 @@ void IoDriver::doWork() {
     {
         auto pending = m_ioPendingQueue.lock();
         for (auto& reg : *pending) {
-            ios->push_back(reg.rio);
+            ios->emplace(reg->fd, reg);
         }
         pending->clear();
     }
@@ -250,8 +266,6 @@ void IoDriver::doWork() {
 
     trace("IoDriver: poll returned {} fds", ret);
 
-    asp::SmallVec<Waker, 32> toWake;
-
     for (int i = 0; i < count; i++) {
         auto& rio = (*ios)[indices[i]];
         auto& pfd = fds[i];
@@ -272,18 +286,11 @@ void IoDriver::doWork() {
 
         auto waiters = rio->waiters.lock();
         for (auto& waiter : *waiters) {
-            if (waiter.satisfiedBy(ready) && waiter.waker) {
-                trace("IoDriver: will wake waker {} (id {})", (void*)waiter.waker->m_data, waiter.id);
-                toWake.push_back(std::move(waiter.waker).value());
-                waiter.waker.reset();
+            if (waiter.satisfiedBy(ready)) {
+                trace("IoDriver: will wake waker id {}", waiter.getId());
+                waiter.wake();
             }
         }
-    }
-
-    ios.unlock();
-
-    for (auto& waker : toWake) {
-        waker.wake();
     }
 }
 
