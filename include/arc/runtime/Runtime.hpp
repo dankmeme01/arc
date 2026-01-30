@@ -68,7 +68,7 @@ public:
 
         std::unique_lock lock(m_blockingMtx);
         auto& btasks = m_blockingTasks;
-        btasks.push_back(handle.m_task.get());
+        btasks.push_back(handle.m_task);
         this->ensureBlockingWorker(btasks.size());
         m_blockingCv.notify_one();
 
@@ -113,7 +113,7 @@ private:
     asp::time::Duration m_taskDeadline;
 
     std::mutex m_blockingMtx;
-    std::deque<BlockingTaskBase*> m_blockingTasks; // protected by m_blockingMtx
+    std::deque<std::shared_ptr<BlockingTaskBase>> m_blockingTasks; // protected by m_blockingMtx
     std::condition_variable m_blockingCv;
     std::atomic<size_t> m_blockingWorkers{0};
     std::atomic<size_t> m_freeBlockingWorkers{0};

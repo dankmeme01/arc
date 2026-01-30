@@ -229,7 +229,7 @@ void Runtime::blockingWorkerLoop(size_t id) {
             break;
         }
 
-        BlockingTaskBase* task = nullptr;
+        std::shared_ptr<BlockingTaskBase> task = nullptr;
         {
             std::unique_lock lock(m_blockingMtx);
 
