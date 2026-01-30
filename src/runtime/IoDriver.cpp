@@ -207,13 +207,15 @@ void IoDriver::doWork() {
     {
         auto pending = m_ioPendingQueue.lock();
         for (auto& reg : *pending) {
-            ios->emplace(reg->fd, reg);
+            ARC_DEBUG_ASSERT(reg);
+            ios->emplace(reg->fd, std::move(reg));
         }
         pending->clear();
     }
 
     for (size_t i = 0; i < std::min<size_t>(ios->size(), 64); i++) {
         auto& rio = (*ios)[i];
+        ARC_DEBUG_ASSERT(rio);
 
         bool read = rio->anyRead.load(std::memory_order::acquire);
         bool write = rio->anyWrite.load(std::memory_order::acquire);

@@ -28,7 +28,7 @@ struct ARC_NODISCARD Future : PollableLowLevelBase<Future<T>, T> {
     using NVT = std::conditional_t<std::is_void_v<T>, std::monostate, T>;
     using promise_type = Promise<T>;
     using handle_type = std::coroutine_handle<promise_type>;
-    handle_type m_handle;
+    handle_type m_handle{};
     bool m_yielding = false;
 
     Future(handle_type handle) : m_handle(handle) {
