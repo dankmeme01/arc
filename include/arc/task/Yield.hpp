@@ -4,22 +4,22 @@
 
 namespace arc {
 
-struct ARC_NODISCARD Yield : PollableBase<Yield> {
-    bool poll();
+struct ARC_NODISCARD Yield : Pollable<Yield> {
+    bool poll(Context& cx);
 
     bool yielded = false;
 };
 
 Yield yield() noexcept;
 
-struct ARC_NODISCARD Never : PollableBase<Never> {
-    bool poll();
+struct ARC_NODISCARD Never : Pollable<Never> {
+    bool poll(Context& cx);
 };
 
 Never never() noexcept;
 
-struct ARC_NODISCARD CoopYield : PollableBase<CoopYield> {
-    bool poll();
+struct ARC_NODISCARD CoopYield : Pollable<CoopYield> {
+    bool poll(Context& cx);
 
 private:
     bool yielded = false;

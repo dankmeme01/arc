@@ -3,7 +3,7 @@
 #include <fmt/core.h>
 #include <fmt/std.h>
 #include <asp/time/Instant.hpp>
-#include <std23/move_only_function.h>
+#include <arc/util/Function.hpp>
 
 #include <utility>
 
@@ -18,7 +18,7 @@ enum LogLevel {
 };
 
 void doLogMessage(std::string message, LogLevel level);
-void setLogFunction(std23::move_only_function<void(std::string, LogLevel)> func);
+void setLogFunction(arc::MoveOnlyFunction<void(std::string, LogLevel)> func);
 
 template <class... Args>
 void trace(fmt::format_string<Args...> fmt, Args&&... args) {

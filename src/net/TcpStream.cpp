@@ -1,5 +1,4 @@
 #include <arc/net/TcpStream.hpp>
-#include <arc/task/Context.hpp>
 #include <arc/util/Result.hpp>
 #include <arc/runtime/IoDriver.hpp>
 #include <arc/runtime/Runtime.hpp>
@@ -15,7 +14,7 @@ TcpStream::~TcpStream() {
 
 TcpStream TcpStream::fromQsox(qsox::TcpStream socket) {
     (void) socket.setNonBlocking(true);
-    auto rio = ctx().runtime()->ioDriver().registerIo(socket.handle(), Interest::ReadWrite);
+    auto rio = Runtime::current()->ioDriver().registerIo(socket.handle(), Interest::ReadWrite);
     return TcpStream{std::move(socket), std::move(rio)};
 }
 
@@ -56,8 +55,8 @@ NetResult<void> TcpStream::setNoDelay(bool noDelay) {
 }
 
 Future<NetResult<size_t>> TcpStream::send(const void* data, size_t size) {
-    return this->rioPoll([this, data, size](uint64_t& id) {
-        return this->pollWrite(data, size, id);
+    return this->rioPoll([this, data, size](Context& cx, uint64_t& id) {
+        return this->pollWrite(cx, data, size, id);
     });
 }
 
@@ -69,8 +68,8 @@ Future<NetResult<void>> TcpStream::sendAll(const void* datav, size_t size) {
 
     NetResult<void> result = Ok();
     while (remaining > 0) {
-        auto res = co_await pollFunc([&] {
-            return this->pollWrite(data, remaining, id);
+        auto res = co_await pollFunc([&](Context& cx) {
+            return this->pollWrite(cx, data, remaining, id);
         });
 
         if (!res) {
@@ -91,8 +90,8 @@ Future<NetResult<void>> TcpStream::sendAll(const void* datav, size_t size) {
 }
 
 Future<NetResult<size_t>> TcpStream::receive(void* buffer, size_t size) {
-    return this->rioPoll([this, buffer, size](uint64_t& id) {
-        return this->pollRead(buffer, size, id);
+    return this->rioPoll([this, buffer, size](Context& cx, uint64_t& id) {
+        return this->pollRead(cx, buffer, size, id);
     });
 }
 
@@ -104,8 +103,8 @@ Future<NetResult<void>> TcpStream::receiveExact(void* buffer, size_t size) {
 
     NetResult<void> result = Ok();
     while (remaining > 0) {
-        auto res = co_await pollFunc([&] {
-            return this->pollRead(buf, remaining, id);
+        auto res = co_await pollFunc([&](Context& cx) {
+            return this->pollRead(cx, buf, remaining, id);
         });
 
         if (!res) {
@@ -126,8 +125,8 @@ Future<NetResult<void>> TcpStream::receiveExact(void* buffer, size_t size) {
 }
 
 Future<NetResult<size_t>> TcpStream::peek(void* buffer, size_t size) {
-    return this->rioPoll([this, buffer, size](uint64_t& id) {
-        return this->pollRead(buffer, size, id, true);
+    return this->rioPoll([this, buffer, size](Context& cx, uint64_t& id) {
+        return this->pollRead(cx, buffer, size, id, true);
     });
 }
 
@@ -139,14 +138,14 @@ NetResult<qsox::SocketAddress> TcpStream::remoteAddress() const {
     return m_stream.remoteAddress();
 }
 
-std::optional<NetResult<size_t>> TcpStream::pollWrite(const void* data, size_t size, uint64_t& id) {
-    return EventIoBase::pollWrite(id, data, size, [&](auto buf, auto size) {
+std::optional<NetResult<size_t>> TcpStream::pollWrite(Context& cx, const void* data, size_t size, uint64_t& id) {
+    return EventIoBase::pollWrite(cx, id, data, size, [&](auto buf, auto size) {
         return m_stream.send(buf, size);
     });
 }
 
-std::optional<NetResult<size_t>> TcpStream::pollRead(void* buf, size_t size, uint64_t& id, bool peek) {
-    return EventIoBase::pollRead(id, buf, size, [&](auto buf, auto size) {
+std::optional<NetResult<size_t>> TcpStream::pollRead(Context& cx, void* buf, size_t size, uint64_t& id, bool peek) {
+    return EventIoBase::pollRead(cx, id, buf, size, [&](auto buf, auto size) {
         return peek ? m_stream.peek(buf, size) : m_stream.receive(buf, size);
     });
 }

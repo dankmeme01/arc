@@ -137,10 +137,14 @@ Future<> burner() {
     }
 }
 
+Future<> noop() {
+    co_return;
+}
+
 Future<> asyncMain(int argc, char** argv) {
     trace("Hello from asyncMain!");
 
-    spawn(printer());
+    // spawn(printer());
 
     if (argc > 1 && std::string_view(argv[1]) == "tcp-server") {
         dbg_await(tcpListener()).unwrap();
@@ -173,4 +177,9 @@ Future<> asyncMain(int argc, char** argv) {
     co_return;
 }
 
-ARC_DEFINE_MAIN_NT(asyncMain, 1);
+int main(int argc, char** argv) {
+    auto rt = Runtime::create(1);
+    auto fut = asyncMain(argc, argv);
+    fut.setDebugName("main");
+    rt->blockOn(std::move(fut));
+}

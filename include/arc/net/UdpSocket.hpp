@@ -59,8 +59,8 @@ private:
 
     UdpSocket(qsox::UdpSocket socket, Registration io) : EventIoBase(std::move(io)), m_socket(std::move(socket)) {}
 
-    std::optional<NetResult<size_t>> pollWrite(const void* data, size_t size, std::optional<qsox::SocketAddress> address, uint64_t& id);
-    std::optional<NetResult<size_t>> pollRead(void* buf, size_t size, qsox::SocketAddress* senderOut, bool peek, uint64_t& id);
+    std::optional<NetResult<size_t>> pollWrite(Context& cx, const void* data, size_t size, std::optional<qsox::SocketAddress> address, uint64_t& id);
+    std::optional<NetResult<size_t>> pollRead(Context& cx, void* buf, size_t size, qsox::SocketAddress* senderOut, bool peek, uint64_t& id);
 
     static UdpSocket fromQsox(qsox::UdpSocket socket);
 };

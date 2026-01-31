@@ -1,6 +1,5 @@
 #include <arc/signal/Signal.hpp>
 #include <arc/runtime/Runtime.hpp>
-#include <arc/task/Context.hpp>
 #include <signal.h>
 
 namespace arc {
@@ -38,12 +37,12 @@ Signal::Signal(SignalKind kind)
     : m_kind(kind),
       m_notified() {}
 
-bool Signal::poll() {
+bool Signal::poll(Context& cx) {
     if (!m_notified) {
-        m_notified.emplace(ctx().runtime()->signalDriver().addSignalAndNotify(m_kind));
+        m_notified.emplace(cx.runtime()->signalDriver().addSignalAndNotify(m_kind));
     }
 
-    return m_notified->poll();
+    return m_notified->poll(cx);
 }
 
 }

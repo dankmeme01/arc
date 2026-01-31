@@ -10,20 +10,50 @@
 #include <arc/task/CondvarWaker.hpp>
 
 #include <asp/time/Duration.hpp>
+#include <asp/ptr/SharedPtr.hpp>
 #include <asp/time/sleep.hpp>
+#include <arc/util/Function.hpp>
 #include "TimeDriver.hpp"
 #include "SignalDriver.hpp"
 #include "IoDriver.hpp"
 
 namespace arc {
 
-class Runtime : public std::enable_shared_from_this<Runtime> {
+using TerminateHandler = arc::MoveOnlyFunction<void(const std::exception&)>;
+
+enum class DriverType {
+    Time,
+    Io,
+    Signal,
+};
+
+struct RuntimeVtable {
+    using EnqueueTaskFn = void(*)(Runtime*, TaskBase*);
+    using SetTerminateHandlerFn = void(*)(Runtime*, TerminateHandler) noexcept;
+    using InsertTaskFn = void(*)(Runtime*, TaskBase*);
+    using InsertBlockingFn = void(*)(Runtime*, std::shared_ptr<BlockingTaskBase>);
+    using RemoveTaskFn = void(*)(Runtime*, TaskBase*) noexcept;
+    using IsShuttingDownFn = bool(*)(const Runtime*) noexcept;
+    using SafeShutdownFn = void(*)(Runtime*);
+    using GetDriverFn = void*(*)(Runtime*, DriverType) noexcept;
+
+    EnqueueTaskFn m_enqueueTask = nullptr;
+    SetTerminateHandlerFn m_setTerminateHandler = nullptr;
+    InsertTaskFn m_insertTask = nullptr;
+    InsertBlockingFn m_insertBlocking = nullptr;
+    RemoveTaskFn m_removeTask = nullptr;
+    IsShuttingDownFn m_isShuttingDown = nullptr;
+    SafeShutdownFn m_safeShutdown = nullptr;
+    GetDriverFn m_getDriver = nullptr;
+};
+
+class Runtime : public asp::EnableSharedFromThis<Runtime> {
 private:
     struct ctor_tag {};
 
 public:
     // Creates a runtime
-    static std::shared_ptr<Runtime> create(
+    static asp::SharedPtr<Runtime> create(
         size_t workers = std::thread::hardware_concurrency(),
         bool timeDriver = true,
         bool ioDriver = true,
@@ -42,40 +72,33 @@ public:
     Runtime(Runtime&&) = delete;
     Runtime& operator=(Runtime&&) = delete;
 
-    TimeDriver& timeDriver();
-    SignalDriver& signalDriver();
-    IoDriver& ioDriver();
+    auto& timeDriver() { return getDriver<TimeDriver>(DriverType::Time); }
+    auto& signalDriver() { return getDriver<SignalDriver>(DriverType::Signal); }
+    auto& ioDriver() { return getDriver<IoDriver>(DriverType::Io); }
 
-    using TerminateHandler = std23::move_only_function<void(const std::exception&)>;
     /// Set the function that is called when an uncaught exception causes runtime termination.
     /// By default, this function just rethrows the exception to call std::terminate().
     void setTerminateHandler(TerminateHandler handler);
 
     void enqueueTask(TaskBase* task);
 
-    template <Pollable F, typename T = typename F::Output>
+    template <IsPollable F, typename T = typename F::Output>
     TaskHandle<T> spawn(F fut) {
-        auto* task = Task<F>::create(weak_from_this(), std::move(fut));
-        m_tasks.lock()->insert(task);
+        auto* task = Task<F>::create(weakFromThis(), std::move(fut));
+        m_vtable->m_insertTask(this, task);
         task->schedule();
 
         return TaskHandle<T>{task};
     }
 
     template <typename T>
-    BlockingTaskHandle<T> spawnBlocking(std23::move_only_function<T()> func) {
-        BlockingTaskHandle<T> handle{ BlockingTask<T>::create(weak_from_this(), std::move(func)) };
-
-        std::unique_lock lock(m_blockingMtx);
-        auto& btasks = m_blockingTasks;
-        btasks.push_back(handle.m_task);
-        this->ensureBlockingWorker(btasks.size());
-        m_blockingCv.notify_one();
-
+    BlockingTaskHandle<T> spawnBlocking(arc::MoveOnlyFunction<T()> func) {
+        BlockingTaskHandle<T> handle{ BlockingTask<T>::create(weakFromThis(), std::move(func)) };
+        m_vtable->m_insertBlocking(this, handle.m_task);
         return handle;
     }
 
-    template <Pollable F, typename T = typename F::Output>
+    template <IsPollable F, typename T = typename F::Output>
     T blockOn(F fut) {
         auto handle = this->spawn(std::move(fut));
         return handle.blockOn();
@@ -89,14 +112,15 @@ public:
     void safeShutdown();
 
 private:
-    template <Pollable P>
+    template <IsPollable P>
     friend struct Task;
-
 
     struct WorkerData {
         std::thread thread;
         size_t id;
     };
+
+    const RuntimeVtable* m_vtable;
 
     size_t m_workerCount;
     std::atomic<bool> m_stopFlag{false};
@@ -119,21 +143,37 @@ private:
     std::atomic<size_t> m_freeBlockingWorkers{0};
     std::atomic<size_t> m_nextBlockingWorkerId{0};
 
+    template <typename T>
+    T& getDriver(DriverType ty) {
+        auto ptr = static_cast<T*>(m_vtable->m_getDriver(this, ty));
+        ARC_ASSERT(ptr, "attempted to access driver that is not available");
+        return *ptr;
+    }
+
     void init(bool timeDriver, bool ioDriver, bool signalDriver);
     void shutdown();
 
-    void workerLoop(WorkerData& data);
+    void workerLoop(WorkerData& data, Context& cx);
     void workerLoopWrapper(WorkerData& data);
     void blockingWorkerLoop(size_t id);
 
     void removeTask(TaskBase* task) noexcept;
     void ensureBlockingWorker(size_t tasksInQueue);
     void spawnBlockingWorker();
+
+    static void vSetTerminateHandler(Runtime* self, TerminateHandler handler) noexcept;
+    static void vEnqueueTask(Runtime* self, TaskBase* task);
+    static void vInsertTask(Runtime* self, TaskBase* task);
+    static void vInsertBlocking(Runtime* self, std::shared_ptr<BlockingTaskBase> task);
+    static void vRemoveTask(Runtime* self, TaskBase* task) noexcept;
+    static bool vIsShuttingDown(const Runtime* self) noexcept;
+    static void vSafeShutdown(Runtime* self);
+    static void* vGetDriver(Runtime* self, DriverType ty) noexcept;
 };
 
-template <Pollable F>
+template <IsPollable F>
 auto spawn(F t) {
-    if (auto rt = ctx().runtime()) {
+    if (auto rt = Runtime::current()) {
         return rt->spawn(std::move(t));
     } else {
         throw std::runtime_error("No runtime available");
@@ -144,8 +184,8 @@ auto spawn(F t) {
 /// Use this when you need to run expensive synchronous code inside an async context.
 /// The returned handle can be awaited to get the result of the function.
 template <typename T>
-auto spawnBlocking(std23::move_only_function<T()> f) {
-    if (auto rt = ctx().runtime()) {
+auto spawnBlocking(arc::MoveOnlyFunction<T()> f) {
+    if (auto rt = Runtime::current()) {
         return rt->spawnBlocking<T>(std::move(f));
     } else {
         throw std::runtime_error("No runtime available");

@@ -23,7 +23,7 @@ using TimerQueue = std::map<TimerEntryKey, Waker, std::less<TimerEntryKey>>;
 
 class TimeDriver {
 public:
-    TimeDriver(std::weak_ptr<Runtime> runtime);
+    TimeDriver(asp::WeakPtr<Runtime> runtime);
     ~TimeDriver();
 
     uint64_t addEntry(asp::time::Instant expiry, Waker waker);
@@ -33,7 +33,7 @@ private:
     friend class Runtime;
 
     std::atomic<uint64_t> m_nextTimerId{1};
-    std::weak_ptr<Runtime> m_runtime;
+    asp::WeakPtr<Runtime> m_runtime;
     asp::SpinLock<TimerQueue> m_timers;
 
     void doWork();

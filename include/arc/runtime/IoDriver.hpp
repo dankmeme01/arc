@@ -3,7 +3,9 @@
 #include <qsox/BaseSocket.hpp>
 #include <asp/sync/SpinLock.hpp>
 #include <asp/sync/Mutex.hpp>
-#include <std23/move_only_function.h>
+#include <asp/ptr/SharedPtr.hpp>
+#include <arc/future/Context.hpp>
+#include <arc/util/Function.hpp>
 #include <memory>
 #include <vector>
 #include <atomic>
@@ -59,7 +61,7 @@ class IoDriver;
 
 struct IoWaiter {
     IoWaiter(Waker waker, uint64_t id, Interest interest);
-    IoWaiter(std23::move_only_function<void()> eventCallback, uint64_t id, Interest interest);
+    IoWaiter(arc::MoveOnlyFunction<void()> eventCallback, uint64_t id, Interest interest);
 
     IoWaiter(IoWaiter&&) noexcept = default;
     IoWaiter& operator=(IoWaiter&&) noexcept = default;
@@ -77,7 +79,7 @@ private:
 
     std::optional<Waker> waker;
     uint64_t id;
-    std23::move_only_function<void()> eventCallback;
+    arc::MoveOnlyFunction<void()> eventCallback;
     Interest interest;
 };
 
@@ -86,7 +88,7 @@ struct IoEntry {
     asp::SpinLock<std::vector<IoWaiter>> waiters; // TODO: slab kind of thing
     std::atomic<bool> anyWrite{false}, anyRead{false};
     std::atomic<uint8_t> readiness{0};
-    std::weak_ptr<Runtime> runtime;
+    asp::WeakPtr<Runtime> runtime;
 };
 
 struct Registration {
@@ -101,14 +103,14 @@ struct Registration {
     /// Polls the IO for readiness, if not ready then registers the task, cloning the waker,
     /// and returning the registration ID. If outId is set to a non-zero value, you must call `unregister`.
     /// Once woken up, you must call `unregister` or `pollReady` again to be woken up again.
-    Interest pollReady(Interest interest, uint64_t& outId);
+    Interest pollReady(Interest interest, Context& cx, uint64_t& outId);
     void unregister(uint64_t id);
     void clearReadiness(Interest interest);
 };
 
 class IoDriver {
 public:
-    IoDriver(std::weak_ptr<Runtime> runtime);
+    IoDriver(asp::WeakPtr<Runtime> runtime);
     ~IoDriver();
 
     Registration registerIo(SockFd fd, Interest interest);
@@ -118,7 +120,7 @@ public:
 private:
     friend class Runtime;
 
-    std::weak_ptr<Runtime> m_runtime;
+    asp::WeakPtr<Runtime> m_runtime;
     std::atomic<uint64_t> m_tick{0};
     asp::Mutex<std::unordered_map<SockFd, std::shared_ptr<IoEntry>>> m_ios;
     asp::SpinLock<std::vector<std::shared_ptr<IoEntry>>> m_ioPendingQueue;

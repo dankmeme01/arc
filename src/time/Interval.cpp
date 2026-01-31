@@ -9,8 +9,8 @@ using Awaiter = Interval::Awaiter;
 
 // Awaiter
 
-bool Awaiter::poll() {
-    return m_interval->doPoll();
+bool Awaiter::poll(Context& cx) {
+    return m_interval->doPoll(cx);
 }
 
 // Interval
@@ -21,8 +21,8 @@ Interval::Interval(Duration period)
 
 Interval::~Interval() {
     if (m_id != 0) {
-        auto rt = ctx().runtime();
-        if (!rt->isShuttingDown()) {
+        auto rt = m_runtime.upgrade();
+        if (rt && !rt->isShuttingDown()) {
             rt->timeDriver().removeEntry(m_current, m_id);
         }
     }
@@ -43,13 +43,14 @@ Interval& Interval::operator=(Interval&& other) noexcept {
     return *this;
 }
 
-bool Interval::doPoll() {
-    auto& driver = ctx().runtime()->timeDriver();
+bool Interval::doPoll(Context& cx) {
+    m_runtime = cx.runtime()->weakFromThis();
+    auto& driver = cx.runtime()->timeDriver();
     auto now = Instant::now();
 
     if (now < m_current) {
         if (m_id == 0) {
-            m_id = driver.addEntry(m_current, ctx().m_waker->clone());
+            m_id = driver.addEntry(m_current, cx.cloneWaker());
         }
         return false;
     }

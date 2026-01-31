@@ -12,7 +12,7 @@ TcpListener::~TcpListener() {
 
 TcpListener TcpListener::fromQsox(qsox::TcpListener listener) {
     (void) listener.setNonBlocking(true);
-    auto rio = ctx().runtime()->ioDriver().registerIo(listener.handle(), Interest::Readable);
+    auto rio = Runtime::current()->ioDriver().registerIo(listener.handle(), Interest::Readable);
     return TcpListener{std::move(listener), std::move(rio)};
 }
 
@@ -22,8 +22,8 @@ Future<NetResult<TcpListener>> TcpListener::bind(const qsox::SocketAddress& addr
 }
 
 Future<NetResult<std::pair<arc::TcpStream, qsox::SocketAddress>>> TcpListener::accept() {
-    auto res = co_await this->rioPoll([this](uint64_t& id) {
-        return this->pollAccept(id);
+    auto res = co_await this->rioPoll([this](Context& cx, uint64_t& id) {
+        return this->pollAccept(cx, id);
     });
 
     ARC_CO_UNWRAP_INTO(auto pair, std::move(res));
@@ -32,9 +32,9 @@ Future<NetResult<std::pair<arc::TcpStream, qsox::SocketAddress>>> TcpListener::a
     co_return Ok(std::make_pair(std::move(socket), std::move(pair.second)));
 }
 
-std::optional<TcpListener::PollAcceptResult> TcpListener::pollAccept(uint64_t& id) {
+std::optional<TcpListener::PollAcceptResult> TcpListener::pollAccept(Context& cx, uint64_t& id) {
     while (true) {
-        auto ready = m_io.pollReady(Interest::Readable | Interest::Error, id);
+        auto ready = m_io.pollReady(Interest::Readable | Interest::Error, cx, id);
         if ((ready & Interest::Readable) == 0) {
             return std::nullopt;
         }

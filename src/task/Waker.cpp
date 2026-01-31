@@ -1,4 +1,5 @@
 #include <arc/task/Waker.hpp>
+#include <arc/util/Assert.hpp>
 
 namespace arc {
 
@@ -60,15 +61,18 @@ Waker Waker::noop() noexcept {
 }
 
 void Waker::wake() noexcept {
+    ARC_ASSERT(m_vtable, "invalid waker used");
     m_vtable->wake(m_data);
     this->reset();
 }
 
 void Waker::wakeByRef() noexcept {
+    ARC_ASSERT(m_vtable, "invalid waker used");
     m_vtable->wakeByRef(m_data);
 }
 
 Waker Waker::clone() const noexcept {
+    ARC_ASSERT(m_vtable, "invalid waker used");
     return m_vtable->clone(m_data);
 }
 

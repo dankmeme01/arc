@@ -15,18 +15,21 @@ template <typename T>
 using TimeoutResult = Result<T, TimedOut>;
 
 template <
-    Pollable Fut,
+    IsPollable Fut,
     typename FutOut = FutureTraits<std::decay_t<Fut>>::Output,
     bool IsVoid = std::is_void_v<FutOut>,
     typename Output = TimeoutResult<std::conditional_t<IsVoid, std::monostate, FutOut>>
 >
-struct ARC_NODISCARD Timeout : PollableBase<Timeout<Fut>, Output> {
-    explicit Timeout(Fut fut, asp::time::Instant expiry)
+struct ARC_NODISCARD Timeout : Pollable<Timeout<Fut>, Output> {
+    explicit Timeout(Fut fut, asp::Instant expiry)
         : m_future(std::move(fut)), m_expiry(expiry) {}
 
     ~Timeout() {
         if (m_id != 0) {
-            ctx().runtime()->timeDriver().removeEntry(m_expiry, m_id);
+            auto rt = m_runtime.upgrade();
+            if (rt && !rt->isShuttingDown()) {
+                rt->timeDriver().removeEntry(m_expiry, m_id);
+            }
         }
     }
 
@@ -48,9 +51,9 @@ struct ARC_NODISCARD Timeout : PollableBase<Timeout<Fut>, Output> {
         return *this;
     }
 
-    std::optional<Output> poll() {
+    std::optional<Output> poll(Context& cx) {
         auto now = asp::time::Instant::now();
-        auto& td = ctx().runtime()->timeDriver();
+        auto& td = cx.runtime()->timeDriver();
 
         if (now >= m_expiry) {
             // timeout occurred, so the future is now cancelled
@@ -59,7 +62,7 @@ struct ARC_NODISCARD Timeout : PollableBase<Timeout<Fut>, Output> {
         }
 
         // poll the future, if completed cancel timer and return ready
-        if (m_future.vPoll()) {
+        if (m_future.m_vtable->m_poll(&m_future, cx)) {
             if (m_id != 0) {
                 td.removeEntry(m_expiry, m_id);
                 m_id = 0;
@@ -68,13 +71,14 @@ struct ARC_NODISCARD Timeout : PollableBase<Timeout<Fut>, Output> {
             if constexpr (IsVoid) {
                 return Ok(std::monostate{});
             } else {
-                return Ok(std::move(m_future.template vGetOutput<FutOut>()));
+                return Ok(std::move(m_future.m_vtable->template getOutput<FutOut>(&m_future, cx)));
             }
         }
 
         // register timer if we aren't already registered
         if (m_id == 0) {
-            td.addEntry(m_expiry, ctx().m_waker->clone());
+            td.addEntry(m_expiry, cx.cloneWaker());
+            m_runtime = cx.runtime()->weakFromThis();
         }
 
         return std::nullopt;
@@ -83,6 +87,7 @@ struct ARC_NODISCARD Timeout : PollableBase<Timeout<Fut>, Output> {
 private:
     Fut m_future;
     asp::time::Instant m_expiry;
+    asp::WeakPtr<Runtime> m_runtime;
     uint64_t m_id = 0;
 };
 

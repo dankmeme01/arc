@@ -1,6 +1,5 @@
 #include <arc/runtime/IoDriver.hpp>
 #include <arc/runtime/Runtime.hpp>
-#include <arc/task/Context.hpp>
 #include <arc/util/Assert.hpp>
 #include <arc/util/Trace.hpp>
 #include <fmt/format.h>
@@ -37,7 +36,7 @@ static uint64_t nextId() {
 
 IoWaiter::IoWaiter(Waker waker, uint64_t id, Interest interest)
     : waker(std::move(waker)), id(id), interest(interest) {}
-IoWaiter::IoWaiter(std23::move_only_function<void()> eventCallback, uint64_t id, Interest interest)
+IoWaiter::IoWaiter(arc::MoveOnlyFunction<void()> eventCallback, uint64_t id, Interest interest)
     : eventCallback(std::move(eventCallback)), id(id), interest(interest) {}
 
 bool IoWaiter::willWake(const Waker& other) const {
@@ -59,12 +58,7 @@ void IoWaiter::wake() {
 
 Registration::Registration(std::shared_ptr<IoEntry> rio) : rio(std::move(rio)) {}
 
-Interest Registration::pollReady(Interest interest, uint64_t& outId) {
-    // not in a runtime?
-    if (!ctx().m_runtime) {
-        return 0;
-    }
-
+Interest Registration::pollReady(Interest interest, Context& cx, uint64_t& outId) {
     auto curr = rio->readiness.load(acquire);
 
     trace("IoDriver: fd {} readiness: {}", fmtFd(rio->fd), curr);
@@ -94,14 +88,14 @@ Interest Registration::pollReady(Interest interest, uint64_t& outId) {
 
         ARC_ASSERT(it != waiters->end(), "IoDriver: pollReady called with invalid registration id");
         if (!it->waker) {
-            it->waker = ctx().m_waker ? std::make_optional(ctx().m_waker->clone()) : std::nullopt;
+            it->waker = cx.waker() ? std::make_optional(cx.cloneWaker()) : std::nullopt;
         }
 
         return 0;
     }
 
     outId = nextId();
-    waiters->emplace_back(IoWaiter(ctx().cloneWaker(), outId, interest));
+    waiters->emplace_back(IoWaiter(cx.cloneWaker(), outId, interest));
     waiters.unlock();
 
     trace("IoDriver: added waiter for fd {}: interest {}", fmtFd(rio->fd), static_cast<uint8_t>(interest));
@@ -166,7 +160,7 @@ void Registration::clearReadiness(Interest interest) {
     rio->readiness.store(newReady, release);
 }
 
-IoDriver::IoDriver(std::weak_ptr<Runtime> runtime) : m_runtime(std::move(runtime)) {
+IoDriver::IoDriver(asp::WeakPtr<Runtime> runtime) : m_runtime(std::move(runtime)) {
     ARC_DEBUG_ASSERT(!m_runtime.expired());
 }
 

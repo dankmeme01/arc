@@ -1,5 +1,4 @@
 #include <arc/sync/Notify.hpp>
-#include <arc/task/Context.hpp>
 #include <arc/util/Assert.hpp>
 #include <arc/util/Trace.hpp>
 #include <utility>
@@ -8,14 +7,14 @@ using enum std::memory_order;
 
 namespace arc {
 
-bool NotifyState::claimStoredOrRegister(Notified* notified) {
+bool NotifyState::claimStoredOrRegister(Notified* notified, Context& cx) {
     auto waiters = m_waiters.lock();
     if (m_storedPermit) {
         m_storedPermit = false;
         return true;
     }
 
-    waiters->add(ctx().cloneWaker(), notified);
+    waiters->add(cx.cloneWaker(), notified);
     return false;
 }
 
@@ -44,11 +43,11 @@ Notified::Notified(Notified&& other) noexcept {
     ARC_ASSERT(state != State::Waiting, "cannot move a Notified that is already waiting");
 }
 
-bool Notified::poll() {
+bool Notified::poll(Context& cx) {
     switch (m_waitState.load(acquire)) {
         case State::Init: {
             // try to consume a stored permit and register otherwise
-            if (m_notify->claimStoredOrRegister(this)) {
+            if (m_notify->claimStoredOrRegister(this, cx)) {
                 return true;
             }
 

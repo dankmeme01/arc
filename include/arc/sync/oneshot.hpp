@@ -1,6 +1,5 @@
 #pragma once
 #include <arc/future/Pollable.hpp>
-#include <arc/task/Context.hpp>
 #include <arc/task/Waker.hpp>
 #include <arc/util/Trace.hpp>
 #include <asp/sync/SpinLock.hpp>
@@ -62,7 +61,7 @@ struct Shared {
         return Err(TryRecvOutcome::Empty);
     }
 
-    Result<T, TryRecvOutcome> tryRecvOrRegister(RecvAwaiter<T>* awaiter) {
+    Result<T, TryRecvOutcome> tryRecvOrRegister(RecvAwaiter<T>* awaiter, Context& cx) {
         auto data = m_data.lock();
         auto value = data->pop();
 
@@ -72,7 +71,7 @@ struct Shared {
 
         // register the awaiter
         if (!awaiter->m_waker) {
-            awaiter->m_waker = ctx().cloneWaker();
+            awaiter->m_waker = cx.cloneWaker();
         }
 
         data->registerRecvWaiter(awaiter);
@@ -134,7 +133,7 @@ private:
 };
 
 template <typename T>
-struct ARC_NODISCARD RecvAwaiter : PollableBase<RecvAwaiter<T>, RecvResult<T>> {
+struct ARC_NODISCARD RecvAwaiter : Pollable<RecvAwaiter<T>, RecvResult<T>> {
     explicit RecvAwaiter(std::shared_ptr<Shared<T>> data)
         : m_data(std::move(data)) {}
 
@@ -153,7 +152,7 @@ struct ARC_NODISCARD RecvAwaiter : PollableBase<RecvAwaiter<T>, RecvResult<T>> {
         if (m_data) m_data->deregisterReceiver(this);
     }
 
-    std::optional<RecvResult<T>> poll() {
+    std::optional<RecvResult<T>> poll(Context& cx) {
         // We have two valid states for being polled, and the 3rd completed state:
         // 1. Initial state, m_value is not set, m_waker is not set
         // 2. Waiting state, m_value is not set, m_waker is set
@@ -163,7 +162,7 @@ struct ARC_NODISCARD RecvAwaiter : PollableBase<RecvAwaiter<T>, RecvResult<T>> {
 
         if (!m_value && !m_waker) {
             // handle initial state
-            auto res = m_data->tryRecvOrRegister(this);
+            auto res = m_data->tryRecvOrRegister(this, cx);
             if (res) {
                 // immediately received, complete the future
                 return Ok(std::move(res).unwrap());

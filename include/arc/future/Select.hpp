@@ -3,21 +3,27 @@
 #include "Future.hpp"
 #include <arc/task/Task.hpp>
 #include <arc/util/Trace.hpp>
-#include <std23/move_only_function.h>
+#include <arc/util/Function.hpp>
 
 namespace arc {
 
 template <typename Output, typename Cbt>
 struct Selectee {
     using Callback = std::conditional_t<std::is_void_v<Output>,
-        std23::move_only_function<Cbt()>,
+        arc::MoveOnlyFunction<Cbt()>,
         // this is funny, but it's necessary to avoid a void param error
-        std23::move_only_function<Cbt(std::conditional_t<std::is_void_v<Output>, std::monostate, Output>)>
+        arc::MoveOnlyFunction<Cbt(std::conditional_t<std::is_void_v<Output>, std::monostate, Output>)>
     >;
     static constexpr bool IsVoid = std::is_void_v<Output>;
 
     template <typename F>
-    Selectee(F fut, Callback cb, bool act) : future(toPlainFuture(std::move(fut))), callback(std::move(cb)), active(act) {}
+    Selectee(F fut, Callback cb, bool act) : future(toPlainFuture(std::move(fut))), callback(std::move(cb)), active(act) {
+#ifdef ARC_DEBUG
+        auto [ptr, len] = getTypename<F>();
+        std::string_view futname{ptr, len};
+        future.setDebugName(fmt::format("Select future ({})", futname));
+#endif
+    }
 
     Selectee(Selectee&&) = default;
     Selectee& operator=(Selectee&&) = default;
@@ -34,29 +40,29 @@ private:
 };
 
 template <typename... Futures>
-struct ARC_NODISCARD Select : PollableBase<Select<Futures...>> {
+struct ARC_NODISCARD Select : Pollable<Select<Futures...>> {
     explicit Select(std::tuple<Futures...>&& selectees) : m_selectees(std::move(selectees)) {}
 
-    bool poll() {
-        this->checkForEach(*m_selectees);
+    bool poll(Context& cx) {
+        this->checkForEach(*m_selectees, cx);
         return m_winner != static_cast<size_t>(-1);
     }
 
     template <typename Tuple>
-    void checkForEach(Tuple&& t) {
+    void checkForEach(Tuple&& t, Context& cx) {
         constexpr auto size = std::tuple_size_v<std::decay_t<Tuple>>;
-        checkForEachImpl(std::forward<Tuple>(t), std::make_index_sequence<size>{});
+        checkForEachImpl(std::forward<Tuple>(t), std::make_index_sequence<size>{}, cx);
     }
 
     template <size_t... Is, typename Tuple>
-    void checkForEachImpl(Tuple&& t, std::index_sequence<Is...>) {
+    void checkForEachImpl(Tuple&& t, std::index_sequence<Is...>, Context& cx) {
         (([&]() {
             if (m_winner != static_cast<size_t>(-1)) return;
             auto& selectee = std::get<Is>(t);
 
             trace("[Select] checking selectee {}, active: {}", Is, selectee.active);
             if (selectee.active) {
-                auto res = selectee.future.vPoll();
+                auto res = selectee.future.poll(cx);
                 if (res) {
                     m_winner = Is;
                     trace("[Select] selectee {} finished!", Is);
@@ -75,15 +81,18 @@ struct ARC_NODISCARD Select : PollableBase<Select<Futures...>> {
 
             if constexpr (Sel::IsVoid) {
                 using CbRet = decltype(selectee.callback());
-                if constexpr (IsFuture<CbRet>::value) {
+                if constexpr (IsPollable<CbRet>) {
                     co_await selectee.callback();
                 } else {
                     selectee.callback();
                 }
             } else {
-                auto output = selectee.future.getOutput();
+                auto promise = co_await Promise<void>::current();
+                auto context = promise->getContext();
+
+                auto output = selectee.future.getOutput(*context);
                 using CbRet = decltype(selectee.callback(output));
-                if constexpr (IsFuture<CbRet>::value) {
+                if constexpr (IsPollable<CbRet>) {
                     co_await selectee.callback(std::move(output));
                 } else {
                     selectee.callback(std::move(output));

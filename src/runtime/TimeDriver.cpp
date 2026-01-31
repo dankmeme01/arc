@@ -5,7 +5,7 @@ using namespace asp::time;
 
 namespace arc {
 
-TimeDriver::TimeDriver(std::weak_ptr<Runtime> runtime) : m_runtime(std::move(runtime)) {}
+TimeDriver::TimeDriver(asp::WeakPtr<Runtime> runtime) : m_runtime(std::move(runtime)) {}
 
 TimeDriver::~TimeDriver() {}
 
@@ -40,7 +40,7 @@ uint64_t TimeDriver::addEntry(Instant expiry, Waker waker) {
 }
 
 void TimeDriver::removeEntry(Instant expiry, uint64_t id) {
-    auto rt = m_runtime.lock();
+    auto rt = m_runtime.upgrade();
     if (!rt || rt->isShuttingDown()) return;
 
     TimerEntryKey key{expiry, id};

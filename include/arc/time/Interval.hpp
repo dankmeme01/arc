@@ -1,6 +1,7 @@
 #pragma once
 
 #include <arc/future/Pollable.hpp>
+#include <arc/runtime/Runtime.hpp>
 #include <asp/time/Instant.hpp>
 #include <cstdint>
 
@@ -21,12 +22,12 @@ struct Interval {
     Interval(Interval&& other) noexcept;
     Interval& operator=(Interval&& other) noexcept;
 
-    struct ARC_NODISCARD Awaiter : PollableBase<Awaiter> {
+    struct ARC_NODISCARD Awaiter : Pollable<Awaiter> {
         explicit Awaiter(Interval* interval) : m_interval(interval) {}
         Awaiter(Awaiter&&) noexcept = default;
         Awaiter& operator=(Awaiter&&) noexcept = default;
 
-        bool poll();
+        bool poll(Context& cx);
     private:
         Interval* m_interval;
     };
@@ -44,8 +45,9 @@ private:
     asp::time::Duration m_period;
     MissedTickBehavior m_mtBehavior = MissedTickBehavior::Burst;
     uint64_t m_id = 0;
+    asp::WeakPtr<Runtime> m_runtime;
 
-    bool doPoll();
+    bool doPoll(Context& cx);
 };
 
 Interval interval(asp::time::Duration period);

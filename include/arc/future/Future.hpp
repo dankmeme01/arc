@@ -6,9 +6,11 @@
 #include <optional>
 
 #include <arc/util/Trace.hpp>
+#include <arc/util/Assert.hpp>
+#include "Context.hpp"
 #include "Pollable.hpp"
 
-#if 0
+#if 1
 # define TRACE ::arc::trace
 #else
 # define TRACE(...) do {} while(0)
@@ -19,42 +21,37 @@ namespace arc {
 template <typename T>
 struct Promise;
 
-template <Pollable T>
+template <IsPollable T>
 struct Task;
 
 template <typename T = void>
-struct ARC_NODISCARD Future : PollableLowLevelBase<Future<T>, T> {
+struct ARC_NODISCARD Future : PollableBase {
     using Output = T;
-    using NVT = std::conditional_t<std::is_void_v<T>, std::monostate, T>;
+    using NonVoidOutput = std::conditional_t<std::is_void_v<T>, std::monostate, T>;
     using promise_type = Promise<T>;
     using handle_type = std::coroutine_handle<promise_type>;
-    handle_type m_handle{};
-    bool m_yielding = false;
 
     Future(handle_type handle) : m_handle(handle) {
-        // Override vtable, to set future to true in metadata
         static const PollableVtable vtable = {
-            .poll = [](void* self) {
-                return reinterpret_cast<Future*>(self)->poll();
+            .m_metadata = PollableMetadata::create<Future, true>(),
+            .m_poll = [](void* self, Context& cx) {
+                return reinterpret_cast<Future*>(self)->poll(cx);
             },
-
-            .getOutput = reinterpret_cast<void*>(+[](void* self) -> T {
-                return reinterpret_cast<Future*>(self)->getOutput();
+            .m_getOutput = reinterpret_cast<void*>(+[](void* self, Context& cx) -> T {
+                return reinterpret_cast<Future*>(self)->getOutput(cx);
             }),
-
-            .metadata = PollableMetadata::create<Future, true>(),
         };
-        this->m_vtable = &vtable;
+        m_vtable = &vtable;
     }
 
     Future(Future&& other) noexcept : m_handle(std::exchange(other.m_handle, {})) {
-        this->m_vtable = other.m_vtable;
+        m_vtable = other.m_vtable;
     }
 
     Future& operator=(Future&& other) noexcept {
         if (this != &other) {
             this->destroy();
-            this->m_vtable = other.m_vtable;
+            m_vtable = other.m_vtable;
             m_handle = std::exchange(other.m_handle, {});
         }
         return *this;
@@ -62,18 +59,6 @@ struct ARC_NODISCARD Future : PollableLowLevelBase<Future<T>, T> {
 
     ~Future() {
         this->destroy();
-    }
-
-    void setDebugName(std::string_view name) {
-        this->promise().m_debugName = name.substr(0, 16);
-    }
-
-    std::string_view debugName() {
-        if (this->promise().m_debugName.empty()) {
-            this->promise().m_debugName = fmt::format("Future @ {}", (void*)m_handle.address());
-        }
-
-        return this->promise().m_debugName;
     }
 
     void destroy() {
@@ -87,52 +72,60 @@ struct ARC_NODISCARD Future : PollableLowLevelBase<Future<T>, T> {
         return m_handle.promise();
     }
 
-    PollableUniBase* child() {
-        return this->promise().m_child;
+    PollableBase* child() {
+        return this->promise().getChild();
     }
 
-    bool coopYield() {
-        if (ctx().shouldCoopYield()) {
-            trace("[{}] cooperatively yielding", this->debugName());
-            ctx().wake();
-            return true;
-        }
+    std::string debugName() {
+        auto defaultName = [&] { return fmt::format("Future @ {}", (void*)m_handle.address()); };
 
-        return false;
+        auto dname = this->promise().getDebugName();
+        return dname.empty() ? defaultName() : std::string(dname);
+    }
+
+    void setDebugName(std::string name) {
+        this->promise().setDebugName(std::move(name));
+    }
+
+    bool coopYield(Context& cx) {
+        if (!cx.shouldCoopYield()) return false;
+
+        trace("[{}] cooperatively yielding", this->debugName());
+        cx.wake();
+        return true;
     }
 
     bool await_ready() noexcept {
         TRACE("[{}] await_ready(), done: {}", this->debugName(), m_handle ? m_handle.done() : true);
-        if (this->coopYield()) {
-            m_yielding = true;
-            return false;
-        }
-
         return m_handle ? m_handle.done() : true;
     }
 
     bool await_suspend(std::coroutine_handle<> awaiting) {
-        TRACE("[{}] await_suspend({}), child: {}", this->debugName(), m_handle.address(), awaiting.address(), (void*)this->child());
+        TRACE("[{}] await_suspend({}), child: {}", this->debugName(), awaiting.address(), (void*)this->child());
 
-        auto awaitingP = std::coroutine_handle<promise_type>::from_address(awaiting.address());
-        awaitingP.promise().m_child = this;
+        this->attachToParent(awaiting);
 
-        if (m_yielding) {
-            m_yielding = false;
+        auto cx = this->contextFromParent();
+        ARC_ASSERT(cx, "context is null in await_suspend");
+
+        if (this->coopYield(*cx)) {
             return true;
         }
 
+        this->promise().setContext(cx);
+
         bool doSuspend = true;
+
+        // TODO: maybe remove these in favor of poll doing everything?
 
         // if we don't have a child, wake the current task immediately
         if (!this->child()) {
             TRACE("[{}] await_suspend(): no child, resuming immediately", this->debugName());
-            auto& cx = ctx();
 
-            cx.pushFrame(this);
+            cx->pushFrame(this);
             m_handle.resume();
-            cx.maybeRethrow();
-            cx.popFrame();
+            cx->maybeRethrow();
+            cx->popFrame();
 
             if (m_handle.done()) {
                 doSuspend = false;
@@ -144,15 +137,24 @@ struct ARC_NODISCARD Future : PollableLowLevelBase<Future<T>, T> {
 
     T await_resume() {
         TRACE("[{}] await_resume()", this->debugName());
-        return this->getOutput();
+
+        auto cx = this->promise().getContext();
+        TRACE("[{}] await_resume(): context from promise: {}", this->debugName(), (void*)cx);
+
+        ARC_DEBUG_ASSERT(cx, "context is null in await_resume");
+
+        return this->getOutput(*cx);
     }
 
-    bool poll() {
+    bool poll(Context& cx) {
         auto child = this->child();
         auto resume = [&] {
+            auto& promise = this->promise();
+            promise.setContext(&cx);
             m_handle.resume();
+
             if (m_handle.done()) {
-                ctx().maybeRethrow();
+                cx.maybeRethrow();
                 return true;
             }
             return false;
@@ -161,9 +163,10 @@ struct ARC_NODISCARD Future : PollableLowLevelBase<Future<T>, T> {
         TRACE("[{}] poll(), child: {}", this->debugName(), (void*)child);
 
         if (child) {
-            bool done = child->vPoll();
+            bool done = child->m_vtable->poll(child, cx);
             TRACE("[{}] poll() -> child done: {}", this->debugName(), done);
             if (done) {
+                this->promise().attachChild(nullptr);
                 return resume();
             }
             return false;
@@ -175,104 +178,17 @@ struct ARC_NODISCARD Future : PollableLowLevelBase<Future<T>, T> {
         }
     }
 
-    T getOutput() {
-        ctx().maybeRethrow();
+
+    T getOutput(Context& cx) {
+        cx.maybeRethrow();
 
         if constexpr (!std::is_void_v<T>) {
-            return std::move(*this->promise().m_value);
+            return this->promise().template getOutput<T>();
         }
     }
+
+    handle_type m_handle{};
 };
-
-template <typename R, typename Derived>
-struct PromiseBaseNV {
-    PollableUniBase* m_child = nullptr;
-    template <std::convertible_to<R> From>
-    void return_value(From&& from) {
-        TRACE("[Promise {}] return_value()", (void*)this);
-        static_cast<Derived*>(this)->m_value = std::forward<From>(from);
-    }
-};
-
-template <typename Derived>
-struct PromiseBaseV {
-    PollableUniBase* m_child = nullptr;
-
-    void return_void() noexcept {
-        TRACE("[Promise {}] return_void()", (void*)this);
-    }
-};
-
-template <typename T>
-using PromiseBase = std::conditional_t<
-    std::is_void_v<T>,
-    PromiseBaseV<Promise<T>>,
-    PromiseBaseNV<T, Promise<T>>
->;
-
-template <typename T>
-struct Promise : PromiseBase<T> {
-    using return_type = T;
-    using promise_type = Promise<T>;
-    using value_type = std::conditional_t<std::is_void_v<T>, std::monostate, T>;
-
-    Promise() = default;
-
-    std::suspend_always initial_suspend() noexcept { return {}; }
-
-    void unhandled_exception() {
-        TRACE("[Promise {}] unhandled_exception()", (void*)this);
-
-        ctx().onUnhandledException(std::current_exception());
-    }
-
-    Future<T> get_return_object() {
-        return Future<T>{ Future<T>::handle_type::from_promise(*this) };
-    }
-
-    // Final awaiter
-
-    struct FinalAwaiter {
-        bool await_ready() noexcept { return false; }
-
-        void await_suspend(std::coroutine_handle<promise_type> h) noexcept {
-            auto& p = h.promise();
-            // trace(
-            //     "[Promise {}] FinalAwaiter::await_suspend({}), child: {}",
-            //     (void*)this, h.address(),
-            //     (void*)p.m_child
-            // );
-        }
-
-        void await_resume() noexcept {}
-    };
-
-    auto final_suspend() noexcept {
-        TRACE("[Promise {}] final_suspend", (void*)this);
-        return FinalAwaiter{};
-    }
-
-    std::optional<value_type> m_value;
-    std::string m_debugName;
-};
-
-// Convenience struct for getting stuff like output from an awaitable
-
-template <typename T>
-concept Awaitable = requires(T t) {
-    { t.await_resume() };
-};
-
-template <Awaitable Fut>
-struct FutureTraits {
-    using Output = decltype(std::declval<Fut>().await_resume());
-    using NonVoidOutput = std::conditional_t<std::is_void_v<Output>, std::monostate, Output>;
-};
-
-template <typename T>
-struct IsFuture : std::false_type {};
-template <Pollable T>
-struct IsFuture<T> : std::true_type {};
 
 template <typename Fut, typename Out = typename FutureTraits<std::decay_t<Fut>>::Output>
 inline Future<Out> toPlainFuture(Fut fut) {
@@ -280,3 +196,8 @@ inline Future<Out> toPlainFuture(Fut fut) {
 }
 
 }
+
+#undef TRACE
+
+
+// Main promise : 0x7c80603e0050 , select promise : 0x7c70603ec050

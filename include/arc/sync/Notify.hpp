@@ -14,11 +14,11 @@ struct NotifyState {
     asp::Mutex<WaitList<Notified>> m_waiters;
     bool m_storedPermit = false; // also guarded by m_waiters
 
-    bool claimStoredOrRegister(Notified* notified);
+    bool claimStoredOrRegister(Notified* notified, Context& cx);
     void unregister(Notified* notified);
 };
 
-struct ARC_NODISCARD Notified : PollableBase<Notified> {
+struct ARC_NODISCARD Notified : Pollable<Notified> {
     enum class State : uint8_t {
         Init,
         Waiting,
@@ -36,7 +36,7 @@ struct ARC_NODISCARD Notified : PollableBase<Notified> {
 
     ~Notified();
 
-    bool poll();
+    bool poll(Context& cx);
     void reset();
 };
 

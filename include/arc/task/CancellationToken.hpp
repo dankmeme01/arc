@@ -24,13 +24,13 @@ struct CancellationToken {
         m_notify.notifyAll();
     }
 
-    struct ARC_NODISCARD Awaiter : PollableBase<Awaiter> {
+    struct ARC_NODISCARD Awaiter : Pollable<Awaiter> {
         explicit Awaiter(CancellationToken* token) : m_token(token) {}
         Awaiter(Awaiter&&) noexcept = default;
         Awaiter& operator=(Awaiter&&) noexcept = delete;
         ~Awaiter() = default;
 
-        bool poll();
+        bool poll(Context& cx);
 
     private:
         CancellationToken* m_token;

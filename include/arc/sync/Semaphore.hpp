@@ -11,10 +11,10 @@ namespace arc {
 struct Semaphore {
     explicit Semaphore(size_t permits);
 
-    struct ARC_NODISCARD AcquireAwaiter : PollableBase<AcquireAwaiter> {
+    struct ARC_NODISCARD AcquireAwaiter : Pollable<AcquireAwaiter> {
         explicit AcquireAwaiter(Semaphore& sem, size_t permits) : m_sem(sem), m_requested(permits) {}
 
-        bool poll();
+        bool poll(Context& cx);
         AcquireAwaiter(AcquireAwaiter&&) noexcept;
         AcquireAwaiter& operator=(AcquireAwaiter&&) noexcept = delete;
         ~AcquireAwaiter();
@@ -51,7 +51,7 @@ private:
     asp::Mutex<WaitList<AcquireAwaiter>> m_waiters;
 
     /// Acquires from 0 to n permits, returning the acquired amount
-    size_t tryAcquireOrRegister(size_t maxp, AcquireAwaiter* awaiter);
+    size_t tryAcquireOrRegister(size_t maxp, Context& cx, AcquireAwaiter* awaiter);
     bool assignPermitsTo(size_t& remaining, AcquireAwaiter* waiter);
 };
 

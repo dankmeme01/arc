@@ -29,7 +29,7 @@ private:
 };
 
 template <typename FRet, typename... Futures>
-struct ARC_NODISCARD JoinAll : PollableBase<JoinAll<FRet, Futures...>, std::array<FRet, sizeof...(Futures)>> {
+struct ARC_NODISCARD JoinAll : Pollable<JoinAll<FRet, Futures...>, std::array<FRet, sizeof...(Futures)>> {
     using JoinAllOutput = std::array<FRet, sizeof...(Futures)>;
     using JoinAllTempOutput = std::array<std::optional<FRet>, sizeof...(Futures)>;
     explicit JoinAll(std::tuple<Futures...>&& futs, FRet*) : m_futures(std::move(futs)) {}
@@ -41,9 +41,9 @@ struct ARC_NODISCARD JoinAll : PollableBase<JoinAll<FRet, Futures...>, std::arra
         }, std::move(tempOut));
     }
 
-    std::optional<JoinAllOutput> poll() {
+    std::optional<JoinAllOutput> poll(Context& cx) {
         bool allDone = true;
-        this->checkForEach(*m_futures, allDone);
+        this->checkForEach(*m_futures, allDone, cx);
 
         if (!allDone) {
             return std::nullopt;
@@ -56,21 +56,21 @@ struct ARC_NODISCARD JoinAll : PollableBase<JoinAll<FRet, Futures...>, std::arra
     }
 
     template <typename Tuple>
-    void checkForEach(Tuple&& t, bool& allDone) {
+    void checkForEach(Tuple&& t, bool& allDone, Context& cx) {
         constexpr auto size = std::tuple_size_v<std::decay_t<Tuple>>;
-        checkForEachImpl(std::forward<Tuple>(t), std::make_index_sequence<size>{}, allDone);
+        checkForEachImpl(std::forward<Tuple>(t), std::make_index_sequence<size>{}, allDone, cx);
     }
 
     template <size_t... Is, typename Tuple>
-    void checkForEachImpl(Tuple&& t, std::index_sequence<Is...>, bool& allDone) {
+    void checkForEachImpl(Tuple&& t, std::index_sequence<Is...>, bool& allDone, Context& cx) {
         (([&]() {
             auto& fut = std::get<Is>(t);
 
             trace("[JoinAll] checking future {}, active: {}", Is, !fut.output.has_value());
             if (!fut.output) {
-                auto res = fut.future.vPoll();
+                auto res = fut.future.poll(cx);
                 if (res) {
-                    fut.output = fut.future.getOutput();
+                    fut.output = fut.future.getOutput(cx);
                     trace("[JoinAll] future {} finished!", Is);
                 } else {
                     allDone = false;
@@ -102,7 +102,7 @@ private:
 };
 
 template <typename FRet, typename Fut>
-struct ARC_NODISCARD JoinAllDyn : PollableBase<JoinAllDyn<FRet, Fut>, std::vector<FRet>> {
+struct ARC_NODISCARD JoinAllDyn : Pollable<JoinAllDyn<FRet, Fut>, std::vector<FRet>> {
     using JoinAllOutput = std::vector<FRet>;
     using TransformedFut = JoinAllFuture<FRet>;
 
@@ -113,7 +113,7 @@ struct ARC_NODISCARD JoinAllDyn : PollableBase<JoinAllDyn<FRet, Fut>, std::vecto
         futs.clear();
     }
 
-    std::optional<JoinAllOutput> poll() {
+    std::optional<JoinAllOutput> poll(Context& cx) {
         bool allDone = true;
 
         for (size_t i = 0; i < m_futures.size(); i++) {
@@ -122,9 +122,9 @@ struct ARC_NODISCARD JoinAllDyn : PollableBase<JoinAllDyn<FRet, Fut>, std::vecto
             trace("[JoinAll] checking future {}, active: {}", i, !fut.output.has_value());
 
             if (!fut.output) {
-                auto res = fut.future.vPoll();
+                auto res = fut.future.poll(cx);
                 if (res) {
-                    fut.output = fut.future.getOutput();
+                    fut.output = fut.future.getOutput(cx);
                     trace("[JoinAll] future {} finished!", i);
                 } else {
                     allDone = false;

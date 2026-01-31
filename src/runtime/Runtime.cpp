@@ -5,6 +5,7 @@ using namespace asp::time;
 using enum std::memory_order;
 
 static constexpr size_t MAX_BLOCKING_WORKERS = 128;
+static thread_local arc::Runtime* g_runtime = nullptr;
 
 #if 0
 # define TRACE ::arc::trace
@@ -14,13 +15,13 @@ static constexpr size_t MAX_BLOCKING_WORKERS = 128;
 
 namespace arc {
 
-std::shared_ptr<Runtime> Runtime::create(
+asp::SharedPtr<Runtime> Runtime::create(
     size_t workers,
     bool timeDriver,
     bool ioDriver,
     bool signalDriver
 ) {
-    auto rt = std::make_shared<Runtime>(ctor_tag{}, workers);
+    auto rt = asp::make_shared<Runtime>(ctor_tag{}, workers);
     rt->init(timeDriver, ioDriver, signalDriver);
     return rt;
 }
@@ -30,6 +31,18 @@ Runtime::Runtime(ctor_tag, size_t workers)
       m_workerCount(std::clamp<size_t>(workers, 1, 128)),
       m_taskDeadline(Duration::fromMillis((uint64_t)(5.f * std::powf(m_workerCount, 0.9f))))
 {
+    static const RuntimeVtable vtable = {
+        .m_enqueueTask = &Runtime::vEnqueueTask,
+        .m_setTerminateHandler = &Runtime::vSetTerminateHandler,
+        .m_insertTask = &Runtime::vInsertTask,
+        .m_insertBlocking = &Runtime::vInsertBlocking,
+        .m_removeTask = &Runtime::vRemoveTask,
+        .m_isShuttingDown = &Runtime::vIsShuttingDown,
+        .m_safeShutdown = &Runtime::vSafeShutdown,
+        .m_getDriver = &Runtime::vGetDriver,
+    };
+
+    m_vtable = &vtable;
 }
 
 void Runtime::init(bool timeDriver, bool ioDriver, bool signalDriver) {
@@ -37,15 +50,15 @@ void Runtime::init(bool timeDriver, bool ioDriver, bool signalDriver) {
     // because weak_from_this() does not work inside constructor
 
     if (timeDriver) {
-        m_timeDriver.emplace(weak_from_this());
+        m_timeDriver.emplace(weakFromThis());
     }
 
     if (ioDriver) {
-        m_ioDriver.emplace(weak_from_this());
+        m_ioDriver.emplace(weakFromThis());
     }
 
     if (signalDriver) {
-        m_signalDriver.emplace(weak_from_this());
+        m_signalDriver.emplace(weakFromThis());
     }
 
     m_workers.reserve(m_workerCount);
@@ -70,46 +83,86 @@ Runtime::~Runtime() {
 }
 
 Runtime* Runtime::current() {
-    return ctx().runtime();
-}
-
-TimeDriver& Runtime::timeDriver() {
-    ARC_ASSERT(m_timeDriver, "attempted to use time features with time driver disabled");
-    return *m_timeDriver;
-}
-
-SignalDriver& Runtime::signalDriver() {
-    ARC_ASSERT(m_signalDriver, "attempted to use signal features with signal driver disabled");
-    return *m_signalDriver;
-}
-
-IoDriver& Runtime::ioDriver() {
-    ARC_ASSERT(m_ioDriver, "attempted to use io features with io driver disabled");
-    return *m_ioDriver;
+    return g_runtime;
 }
 
 void Runtime::setTerminateHandler(TerminateHandler handler) {
-    auto lock = m_terminateHandler.lock();
-    lock = std::move(handler);
+    m_vtable->m_setTerminateHandler(this, std::move(handler));
 }
 
 void Runtime::enqueueTask(TaskBase* task) {
+    m_vtable->m_enqueueTask(this, task);
+}
+
+void Runtime::removeTask(TaskBase* task) noexcept {
+    m_vtable->m_removeTask(this, task);
+}
+
+void Runtime::vSetTerminateHandler(Runtime* self, TerminateHandler handler) noexcept {
+    auto lock = self->m_terminateHandler.lock();
+    lock = std::move(handler);
+}
+
+void Runtime::vEnqueueTask(Runtime* self, TaskBase* task) {
     TRACE("[Runtime] enqueuing task {}", (void*)task);
     {
-        std::lock_guard lock(m_mtx);
-        m_runQueue.push_back(task);
+        std::lock_guard lock(self->m_mtx);
+        self->m_runQueue.push_back(task);
     }
-    m_cv.notify_one();
+    self->m_cv.notify_one();
+}
+
+void Runtime::vInsertTask(Runtime* self, TaskBase* task) {
+    self->m_tasks.lock()->insert(task);
+}
+
+void Runtime::vInsertBlocking(Runtime* self, std::shared_ptr<BlockingTaskBase> task) {
+    std::unique_lock lock(self->m_blockingMtx);
+
+    auto& btasks = self->m_blockingTasks;
+    btasks.push_back(task);
+
+    self->ensureBlockingWorker(btasks.size());
+    self->m_blockingCv.notify_one();
+}
+
+static bool skipRemoveTask = false;
+void Runtime::vRemoveTask(Runtime* self, TaskBase* task) noexcept {
+    if (skipRemoveTask) return;
+    self->m_tasks.lock()->erase(task);
+}
+
+bool Runtime::vIsShuttingDown(const Runtime* self) noexcept {
+    return self->m_stopFlag.load(::acquire);
+}
+
+void Runtime::vSafeShutdown(Runtime* self) {
+    self->shutdown();
+}
+
+void* Runtime::vGetDriver(Runtime* self, DriverType ty) noexcept {
+    switch (ty) {
+        case DriverType::Time:
+            return self->m_timeDriver ? &*self->m_timeDriver : nullptr;
+        case DriverType::Io:
+            return self->m_ioDriver ? &*self->m_ioDriver : nullptr;
+        case DriverType::Signal:
+            return self->m_signalDriver ? &*self->m_signalDriver : nullptr;
+        default:
+            return nullptr;
+    }
 }
 
 void Runtime::workerLoopWrapper(WorkerData& data) {
-    // Wrap around and catch exceptions to get better traces
+    Context cx{nullptr, this};
+    g_runtime = this;
 
+    // Wrap around and catch exceptions to get better traces
     try {
-        this->workerLoop(data);
+        this->workerLoop(data, cx);
     } catch (const std::exception& e) {
         printError("[Worker {}] terminating due to uncaught exception: {}", data.id, e.what());
-        ctx().dumpStack();
+        cx.dumpStack();
 
         auto handler = m_terminateHandler.lock();
         if (*handler) {
@@ -120,7 +173,7 @@ void Runtime::workerLoopWrapper(WorkerData& data) {
     }
 }
 
-void Runtime::workerLoop(WorkerData& data) {
+void Runtime::workerLoop(WorkerData& data, Context& cx) {
     float mult = std::powf(m_workers.size(), 0.9f);
     auto timerIncrement = Duration::fromMicros(500.f * mult);
     auto ioIncrement = Duration::fromMicros(800.f * mult);
@@ -201,8 +254,8 @@ void Runtime::workerLoop(WorkerData& data) {
         now = Instant::now();
         auto deadline = now + m_taskDeadline;
 
-        ctx().setTaskDeadline(deadline);
-        task->m_vtable->run(task);
+        cx.setTaskDeadline(deadline);
+        task->m_vtable->run(task, cx);
         auto taken = now.elapsed();
 
         TRACE("[Worker {}] finished driving task", data.id);
@@ -266,12 +319,6 @@ void Runtime::blockingWorkerLoop(size_t id) {
     }
 }
 
-static bool skipRemoveTask = false;
-void Runtime::removeTask(TaskBase* task) noexcept {
-    if (skipRemoveTask) return;
-    m_tasks.lock()->erase(task);
-}
-
 void Runtime::ensureBlockingWorker(size_t tasksInQueue) {
     auto workers = m_blockingWorkers.load(::acquire);
 
@@ -304,11 +351,11 @@ void Runtime::spawnBlockingWorker() {
 }
 
 bool Runtime::isShuttingDown() const noexcept {
-    return m_stopFlag.load(::acquire);
+    return m_vtable->m_isShuttingDown(this);
 }
 
 void Runtime::safeShutdown() {
-    this->shutdown();
+    m_vtable->m_safeShutdown(this);
 }
 
 void Runtime::shutdown() {
@@ -335,7 +382,6 @@ void Runtime::shutdown() {
     m_signalDriver.reset();
 
     // deallocate all tasks
-    ctx().m_runtime = this;
 
     skipRemoveTask = true;
     auto tasks = m_tasks.lock();
@@ -344,8 +390,6 @@ void Runtime::shutdown() {
     }
     tasks->clear();
     skipRemoveTask = false;
-
-    ctx().m_runtime = nullptr;
 }
 
 

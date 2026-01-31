@@ -35,7 +35,7 @@ private:
     TcpListener(qsox::TcpListener listener, Registration io) : EventIoBase(std::move(io)), m_listener(std::move(listener)) {}
 
     static TcpListener fromQsox(qsox::TcpListener listener);
-    std::optional<PollAcceptResult> pollAccept(uint64_t& id);
+    std::optional<PollAcceptResult> pollAccept(Context& cx, uint64_t& id);
 
 };
 

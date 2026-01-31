@@ -25,7 +25,7 @@ std::array<uint64_t, 3> _getRandomSeed() {
     throw std::runtime_error(fmt::format("Assertion failed ({}) at {}:{}: {}", what, file, line, why));
 }
 
-static std23::move_only_function<void(std::string, LogLevel)> g_logFunction;
+static arc::MoveOnlyFunction<void(std::string, LogLevel)> g_logFunction;
 
 void doLogMessage(std::string message, LogLevel level) {
     if (g_logFunction) {
@@ -47,7 +47,7 @@ void doLogMessage(std::string message, LogLevel level) {
     }
 }
 
-void setLogFunction(std23::move_only_function<void(std::string, LogLevel)> func) {
+void setLogFunction(arc::MoveOnlyFunction<void(std::string, LogLevel)> func) {
     g_logFunction = std::move(func);
 }
 

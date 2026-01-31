@@ -9,7 +9,72 @@ void TaskBase::schedule() noexcept {
 }
 
 void TaskBase::abort() noexcept {
-    auto state = this->getState();
+    m_vtable->abort(this);
+}
+
+std::optional<bool> TaskBase::vPoll(void* ptr, Context& cx) {
+    auto self = static_cast<TaskBase*>(ptr);
+    auto state = self->getState();
+
+    trace("[Task {}] polling, cx waker: {}, state: {}", (void*)self, cx.waker() ? cx.waker()->m_data : nullptr, state);
+
+    while (true) {
+        // if the task was closed, notify awaiter and return
+        if (state & TASK_CLOSED) {
+            // if the task is scheduled or running, we need to wait until the future is destroyed
+            if (state & (TASK_SCHEDULED | TASK_RUNNING)) {
+                // replace the waker
+                if (cx.waker()) self->registerAwaiter(*cx.waker());
+
+                // reload the state after registering, to be aware of any changes
+                state = self->getState();
+
+                // if the task is still scheduled or running, return pending
+                if (state & (TASK_SCHEDULED | TASK_RUNNING)) {
+                    return std::nullopt;
+                }
+            }
+
+            // notify awaiter
+            self->notifyAwaiter(cx.waker());
+            return std::optional{false};
+        }
+
+        // if the task is not completed, register waker and return pending
+        if ((state & TASK_COMPLETED) == 0) {
+            if (cx.waker()) self->registerAwaiter(*cx.waker());
+
+            // reload state
+            state = self->getState();
+
+            if (state & TASK_CLOSED) {
+                continue;
+            }
+
+            // still not completed, return pending
+            if ((state & TASK_COMPLETED) == 0) {
+                return std::nullopt;
+            }
+        }
+
+        // task is now completed, try to set closed flag
+
+        if (self->exchangeState(state, state | TASK_CLOSED)) {
+            // notify awaiter
+            if (state & TASK_AWAITER) {
+                self->notifyAwaiter(cx.waker());
+            }
+
+            // return ready
+            return std::optional{true};
+        }
+    }
+}
+
+void TaskBase::vAbort(void* ptr) noexcept {
+    auto self = static_cast<TaskBase*>(ptr);
+
+    auto state = self->getState();
 
     while (true) {
         // cannot cancel if already completed or closed
@@ -24,77 +89,18 @@ void TaskBase::abort() noexcept {
             newState += TASK_REFERENCE;
         }
 
-        if (this->exchangeState(state, newState)) {
+        if (self->exchangeState(state, newState)) {
             // schedule it so the future gets dropped by the executor
             if ((state & (TASK_SCHEDULED | TASK_RUNNING)) == 0) {
-                this->schedule();
+                self->schedule();
             }
 
             // notify awaiter
             if (state & TASK_AWAITER) {
-                this->notifyAwaiter();
+                self->notifyAwaiter();
             }
 
             break;
-        }
-    }
-}
-
-std::optional<bool> TaskBase::pollTask() {
-    auto& cx = ctx();
-    auto state = this->getState();
-
-    trace("[Task {}] polling, cx waker: {}, state: {}", (void*)this, cx.m_waker ? cx.m_waker->m_data : nullptr, state);
-
-    while (true) {
-        // if the task was closed, notify awaiter and return
-        if (state & TASK_CLOSED) {
-            // if the task is scheduled or running, we need to wait until the future is destroyed
-            if (state & (TASK_SCHEDULED | TASK_RUNNING)) {
-                // replace the waker
-                if (cx.m_waker) this->registerAwaiter(*cx.m_waker);
-
-                // reload the state after registering, to be aware of any changes
-                state = this->getState();
-
-                // if the task is still scheduled or running, return pending
-                if (state & (TASK_SCHEDULED | TASK_RUNNING)) {
-                    return std::nullopt;
-                }
-            }
-
-            // notify awaiter
-            this->notifyAwaiter(cx.m_waker);
-            return std::optional{false};
-        }
-
-        // if the task is not completed, register waker and return pending
-        if ((state & TASK_COMPLETED) == 0) {
-            if (cx.m_waker) this->registerAwaiter(*cx.m_waker);
-
-            // reload state
-            state = this->getState();
-
-            if (state & TASK_CLOSED) {
-                continue;
-            }
-
-            // still not completed, return pending
-            if ((state & TASK_COMPLETED) == 0) {
-                return std::nullopt;
-            }
-        }
-
-        // task is now completed, try to set closed flag
-
-        if (this->exchangeState(state, state | TASK_CLOSED)) {
-            // notify awaiter
-            if (state & TASK_AWAITER) {
-                this->notifyAwaiter(cx.m_waker);
-            }
-
-            // return ready
-            return std::optional{true};
         }
     }
 }
@@ -103,7 +109,7 @@ void TaskBase::vSchedule(void* self) {
     // trace("[Task {}] scheduling", self);
 
     auto task = static_cast<TaskBase*>(self);
-    auto rt = task->m_runtime.lock();
+    auto rt = task->m_runtime.upgrade();
     if (rt && !rt->isShuttingDown()) {
         rt->enqueueTask(task);
     }
@@ -161,14 +167,28 @@ bool TaskBase::exchangeState(uint64_t& expected, uint64_t newState) noexcept {
     return m_state.compare_exchange_weak(expected, newState, std::memory_order::acq_rel, std::memory_order::acquire);
 }
 
+void TaskBase::registerAwaiter(Waker& waker) {
+    m_vtable->registerAwaiter(this, waker);
+}
+
+void TaskBase::notifyAwaiter(Waker* current) {
+    m_vtable->notifyAwaiter(this, current);
+}
+
 std::optional<Waker> TaskBase::takeAwaiter(const Waker* current) {
-    auto state = m_state.fetch_or(TASK_NOTIFYING, std::memory_order::acq_rel);
+    return m_vtable->takeAwaiter(this, current);
+}
+
+std::optional<Waker> TaskBase::vTakeAwaiter(void* ptr, const Waker* current) {
+    auto self = static_cast<TaskBase*>(ptr);
+
+    auto state = self->m_state.fetch_or(TASK_NOTIFYING, std::memory_order::acq_rel);
 
     std::optional<Waker> out;
     if ((state & (TASK_NOTIFYING | TASK_REGISTERING)) == 0) {
-        out = std::move(m_awaiter);
-        m_awaiter.reset();
-        m_state.fetch_and(~TASK_NOTIFYING & ~TASK_AWAITER, std::memory_order::release);
+        out = std::move(self->m_awaiter);
+        self->m_awaiter.reset();
+        self->m_state.fetch_and(~TASK_NOTIFYING & ~TASK_AWAITER, std::memory_order::release);
 
         if (out) {
             if (current && out->equals(*current)) {
@@ -180,10 +200,11 @@ std::optional<Waker> TaskBase::takeAwaiter(const Waker* current) {
     return out;
 }
 
-void TaskBase::registerAwaiter(Waker& waker) {
-    trace("[Task {}] registering waker {}", (void*)this, waker.m_data);
+void TaskBase::vRegisterAwaiter(void* ptr, Waker& waker) {
+    auto self = static_cast<TaskBase*>(ptr);
+    trace("[Task {}] registering waker {}", (void*)self, waker.m_data);
 
-    auto state = m_state.fetch_or(0, std::memory_order::acquire);
+    auto state = self->m_state.fetch_or(0, std::memory_order::acquire);
 
     while (true) {
         // if we are notifying, wake and return without registering
@@ -194,22 +215,22 @@ void TaskBase::registerAwaiter(Waker& waker) {
 
         // mark the state to let other threads know we are registering
         auto newState = state | TASK_REGISTERING;
-        if (this->exchangeState(state, newState)) {
+        if (self->exchangeState(state, newState)) {
             state = newState;
             break;
         }
     }
 
     // store the awaiter
-    m_awaiter = waker.clone();
+    self->m_awaiter = waker.clone();
 
     std::optional<Waker> w;
 
     while (true) {
         // if there was a notification, take out the awaiter
         if (state & TASK_NOTIFYING) {
-            w = std::move(m_awaiter);
-            m_awaiter->reset();
+            w = std::move(self->m_awaiter);
+            self->m_awaiter->reset();
         }
 
         // the new state is not being notified nor registering, but there might be an awaiter
@@ -220,7 +241,7 @@ void TaskBase::registerAwaiter(Waker& waker) {
             newState |= TASK_AWAITER;
         }
 
-        if (this->exchangeState(state, newState)) {
+        if (self->exchangeState(state, newState)) {
             break;
         }
     }
@@ -231,10 +252,11 @@ void TaskBase::registerAwaiter(Waker& waker) {
     }
 }
 
-void TaskBase::notifyAwaiter(Waker* current) {
-    trace("[Task {}] notifying waker {} (cur: {})", (void*)this, m_awaiter ? m_awaiter->m_data : nullptr, current->m_data);
+void TaskBase::vNotifyAwaiter(void* ptr, Waker* current) {
+    auto self = static_cast<TaskBase*>(ptr);
+    trace("[Task {}] notifying waker {} (cur: {})", (void*)self, self->m_awaiter ? self->m_awaiter->m_data : nullptr, current->m_data);
 
-    auto w = this->takeAwaiter(current);
+    auto w = self->takeAwaiter(current);
 
     if (w) {
         w->wake();

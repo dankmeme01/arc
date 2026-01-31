@@ -6,8 +6,8 @@ using namespace asp::time;
 
 namespace arc {
 
-bool Sleep::poll() {
-    if (ctx().shouldCoopYield()) {
+bool Sleep::poll(Context& cx) {
+    if (cx.shouldCoopYield()) {
         return false;
     }
 
@@ -18,7 +18,8 @@ bool Sleep::poll() {
     } else {
         // only register if we aren't already registered
         if (m_id == 0) {
-            m_id = ctx().runtime()->timeDriver().addEntry(m_expiry, ctx().cloneWaker());
+            m_runtime = cx.runtime()->weakFromThis();
+            m_id = cx.runtime()->timeDriver().addEntry(m_expiry, cx.cloneWaker());
         }
 
         return false;
@@ -27,8 +28,8 @@ bool Sleep::poll() {
 
 Sleep::~Sleep() {
     if (m_id != 0) {
-        auto rt = ctx().runtime();
-        if (!rt->isShuttingDown()) {
+        auto rt = m_runtime.upgrade();
+        if (rt && !rt->isShuttingDown()) {
             rt->timeDriver().removeEntry(m_expiry, m_id);
         }
     }

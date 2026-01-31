@@ -2,7 +2,7 @@
 
 #include "Waker.hpp"
 #include "CondvarWaker.hpp"
-#include "Context.hpp"
+#include <arc/future/Promise.hpp>
 #include <arc/future/Future.hpp>
 #include <arc/util/Trace.hpp>
 #include <arc/util/ManuallyDrop.hpp>
@@ -15,10 +15,10 @@
 # define TRACE(...) do {} while(0)
 #endif
 
+#include <asp/ptr/SharedPtr.hpp>
 #include <utility>
 #include <atomic>
 #include <limits>
-#include <memory>
 #include <cstdlib>
 #include <optional>
 #include <stdexcept>
@@ -37,21 +37,32 @@ static constexpr uint64_t TASK_REFERENCE   = 1 << 12;
 
 struct TaskVtable {
     using Fn = void(*)(void*);
-    using RunFn = bool(*)(void*);
+    using RunFn = bool(*)(void*, Context&);
+    using PollFn = std::optional<bool>(*)(void*, Context&);
     using CloneWakerFn = RawWaker(*)(void*);
+    using RegisterAwaiterFn = void(*)(void*, Waker&);
+    using NotifyAwaiterFn = void(*)(void*, Waker*);
+    using TakeAwaiterFn = std::optional<Waker>(*)(void*, const Waker*);
 
     Fn schedule;
     Fn dropFuture;
     Fn dropRef;
     Fn destroy;
+    Fn abort;
     RunFn run;
+    PollFn poll;
     CloneWakerFn cloneWaker;
+    RegisterAwaiterFn registerAwaiter;
+    NotifyAwaiterFn notifyAwaiter;
+    TakeAwaiterFn takeAwaiter;
 };
 
 struct TaskBase {
-    std::atomic<uint64_t> m_state{TASK_SCHEDULED | TASK_REFERENCE | TASK_TASK};
-    std::weak_ptr<Runtime> m_runtime;
+    // Every field past the vtable can be changed without causing an ABI break.
+    // Fields must never be directly accessed and should only be used through the vtable.
     const TaskVtable* m_vtable;
+    std::atomic<uint64_t> m_state{TASK_SCHEDULED | TASK_REFERENCE | TASK_TASK};
+    asp::WeakPtr<Runtime> m_runtime;
     std::optional<Waker> m_awaiter;
 
     void schedule() noexcept;
@@ -61,11 +72,7 @@ struct TaskBase {
     /// - std::nullopt if the task is pending
     /// - true if the task is completed
     /// - false if the task was closed before completion
-    std::optional<bool> pollTask();
-
-    static void vSchedule(void* self);
-    static void vDropRef(void* self);
-    static void vDropWaker(void* ptr);
+    static std::optional<bool> vPoll(void* self, Context& cx);
 
 protected:
     friend class Runtime;
@@ -79,9 +86,17 @@ protected:
     uint64_t getState() noexcept;
     bool exchangeState(uint64_t& expected, uint64_t newState) noexcept;
 
-    std::optional<Waker> takeAwaiter(const Waker* current = nullptr);
     void registerAwaiter(Waker& waker);
     void notifyAwaiter(Waker* current = nullptr);
+    std::optional<Waker> takeAwaiter(const Waker* current = nullptr);
+
+    static void vAbort(void* self) noexcept;
+    static void vSchedule(void* self);
+    static void vDropRef(void* self);
+    static void vDropWaker(void* ptr);
+    static void vRegisterAwaiter(void* ptr, Waker& waker);
+    static void vNotifyAwaiter(void* ptr, Waker* current);
+    static std::optional<Waker> vTakeAwaiter(void* ptr, const Waker* current);
 };
 
 template <typename T>
@@ -137,7 +152,7 @@ struct TaskTypedBase : TaskBase {
     }
 };
 
-template <Pollable P>
+template <IsPollable P>
 struct Task : TaskTypedBase<typename P::Output> {
     using Output = TaskTypedBase<typename P::Output>::Output;
     using NonVoidOutput = TaskTypedBase<typename P::Output>::NVOutput;
@@ -146,11 +161,11 @@ struct Task : TaskTypedBase<typename P::Output> {
     ManuallyDrop<P> m_future;
     bool m_droppedFuture = false;
 
-    static Task* create(std::weak_ptr<Runtime> runtime, P&& fut) {
+    static Task* create(asp::WeakPtr<Runtime> runtime, P&& fut) {
         auto task = new Task{
             {{
-                .m_runtime = std::move(runtime),
                 .m_vtable = &vtable,
+                .m_runtime = std::move(runtime),
             }},
             std::move(fut),
         };
@@ -175,7 +190,7 @@ struct Task : TaskTypedBase<typename P::Output> {
     static void vDestroy(void* self) {
         TRACE("[Task {}] destroying", self);
         auto task = static_cast<Task*>(self);
-        auto rt = task->m_runtime.lock();
+        auto rt = task->m_runtime.upgrade();
         if (rt) {
             rt->removeTask(task);
         }
@@ -194,9 +209,9 @@ struct Task : TaskTypedBase<typename P::Output> {
         return RawWaker{self, &WakerVtable};
     }
 
-    static bool vRun(void* ptr) {
+    static bool vRun(void* ptr, Context& cx) {
         auto self = static_cast<Task*>(ptr);
-        return self->run();
+        return self->run(cx);
     }
 
     template <bool Consume>
@@ -244,8 +259,13 @@ struct Task : TaskTypedBase<typename P::Output> {
         .dropFuture = &Task::vDropFuture,
         .dropRef = &Task::vDropRef,
         .destroy = &Task::vDestroy,
+        .abort = &Task::vAbort,
         .run = &Task::vRun,
+        .poll = &Task::vPoll,
         .cloneWaker = &Task::vCloneWaker,
+        .registerAwaiter = &Task::vRegisterAwaiter,
+        .notifyAwaiter = &Task::vNotifyAwaiter,
+        .takeAwaiter = &Task::vTakeAwaiter,
     };
 
     static constexpr RawWakerVtable WakerVtable = {
@@ -255,16 +275,14 @@ struct Task : TaskTypedBase<typename P::Output> {
         .destroy = &Task::vDropWaker,
     };
 
-    bool run() {
+    bool run(Context& cx) {
         ManuallyDrop<Waker> waker{this, &WakerVtable};
         auto state = this->getState();
 
         TRACE("[Task {}] running, state: {}", (void*)this, state);
 
-        auto rt = this->m_runtime.lock();
+        auto rt = this->m_runtime.upgrade();
         if (!rt) return false; // might happen if the runtime is shutting down
-
-        ctx().m_runtime = rt.get();
 
         // update task state
         while (true) {
@@ -295,18 +313,16 @@ struct Task : TaskTypedBase<typename P::Output> {
             }
         }
 
-        // poll the inner future
-        ctx().m_waker = &waker.get();
-
-        bool result = m_future.get().vPoll();
-
-        ctx().m_waker = nullptr;
+        PollableBase* future = &m_future.get();
+        cx._installWaker(&waker.get());
+        bool result = future->m_vtable->m_poll(future, cx);
+        cx._installWaker(nullptr);
 
         TRACE("[Task {}] future completion: {}", (void*)this, result);
 
         if (result) {
             if constexpr (!IsVoid) {
-                this->m_value = m_future.get().template vGetOutput<Output>();
+                this->m_value = future->m_vtable->getOutput<NonVoidOutput>(future, cx);
             }
 
             this->vDropFuture(this);
@@ -409,8 +425,8 @@ struct TaskHandleBase {
     /// Polls the task. Returns the return value if the future is completed,
     /// or std::nullopt if it is still pending.
     /// Throws an exception if the task was closed before completion.
-    std::optional<typename TaskTypedBase<T>::NVOutput> pollTask() {
-        auto res = m_task->pollTask();
+    std::optional<typename TaskTypedBase<T>::NVOutput> pollTask(Context& cx) {
+        auto res = m_task->vPoll(m_task, cx);
         TRACE("[Task {}] poll result: {}", (void*)this->m_task, res);
 
         if (res && *res) {
@@ -434,13 +450,10 @@ struct TaskHandleBase {
         auto waker = cvw.waker();
         m_task->registerAwaiter(waker);
 
-        ctx().m_waker = &waker;
-        auto _ = scopeDtor([] {
-            ctx().m_waker = nullptr;
-        });
+        Context cx { &waker, nullptr };
 
         while (true) {
-            auto result = this->pollTask();
+            auto result = this->pollTask(cx);
             TRACE("[Task {}] poll result: {}", (void*)this->m_task, result);
 
             if (result) {
@@ -461,20 +474,20 @@ struct TaskHandleBase {
 };
 
 template <typename T>
-struct TaskHandle : PollableBase<TaskHandle<T>, T>, TaskHandleBase<T> {
+struct TaskHandle : Pollable<TaskHandle<T>, T>, TaskHandleBase<T> {
     TaskHandle(TaskTypedBase<T>* task) : TaskHandleBase<T>(task) {}
 
-    std::optional<T> poll() {
-        return this->pollTask();
+    std::optional<T> poll(Context& cx) {
+        return this->pollTask(cx);
     }
 };
 
 template <>
-struct TaskHandle<void> : PollableBase<TaskHandle<void>, void>, TaskHandleBase<void> {
+struct TaskHandle<void> : Pollable<TaskHandle<void>, void>, TaskHandleBase<void> {
     TaskHandle(TaskTypedBase<void>* task) : TaskHandleBase<void>(task) {}
 
-    bool poll() {
-        auto res = this->pollTask();
+    bool poll(Context& cx) {
+        auto res = TaskHandleBase::pollTask(cx);
         return res.has_value();
     }
 };

@@ -1,13 +1,12 @@
 #include <arc/task/Yield.hpp>
-#include <arc/task/Context.hpp>
 #include <arc/runtime/Runtime.hpp>
 
 namespace arc {
 
-bool Yield::poll() {
+bool Yield::poll(Context& cx) {
     if (!yielded) {
         yielded = true;
-        ctx().wake();
+        cx.wake();
         return false;
     } else {
         return true;
@@ -18,7 +17,7 @@ Yield yield() noexcept {
     return Yield{};
 }
 
-bool Never::poll() {
+bool Never::poll(Context& cx) {
     return false;
 }
 
@@ -26,15 +25,15 @@ Never never() noexcept {
     return Never{};
 }
 
-bool CoopYield::poll() {
+bool CoopYield::poll(Context& cx) {
     if (yielded) return true;
 
-    if (!ctx().shouldCoopYield()) {
+    if (!cx.shouldCoopYield()) {
         return true;
     }
 
     yielded = true;
-    ctx().wake();
+    cx.wake();
 
     return false;
 }

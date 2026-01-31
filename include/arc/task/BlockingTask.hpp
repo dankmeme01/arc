@@ -1,9 +1,10 @@
 #pragma once
 #include <arc/future/Future.hpp>
 #include <arc/task/Waker.hpp>
+#include <arc/util/Function.hpp>
 
 #include <asp/sync/SpinLock.hpp>
-#include <memory>
+#include <asp/ptr/SharedPtr.hpp>
 
 namespace arc {
 
@@ -14,10 +15,10 @@ struct BlockingTaskVtable {
 };
 
 struct BlockingTaskBase {
-    std::weak_ptr<Runtime> m_runtime;
+    asp::WeakPtr<Runtime> m_runtime;
     const BlockingTaskVtable* m_vtable;
 
-    BlockingTaskBase(std::weak_ptr<Runtime> runtime, const BlockingTaskVtable* vtable)
+    BlockingTaskBase(asp::WeakPtr<Runtime> runtime, const BlockingTaskVtable* vtable)
         : m_runtime(std::move(runtime)), m_vtable(vtable) {}
 
     void execute() {
@@ -27,14 +28,14 @@ struct BlockingTaskBase {
 
 template <typename T>
 struct BlockingTask : BlockingTaskBase {
-    static std::shared_ptr<BlockingTask> create(std::weak_ptr<Runtime> runtime, std23::move_only_function<T()> func) {
+    static std::shared_ptr<BlockingTask> create(asp::WeakPtr<Runtime> runtime, arc::MoveOnlyFunction<T()> func) {
         return std::make_shared<BlockingTask>(std::move(runtime), std::move(func));
     }
 
-    BlockingTask(std::weak_ptr<Runtime> runtime, std23::move_only_function<T()> func)
+    BlockingTask(asp::WeakPtr<Runtime> runtime, arc::MoveOnlyFunction<T()> func)
         : BlockingTaskBase(std::move(runtime), &vtable), m_func(std::move(func)) {}
 
-    std::optional<T> pollTask() {
+    std::optional<T> pollTask(Context& cx) {
         auto data = m_data.lock();
 
         if (data->m_result) {
@@ -42,7 +43,7 @@ struct BlockingTask : BlockingTaskBase {
             data->m_result.reset();
             return out;
         } else {
-            auto myWaker = ctx().m_waker;
+            auto myWaker = cx.waker();
             if (!data->m_awaiter || !data->m_awaiter->equals(*myWaker)) {
                 data->m_awaiter = myWaker->clone();
             }
@@ -57,7 +58,7 @@ private:
         std::optional<Waker> m_awaiter;
     };
 
-    std23::move_only_function<T()> m_func;
+    arc::MoveOnlyFunction<T()> m_func;
     asp::SpinLock<Data> m_data;
 
     static void vExecute(void* ptr) {
@@ -81,20 +82,20 @@ private:
 // Specialization for void
 template <>
 struct BlockingTask<void> : BlockingTaskBase {
-    static std::shared_ptr<BlockingTask> create(std::weak_ptr<Runtime> runtime, std23::move_only_function<void()> func) {
+    static std::shared_ptr<BlockingTask> create(asp::WeakPtr<Runtime> runtime, arc::MoveOnlyFunction<void()> func) {
         return std::make_shared<BlockingTask>(std::move(runtime), std::move(func));
     }
 
-    BlockingTask(std::weak_ptr<Runtime> runtime, std23::move_only_function<void()> func)
+    BlockingTask(asp::WeakPtr<Runtime> runtime, arc::MoveOnlyFunction<void()> func)
         : BlockingTaskBase(std::move(runtime), &vtable), m_func(std::move(func)) {}
 
-    bool pollTask() {
+    bool pollTask(Context& cx) {
         auto data = m_data.lock();
 
         if (data->m_completed) {
             return true;
         } else {
-            auto myWaker = ctx().m_waker;
+            auto myWaker = cx.waker();
             if (!data->m_awaiter || !data->m_awaiter->equals(*myWaker)) {
                 data->m_awaiter = myWaker->clone();
             }
@@ -109,7 +110,7 @@ private:
         std::optional<Waker> m_awaiter;
     };
 
-    std23::move_only_function<void()> m_func;
+    arc::MoveOnlyFunction<void()> m_func;
     asp::SpinLock<Data> m_data;
 
     static void vExecute(void* ptr) {
@@ -131,7 +132,7 @@ private:
 };
 
 template <typename T>
-struct BlockingTaskHandle : PollableBase<BlockingTaskHandle<T>, T> {
+struct BlockingTaskHandle : Pollable<BlockingTaskHandle<T>, T> {
 public:
     BlockingTaskHandle(std::shared_ptr<BlockingTask<T>> task) : m_task(std::move(task)) {}
     BlockingTaskHandle(const BlockingTaskHandle&) = delete;
@@ -139,8 +140,8 @@ public:
     BlockingTaskHandle(BlockingTaskHandle&& other) noexcept = default;
     BlockingTaskHandle& operator=(BlockingTaskHandle&& other) noexcept = default;
 
-    auto poll() {
-        return m_task->pollTask();
+    auto poll(Context& cx) {
+        return m_task->pollTask(cx);
     }
 private:
     friend class Runtime;

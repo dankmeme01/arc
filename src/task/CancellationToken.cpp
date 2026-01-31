@@ -2,14 +2,14 @@
 
 namespace arc {
 
-bool CancellationToken::Awaiter::poll() {
+bool CancellationToken::Awaiter::poll(Context& cx) {
     if (m_token->isCancelled()) {
         return true;
     }
 
     if (!m_notified) {
         m_notified.emplace(m_token->m_notify.notified());
-        if (m_notified->poll()) {
+        if (m_notified->poll(cx)) {
             return true;
         }
     }

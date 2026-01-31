@@ -1,10 +1,11 @@
 #include <arc/runtime/SignalDriver.hpp>
+#include <arc/runtime/Runtime.hpp>
 #include <arc/util/Assert.hpp>
 #include <csignal>
 
 namespace arc {
 
-SignalDriver::SignalDriver(std::weak_ptr<Runtime> runtime) : m_runtime(std::move(runtime)) {}
+SignalDriver::SignalDriver(asp::WeakPtr<Runtime> runtime) : m_runtime(std::move(runtime)) {}
 
 SignalDriver::~SignalDriver() {}
 
