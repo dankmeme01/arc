@@ -43,6 +43,8 @@ struct TaskVtable {
     using RegisterAwaiterFn = void(*)(void*, Waker&);
     using NotifyAwaiterFn = void(*)(void*, Waker*);
     using TakeAwaiterFn = std::optional<Waker>(*)(void*, const Waker*);
+    using SetDebugNameFn = void(*)(void*, std::string);
+    using GetDebugNameFn = std::string_view(*)(void*);
 
     Fn schedule;
     Fn dropFuture;
@@ -55,6 +57,8 @@ struct TaskVtable {
     RegisterAwaiterFn registerAwaiter;
     NotifyAwaiterFn notifyAwaiter;
     TakeAwaiterFn takeAwaiter;
+    SetDebugNameFn setDebugName;
+    GetDebugNameFn getDebugName;
 };
 
 struct TaskBase {
@@ -64,9 +68,11 @@ struct TaskBase {
     std::atomic<uint64_t> m_state{TASK_SCHEDULED | TASK_REFERENCE | TASK_TASK};
     asp::WeakPtr<Runtime> m_runtime;
     std::optional<Waker> m_awaiter;
+    std::string m_debugName;
 
     void schedule() noexcept;
     void abort() noexcept;
+    void setDebugName(std::string name) noexcept;
 
     /// Polls the task. Returns:
     /// - std::nullopt if the task is pending
@@ -97,6 +103,8 @@ protected:
     static void vRegisterAwaiter(void* ptr, Waker& waker);
     static void vNotifyAwaiter(void* ptr, Waker* current);
     static std::optional<Waker> vTakeAwaiter(void* ptr, const Waker* current);
+    static void vSetDebugName(void* ptr, std::string name);
+    static std::string_view vGetDebugName(void* ptr);
 };
 
 template <typename T>
@@ -266,6 +274,8 @@ struct Task : TaskTypedBase<typename P::Output> {
         .registerAwaiter = &Task::vRegisterAwaiter,
         .notifyAwaiter = &Task::vNotifyAwaiter,
         .takeAwaiter = &Task::vTakeAwaiter,
+        .setDebugName = &Task::vSetDebugName,
+        .getDebugName = &Task::vGetDebugName,
     };
 
     static constexpr RawWakerVtable WakerVtable = {
@@ -470,6 +480,10 @@ struct TaskHandleBase {
 
     void abort() noexcept {
         m_task->abort();
+    }
+
+    void setDebugName(std::string name) noexcept {
+        m_task->setDebugName(std::move(name));
     }
 };
 

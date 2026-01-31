@@ -173,6 +173,15 @@ void Runtime::workerLoopWrapper(WorkerData& data) {
     }
 }
 
+static std::string debugName(TaskBase* task) {
+    auto nameView = task->m_vtable->getDebugName(task);
+    if (nameView.empty()) {
+        return fmt::format("Task @ {}", (void*)task);
+    } else {
+        return std::string{nameView};
+    }
+}
+
 void Runtime::workerLoop(WorkerData& data, Context& cx) {
     float mult = std::powf(m_workers.size(), 0.9f);
     auto timerIncrement = Duration::fromMicros(500.f * mult);
@@ -249,8 +258,7 @@ void Runtime::workerLoop(WorkerData& data, Context& cx) {
             continue;
         }
 
-
-        TRACE("[Worker {}] driving task {}", data.id, (void*)task);
+        TRACE("[Worker {}] driving task {}", data.id, debugName(task));
         now = Instant::now();
         auto deadline = now + m_taskDeadline;
 
@@ -258,11 +266,11 @@ void Runtime::workerLoop(WorkerData& data, Context& cx) {
         task->m_vtable->run(task, cx);
         auto taken = now.elapsed();
 
-        TRACE("[Worker {}] finished driving task", data.id);
+        TRACE("[Worker {}] finished driving task {}", data.id, debugName(task));
 
 #ifdef ARC_DEBUG
         if (taken > Duration::fromMillis(100)) {
-            printWarn("[Worker {}] task {} took {} to yield", data.id, (void*)task, taken.toString());
+            printWarn("[Worker {}] task {} took {} to yield", data.id, debugName(task), taken.toString());
         }
 #endif
     }

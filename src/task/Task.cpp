@@ -12,6 +12,10 @@ void TaskBase::abort() noexcept {
     m_vtable->abort(this);
 }
 
+void TaskBase::setDebugName(std::string name) noexcept {
+    m_vtable->setDebugName(this, std::move(name));
+}
+
 std::optional<bool> TaskBase::vPoll(void* ptr, Context& cx) {
     auto self = static_cast<TaskBase*>(ptr);
     auto state = self->getState();
@@ -198,6 +202,16 @@ std::optional<Waker> TaskBase::vTakeAwaiter(void* ptr, const Waker* current) {
     }
 
     return out;
+}
+
+void TaskBase::vSetDebugName(void* ptr, std::string name) {
+    auto self = static_cast<TaskBase*>(ptr);
+    self->m_debugName = std::move(name);
+}
+
+std::string_view TaskBase::vGetDebugName(void* ptr) {
+    auto self = static_cast<TaskBase*>(ptr);
+    return self->m_debugName;
 }
 
 void TaskBase::vRegisterAwaiter(void* ptr, Waker& waker) {
