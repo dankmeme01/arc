@@ -416,7 +416,7 @@ void Runtime::shutdown() {
 
     auto tasks = m_tasks.lock();
     for (auto* task : *tasks) {
-        task->m_vtable->abort(task);
+        task->m_vtable->abort(task, true);
         task->m_vtable->run(task, cx);
     }
     tasks->clear();

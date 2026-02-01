@@ -23,6 +23,7 @@
 #include <cstdlib>
 #include <optional>
 #include <stdexcept>
+#include <stacktrace>
 
 namespace arc {
 
@@ -42,14 +43,17 @@ struct TaskDebugData {
     std::atomic<uint64_t> m_polls{0};
     std::atomic<uint64_t> m_runtimeNs{0};
     asp::SpinLock<std::string> m_name; // present already in task but duplicated here safety
+    std::stacktrace m_creationStack;
 
     asp::Duration totalRuntime() const noexcept;
     uint64_t totalPolls() const noexcept;
     std::string name() const noexcept;
+    std::stacktrace creationStack() const noexcept;
 };
 
 struct TaskVtable {
     using Fn = void(*)(void*);
+    using AbortFn = void(*)(void*, bool);
     using RunFn = bool(*)(void*, Context&);
     using PollFn = std::optional<bool>(*)(void*, Context&);
     using CloneWakerFn = RawWaker(*)(void*);
@@ -64,7 +68,7 @@ struct TaskVtable {
     Fn dropFuture;
     Fn dropRef;
     Fn destroy;
-    Fn abort;
+    AbortFn abort;
     RunFn run;
     PollFn poll;
     CloneWakerFn cloneWaker;
@@ -121,7 +125,7 @@ protected:
     void notifyAwaiter(Waker* current = nullptr);
     std::optional<Waker> takeAwaiter(const Waker* current = nullptr);
 
-    static void vAbort(void* self) noexcept;
+    static void vAbort(void* self, bool force) noexcept;
     static void vSchedule(void* self);
     static void vDropRef(void* self);
     static void vDropWaker(void* ptr);
@@ -195,7 +199,7 @@ struct Task : TaskTypedBase<typename P::Output> {
 
 protected:
     ManuallyDrop<P> m_future;
-    bool m_droppedFuture = false;
+    std::atomic<bool> m_droppedFuture = false;
 
     Task(const TaskVtable* vtable, asp::WeakPtr<Runtime> runtime, P&& fut)
         : TaskTypedBase<typename P::Output>(vtable, std::move(runtime)), m_future(std::move(fut)) {}
@@ -214,7 +218,7 @@ public:
             this->m_debugData->m_task.store(nullptr, std::memory_order::release);
         }
 
-        if (!m_droppedFuture) {
+        if (!m_droppedFuture.load(std::memory_order::acquire)) {
             this->vDropFuture(this);
         }
     }
@@ -222,10 +226,9 @@ public:
     static void vDropFuture(void* ptr) {
         TRACE("[Task {}] dropping future", ptr);
         auto self = static_cast<Task*>(ptr);
-        ARC_ASSERT(!self->m_droppedFuture);
+        ARC_DEBUG_ASSERT(!self->m_droppedFuture.exchange(true, std::memory_order::acq_rel));
 
         self->m_future.drop();
-        self->m_droppedFuture = true;
     }
 
     static void vDestroy(void* self) {
@@ -323,7 +326,7 @@ public:
         ManuallyDrop<Waker> waker{this, &WakerVtable};
         auto state = this->getState();
 
-        TRACE("[Task {}] polled, state: {}", (void*)this, state);
+        printWarn("[Task {}] polled, state: {}", (void*)this, state);
 
 #ifdef ARC_DEBUG
         this->ensureDebugData();
@@ -336,8 +339,10 @@ public:
         // update task state
         while (true) {
             if (state & TASK_CLOSED) {
-                // closed, drop the task
-                this->vDropFuture(this);
+                // closed, drop the future
+                if (!m_droppedFuture.load(std::memory_order::acquire)) {
+                    this->vDropFuture(this);
+                }
 
                 auto state = this->m_state.fetch_and(~TASK_SCHEDULED, std::memory_order::acq_rel);
 
@@ -422,7 +427,7 @@ public:
                     newState &= ~TASK_SCHEDULED;
                 }
 
-                if ((state & TASK_CLOSED) && !m_droppedFuture) {
+                if ((state & TASK_CLOSED) && !m_droppedFuture.load(std::memory_order::acquire)) {
                     // the thread that closed the task did not drop the future,
                     // so we have to do it here
                     this->vDropFuture(this);

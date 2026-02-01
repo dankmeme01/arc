@@ -36,6 +36,9 @@ endif()
 
 target_link_libraries(arc PUBLIC asp qsox std23::nontype_functional)
 
+if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    target_link_libraries(arc PUBLIC stdc++exp)
+endif()
 
 if (ARC_BUILD_TESTER)
     # small executable for testing

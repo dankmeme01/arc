@@ -22,13 +22,17 @@ std::string TaskDebugData::name() const noexcept {
     $safe_member(name, m_name);
     return *name.lock();
 }
+std::stacktrace TaskDebugData::creationStack() const noexcept {
+    $safe_member(stack, m_creationStack);
+    return stack;
+}
 
 void TaskBase::schedule() noexcept {
     m_vtable->schedule(this);
 }
 
 void TaskBase::abort() noexcept {
-    m_vtable->abort(this);
+    m_vtable->abort(this, false);
 }
 
 void TaskBase::setName(std::string name) noexcept {
@@ -98,14 +102,14 @@ std::optional<bool> TaskBase::vPoll(void* ptr, Context& cx) {
     }
 }
 
-void TaskBase::vAbort(void* ptr) noexcept {
+void TaskBase::vAbort(void* ptr, bool force) noexcept {
     auto self = static_cast<TaskBase*>(ptr);
 
     auto state = self->getState();
 
     while (true) {
         // cannot cancel if already completed or closed
-        if (state & (TASK_COMPLETED | TASK_CLOSED)) {
+        if (!force && (state & (TASK_COMPLETED | TASK_CLOSED))) {
             break;
         }
 
@@ -198,6 +202,7 @@ void TaskBase::ensureDebugData() {
     if (!m_debugData) {
         m_debugData = asp::make_shared<TaskDebugData>();
         m_debugData->m_task = this;
+        m_debugData->m_creationStack = std::stacktrace::current(1);
     }
 }
 
