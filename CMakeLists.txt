@@ -23,7 +23,7 @@ endif()
 include(cmake/CPM.cmake)
 
 if (NOT TARGET asp2)
-    CPMAddPackage("gh:dankmeme01/asp2#561745b")
+    CPMAddPackage("gh:dankmeme01/asp2#f401f60")
 endif()
 if (NOT TARGET qsox)
     CPMAddPackage("gh:dankmeme01/qsox#73aeabd")
