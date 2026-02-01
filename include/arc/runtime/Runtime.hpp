@@ -47,6 +47,13 @@ struct RuntimeVtable {
     GetDriverFn m_getDriver = nullptr;
 };
 
+template <typename T>
+concept ReturnsPollable = std::invocable<T> && IsPollable<std::invoke_result_t<T>>;
+
+/// A type is spawnable if it's either a pollable, or a no-arg function-like object that returns a pollable
+template <typename T>
+concept Spawnable = IsPollable<T> || ReturnsPollable<T>;
+
 class Runtime : public asp::EnableSharedFromThis<Runtime> {
 private:
     struct ctor_tag {};
@@ -89,6 +96,11 @@ public:
         task->schedule();
 
         return TaskHandle<T>{task};
+    }
+
+    template <typename L> requires ReturnsPollable<std::decay_t<L>>
+    auto spawn(L&& func) {
+        return this->spawn(std::invoke(std::forward<L>(func)));
     }
 
     template <typename T>
@@ -183,10 +195,10 @@ void setGlobalRuntime(Runtime* rt);
 /// Spawns an asynchronous task on the current runtime.
 /// The returned handle can be awaited to get the result of the task, or discarded to run it in the background.
 /// If there is no current runtime, an exception is thrown.
-template <IsPollable F>
-auto spawn(F t) {
+template <typename F>
+auto spawn(F&& t) requires Spawnable<std::decay_t<F>> {
     if (auto rt = Runtime::current()) {
-        return rt->spawn(std::move(t));
+        return rt->spawn(std::forward<F>(t));
     } else {
         throw std::runtime_error("No runtime available");
     }
