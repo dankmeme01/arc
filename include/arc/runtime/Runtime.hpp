@@ -36,6 +36,7 @@ struct RuntimeVtable {
     using IsShuttingDownFn = bool(*)(const Runtime*) noexcept;
     using SafeShutdownFn = void(*)(Runtime*);
     using GetDriverFn = void*(*)(Runtime*, DriverType) noexcept;
+    using GetTaskStats = void(*)(Runtime*, std::vector<asp::SharedPtr<TaskDebugData>>&);
 
     EnqueueTaskFn m_enqueueTask = nullptr;
     SetTerminateHandlerFn m_setTerminateHandler = nullptr;
@@ -45,6 +46,7 @@ struct RuntimeVtable {
     IsShuttingDownFn m_isShuttingDown = nullptr;
     SafeShutdownFn m_safeShutdown = nullptr;
     GetDriverFn m_getDriver = nullptr;
+    GetTaskStats m_getTaskStats = nullptr;
 };
 
 template <typename T>
@@ -123,6 +125,8 @@ public:
     /// but this method ensures all tasks and worker threads are immediately destroyed before returning.
     void safeShutdown();
 
+    std::vector<asp::SharedPtr<TaskDebugData>> getTaskStats();
+
 private:
     template <IsPollable P>
     friend struct Task;
@@ -181,6 +185,7 @@ private:
     static bool vIsShuttingDown(const Runtime* self) noexcept;
     static void vSafeShutdown(Runtime* self);
     static void* vGetDriver(Runtime* self, DriverType ty) noexcept;
+    static void vGetTaskStats(Runtime* self, std::vector<asp::SharedPtr<TaskDebugData>>& out);
 };
 
 /// Sets the global runtime that will be returned from `Runtime::current()`.

@@ -4,6 +4,25 @@
 
 namespace arc {
 
+#define $safe_member(where, member) \
+    if (offsetof(TaskDebugData, member) >= m_debugDataSize) return {}; \
+    auto& where = member;
+
+asp::Duration TaskDebugData::totalRuntime() const noexcept {
+    $safe_member(nanos, m_runtimeNs);
+    return asp::Duration::fromNanos(nanos.load(std::memory_order::relaxed));
+}
+
+uint64_t TaskDebugData::totalPolls() const noexcept {
+    $safe_member(polls, m_polls);
+    return polls.load(std::memory_order::relaxed);
+}
+
+std::string TaskDebugData::name() const noexcept {
+    $safe_member(name, m_name);
+    return *name.lock();
+}
+
 void TaskBase::schedule() noexcept {
     m_vtable->schedule(this);
 }
@@ -12,8 +31,12 @@ void TaskBase::abort() noexcept {
     m_vtable->abort(this);
 }
 
-void TaskBase::setDebugName(std::string name) noexcept {
-    m_vtable->setDebugName(this, std::move(name));
+void TaskBase::setName(std::string name) noexcept {
+    m_vtable->setName(this, std::move(name));
+}
+
+asp::SharedPtr<TaskDebugData> TaskBase::getDebugData() noexcept {
+    return m_vtable->getDebugData(this);
 }
 
 std::optional<bool> TaskBase::vPoll(void* ptr, Context& cx) {
@@ -171,6 +194,13 @@ bool TaskBase::exchangeState(uint64_t& expected, uint64_t newState) noexcept {
     return m_state.compare_exchange_weak(expected, newState, std::memory_order::acq_rel, std::memory_order::acquire);
 }
 
+void TaskBase::ensureDebugData() {
+    if (!m_debugData) {
+        m_debugData = asp::make_shared<TaskDebugData>();
+        m_debugData->m_task = this;
+    }
+}
+
 void TaskBase::registerAwaiter(Waker& waker) {
     m_vtable->registerAwaiter(this, waker);
 }
@@ -204,14 +234,22 @@ std::optional<Waker> TaskBase::vTakeAwaiter(void* ptr, const Waker* current) {
     return out;
 }
 
-void TaskBase::vSetDebugName(void* ptr, std::string name) {
+void TaskBase::vSetName(void* ptr, std::string name) {
     auto self = static_cast<TaskBase*>(ptr);
-    self->m_debugName = std::move(name);
+    self->m_name = std::move(name);
+    if (self->m_debugData) {
+        *self->m_debugData->m_name.lock() = self->m_name;
+    }
 }
 
-std::string_view TaskBase::vGetDebugName(void* ptr) {
+std::string_view TaskBase::vGetName(void* ptr) {
     auto self = static_cast<TaskBase*>(ptr);
-    return self->m_debugName;
+    return self->m_name;
+}
+
+asp::SharedPtr<TaskDebugData> TaskBase::vGetDebugData(void* ptr) {
+    auto self = static_cast<TaskBase*>(ptr);
+    return self->m_debugData;
 }
 
 void TaskBase::vRegisterAwaiter(void* ptr, Waker& waker) {

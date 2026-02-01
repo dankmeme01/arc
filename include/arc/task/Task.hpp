@@ -16,6 +16,7 @@
 #endif
 
 #include <asp/ptr/SharedPtr.hpp>
+#include <asp/sync/SpinLock.hpp>
 #include <utility>
 #include <atomic>
 #include <limits>
@@ -35,6 +36,18 @@ static constexpr uint64_t TASK_REGISTERING = 1 << 7;
 static constexpr uint64_t TASK_TASK        = 1 << 8;
 static constexpr uint64_t TASK_REFERENCE   = 1 << 12;
 
+struct TaskDebugData {
+    size_t m_debugDataSize{sizeof(TaskDebugData)};
+    std::atomic<TaskBase*> m_task = nullptr;
+    std::atomic<uint64_t> m_polls{0};
+    std::atomic<uint64_t> m_runtimeNs{0};
+    asp::SpinLock<std::string> m_name; // present already in task but duplicated here safety
+
+    asp::Duration totalRuntime() const noexcept;
+    uint64_t totalPolls() const noexcept;
+    std::string name() const noexcept;
+};
+
 struct TaskVtable {
     using Fn = void(*)(void*);
     using RunFn = bool(*)(void*, Context&);
@@ -43,8 +56,9 @@ struct TaskVtable {
     using RegisterAwaiterFn = void(*)(void*, Waker&);
     using NotifyAwaiterFn = void(*)(void*, Waker*);
     using TakeAwaiterFn = std::optional<Waker>(*)(void*, const Waker*);
-    using SetDebugNameFn = void(*)(void*, std::string);
-    using GetDebugNameFn = std::string_view(*)(void*);
+    using SetNameFn = void(*)(void*, std::string);
+    using GetNameFn = std::string_view(*)(void*);
+    using GetDebugDataFn = asp::SharedPtr<TaskDebugData>(*)(void*);
 
     Fn schedule;
     Fn dropFuture;
@@ -57,22 +71,16 @@ struct TaskVtable {
     RegisterAwaiterFn registerAwaiter;
     NotifyAwaiterFn notifyAwaiter;
     TakeAwaiterFn takeAwaiter;
-    SetDebugNameFn setDebugName;
-    GetDebugNameFn getDebugName;
+    SetNameFn setName;
+    GetNameFn getName;
+    GetDebugDataFn getDebugData;
 };
 
 struct TaskBase {
-    // Every field past the vtable can be changed without causing an ABI break.
-    // Fields must never be directly accessed and should only be used through the vtable.
-    const TaskVtable* m_vtable;
-    std::atomic<uint64_t> m_state{TASK_SCHEDULED | TASK_REFERENCE | TASK_TASK};
-    asp::WeakPtr<Runtime> m_runtime;
-    std::optional<Waker> m_awaiter;
-    std::string m_debugName;
-
     void schedule() noexcept;
     void abort() noexcept;
-    void setDebugName(std::string name) noexcept;
+    void setName(std::string name) noexcept;
+    asp::SharedPtr<TaskDebugData> getDebugData() noexcept;
 
     /// Polls the task. Returns:
     /// - std::nullopt if the task is pending
@@ -80,10 +88,26 @@ struct TaskBase {
     /// - false if the task was closed before completion
     static std::optional<bool> vPoll(void* self, Context& cx);
 
+    // Every field past the vtable can be changed without causing an ABI break.
+    // Fields must never be directly accessed and should only be used through the vtable.
+    const TaskVtable* m_vtable;
+
 protected:
     friend class Runtime;
     template <typename T>
     friend struct TaskHandleBase;
+
+    TaskBase(const TaskVtable* vtable, asp::WeakPtr<Runtime> runtime)
+        : m_vtable(vtable), m_runtime(std::move(runtime)) {}
+
+    TaskBase(const TaskBase&) = delete;
+    TaskBase& operator=(const TaskBase&) = delete;
+
+    std::atomic<uint64_t> m_state{TASK_SCHEDULED | TASK_REFERENCE | TASK_TASK};
+    asp::WeakPtr<Runtime> m_runtime;
+    std::optional<Waker> m_awaiter;
+    std::string m_name;
+    asp::SharedPtr<TaskDebugData> m_debugData;
 
     static bool shouldDestroy(uint64_t state) noexcept;
     uint64_t incref() noexcept;
@@ -91,6 +115,7 @@ protected:
     void setState(uint64_t newState) noexcept;
     uint64_t getState() noexcept;
     bool exchangeState(uint64_t& expected, uint64_t newState) noexcept;
+    void ensureDebugData();
 
     void registerAwaiter(Waker& waker);
     void notifyAwaiter(Waker* current = nullptr);
@@ -103,8 +128,9 @@ protected:
     static void vRegisterAwaiter(void* ptr, Waker& waker);
     static void vNotifyAwaiter(void* ptr, Waker* current);
     static std::optional<Waker> vTakeAwaiter(void* ptr, const Waker* current);
-    static void vSetDebugName(void* ptr, std::string name);
-    static std::string_view vGetDebugName(void* ptr);
+    static void vSetName(void* ptr, std::string name);
+    static std::string_view vGetName(void* ptr);
+    static asp::SharedPtr<TaskDebugData> vGetDebugData(void* ptr);
 };
 
 template <typename T>
@@ -112,6 +138,7 @@ struct TaskTypedBase : TaskBase {
     using Output = T;
     static constexpr bool IsVoid = std::is_void_v<Output>;
     using NVOutput = std::conditional_t<IsVoid, std::monostate, Output>;
+    using TaskBase::TaskBase;
 
     std::optional<NVOutput> m_value;
 
@@ -166,21 +193,27 @@ struct Task : TaskTypedBase<typename P::Output> {
     using NonVoidOutput = TaskTypedBase<typename P::Output>::NVOutput;
     static constexpr bool IsVoid = std::is_void_v<Output>;
 
+protected:
     ManuallyDrop<P> m_future;
     bool m_droppedFuture = false;
 
+    Task(const TaskVtable* vtable, asp::WeakPtr<Runtime> runtime, P&& fut)
+        : TaskTypedBase<typename P::Output>(vtable, std::move(runtime)), m_future(std::move(fut)) {}
+
+public:
     static Task* create(asp::WeakPtr<Runtime> runtime, P&& fut) {
-        auto task = new Task{
-            {{
-                .m_vtable = &vtable,
-                .m_runtime = std::move(runtime),
-            }},
-            std::move(fut),
-        };
+        auto task = new Task(&Task::vtable, std::move(runtime), std::move(fut));
+#ifdef ARC_DEBUG
+        task->ensureDebugData();
+#endif
         return task;
     }
 
     ~Task() {
+        if (this->m_debugData) {
+            this->m_debugData->m_task.store(nullptr, std::memory_order::release);
+        }
+
         if (!m_droppedFuture) {
             this->vDropFuture(this);
         }
@@ -274,8 +307,9 @@ struct Task : TaskTypedBase<typename P::Output> {
         .registerAwaiter = &Task::vRegisterAwaiter,
         .notifyAwaiter = &Task::vNotifyAwaiter,
         .takeAwaiter = &Task::vTakeAwaiter,
-        .setDebugName = &Task::vSetDebugName,
-        .getDebugName = &Task::vGetDebugName,
+        .setName = &Task::vSetName,
+        .getName = &Task::vGetName,
+        .getDebugData = &Task::vGetDebugData,
     };
 
     static constexpr RawWakerVtable WakerVtable = {
@@ -289,7 +323,12 @@ struct Task : TaskTypedBase<typename P::Output> {
         ManuallyDrop<Waker> waker{this, &WakerVtable};
         auto state = this->getState();
 
-        TRACE("[Task {}] running, state: {}", (void*)this, state);
+        TRACE("[Task {}] polled, state: {}", (void*)this, state);
+
+#ifdef ARC_DEBUG
+        this->ensureDebugData();
+        this->m_debugData->m_polls.fetch_add(1, std::memory_order::relaxed);
+#endif
 
         // auto rt = this->m_runtime.upgrade();
         // if (!rt) return false; // might happen if the runtime is shutting down
@@ -323,10 +362,19 @@ struct Task : TaskTypedBase<typename P::Output> {
             }
         }
 
+#ifdef ARC_DEBUG
+        auto startTime = asp::Instant::now();
+#endif
+
         PollableBase* future = &m_future.get();
         cx._installWaker(&waker.get());
         bool result = future->m_vtable->m_poll(future, cx);
         cx._installWaker(nullptr);
+
+#ifdef ARC_DEBUG
+        uint64_t taken = startTime.elapsed().nanos();
+        this->m_debugData->m_runtimeNs.fetch_add(taken, std::memory_order::relaxed);
+#endif
 
         TRACE("[Task {}] future completion: {}", (void*)this, result);
 
@@ -482,8 +530,12 @@ struct TaskHandleBase {
         m_task->abort();
     }
 
-    void setDebugName(std::string name) noexcept {
-        m_task->setDebugName(std::move(name));
+    void setName(std::string name) noexcept {
+        m_task->setName(std::move(name));
+    }
+
+    asp::SharedPtr<TaskDebugData> getDebugData() noexcept {
+        return m_task->getDebugData();
     }
 };
 

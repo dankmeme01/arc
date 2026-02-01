@@ -66,3 +66,28 @@ TEST(task, DanglingTask) {
     // this would segfault if runtime freed the task
     h->abort();
 }
+
+
+TEST(task, TaskStats) {
+    auto rt = arc::Runtime::create(1);
+
+    auto handle = rt->spawn([] -> arc::Future<> {
+        co_await arc::yield();
+        co_return;
+    }());
+    handle.setName("hi test");
+
+    auto data = handle.getDebugData();
+    EXPECT_TRUE((bool) data);
+
+    handle.blockOn();
+    auto data2 = handle.getDebugData();
+    EXPECT_EQ(data, data2);
+
+    EXPECT_EQ(data->name(), "hi test");
+    EXPECT_EQ(data2->totalPolls(), 2); // polled once to yield, second to complete
+
+    auto allStats = rt->getTaskStats();
+    EXPECT_EQ(allStats.size(), 1);
+    EXPECT_EQ(allStats[0]->name(), "hi test");
+}

@@ -41,6 +41,7 @@ Runtime::Runtime(ctor_tag, size_t workers)
         .m_isShuttingDown = &Runtime::vIsShuttingDown,
         .m_safeShutdown = &Runtime::vSafeShutdown,
         .m_getDriver = &Runtime::vGetDriver,
+        .m_getTaskStats = &Runtime::vGetTaskStats,
     };
 
     m_vtable = &vtable;
@@ -154,6 +155,16 @@ void* Runtime::vGetDriver(Runtime* self, DriverType ty) noexcept {
     }
 }
 
+void Runtime::vGetTaskStats(Runtime* self, std::vector<asp::SharedPtr<TaskDebugData>>& out) {
+    auto tasks = self->m_tasks.lock();
+    out.reserve(tasks->size());
+    for (auto task : *tasks) {
+        if (auto data = task->getDebugData()) {
+            out.push_back(std::move(data));
+        }
+    }
+}
+
 void Runtime::workerLoopWrapper(WorkerData& data) {
     Context cx{nullptr, this};
     g_runtime = this;
@@ -175,7 +186,7 @@ void Runtime::workerLoopWrapper(WorkerData& data) {
 }
 
 static std::string debugName(TaskBase* task) {
-    auto nameView = task->m_vtable->getDebugName(task);
+    auto nameView = task->m_vtable->getName(task);
     if (nameView.empty()) {
         return fmt::format("Task @ {}", (void*)task);
     } else {
@@ -365,6 +376,12 @@ bool Runtime::isShuttingDown() const noexcept {
 
 void Runtime::safeShutdown() {
     m_vtable->m_safeShutdown(this);
+}
+
+std::vector<asp::SharedPtr<TaskDebugData>> Runtime::getTaskStats() {
+    std::vector<asp::SharedPtr<TaskDebugData>> out;
+    m_vtable->m_getTaskStats(this, out);
+    return out;
 }
 
 void Runtime::shutdown() {

@@ -7,9 +7,14 @@ template <typename F>
 auto scopeDtor(F&& func) {
     struct ScopeDtor {
         std::decay_t<F> m_func;
+        bool m_invoke = true;
 
         ~ScopeDtor() {
-            m_func();
+            if (m_invoke) m_func();
+        }
+
+        void cancel() noexcept {
+            m_invoke = false;
         }
     };
 
