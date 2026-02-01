@@ -5,19 +5,23 @@
 
 namespace arc {
 
-SignalDriver::SignalDriver(asp::WeakPtr<Runtime> runtime) : m_runtime(std::move(runtime)) {}
+SignalDriver::SignalDriver(asp::WeakPtr<Runtime> runtime) : m_runtime(std::move(runtime)) {
+    static const SignalDriverVtable vtable {
+        .m_addSignal = &SignalDriver::vAddSignal,
+    };
+    m_vtable = &vtable;
+}
 
 SignalDriver::~SignalDriver() {}
 
-Notified SignalDriver::addSignalAndNotify(int signum) {
-    auto lock = m_signals.lock();
-    size_t index = this->addInner(*lock, signum);
-    return (*lock)[index].second.notified();
+Notify SignalDriver::addSignal(int signum) {
+    return m_vtable->m_addSignal(this, signum);
 }
 
-void SignalDriver::addSignal(int signum) {
-    auto lock = m_signals.lock();
-    this->addInner(*lock, signum);
+Notify SignalDriver::vAddSignal(SignalDriver* self, int signum) {
+    auto lock = self->m_signals.lock();
+    size_t index = self->addInner(*lock, signum);
+    return (*lock)[index].second;
 }
 
 size_t SignalDriver::addInner(std::vector<std::pair<int, Notify>>& signals, int signum) {

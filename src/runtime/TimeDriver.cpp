@@ -5,7 +5,13 @@ using namespace asp::time;
 
 namespace arc {
 
-TimeDriver::TimeDriver(asp::WeakPtr<Runtime> runtime) : m_runtime(std::move(runtime)) {}
+TimeDriver::TimeDriver(asp::WeakPtr<Runtime> runtime) : m_runtime(std::move(runtime)) {
+    static const TimeDriverVtable vtable{
+        .m_addEntry = &TimeDriver::vAddEntry,
+        .m_removeEntry = &TimeDriver::vRemoveEntry,
+    };
+    m_vtable = &vtable;
+}
 
 TimeDriver::~TimeDriver() {}
 
@@ -33,19 +39,27 @@ void TimeDriver::doWork() {
     }
 }
 
-uint64_t TimeDriver::addEntry(Instant expiry, Waker waker) {
-    uint64_t id = m_nextTimerId.fetch_add(1, std::memory_order::relaxed);
-    m_timers.lock()->emplace(TimerEntryKey{expiry, id}, std::move(waker));
+uint64_t TimeDriver::addEntry(asp::time::Instant expiry, Waker waker) {
+    return m_vtable->m_addEntry(this, expiry, std::move(waker));
+}
+
+void TimeDriver::removeEntry(asp::time::Instant expiry, uint64_t id) {
+    m_vtable->m_removeEntry(this, expiry, id);
+}
+
+uint64_t TimeDriver::vAddEntry(TimeDriver* self, Instant expiry, Waker waker) {
+    uint64_t id = self->m_nextTimerId.fetch_add(1, std::memory_order::relaxed);
+    self->m_timers.lock()->emplace(TimerEntryKey{expiry, id}, std::move(waker));
     return id;
 }
 
-void TimeDriver::removeEntry(Instant expiry, uint64_t id) {
-    auto rt = m_runtime.upgrade();
+void TimeDriver::vRemoveEntry(TimeDriver* self, Instant expiry, uint64_t id) {
+    auto rt = self->m_runtime.upgrade();
     if (!rt || rt->isShuttingDown()) return;
 
     TimerEntryKey key{expiry, id};
 
-    auto timers = m_timers.lock();
+    auto timers = self->m_timers.lock();
     auto it = timers->find(key);
     if (it != timers->end()) {
         timers->erase(it);

@@ -37,7 +37,7 @@ Future<NetResult<std::pair<arc::TcpStream, qsox::SocketAddress>>> TcpListener::a
 
 std::optional<TcpListener::PollAcceptResult> TcpListener::pollAccept(Context& cx, uint64_t& id) {
     while (true) {
-        auto ready = m_io.pollReady(Interest::Readable | Interest::Error, cx, id);
+        auto ready = m_io.pollReady(Interest::Readable, cx, id);
         if ((ready & Interest::Readable) == 0) {
             return std::nullopt;
         }

@@ -39,7 +39,7 @@ Signal::Signal(SignalKind kind)
 
 bool Signal::poll(Context& cx) {
     if (!m_notified) {
-        m_notified.emplace(cx.runtime()->signalDriver().addSignalAndNotify(m_kind));
+        m_notified.emplace(cx.runtime()->signalDriver().addSignal(m_kind).notified());
     }
 
     return m_notified->poll(cx);

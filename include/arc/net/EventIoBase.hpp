@@ -33,11 +33,11 @@ public:
     }
 
     Future<NetResult<void>> pollReadable() {
-        return this->pollReady(Interest::Readable | Interest::Error);
+        return this->pollReady(Interest::Readable);
     }
 
     Future<NetResult<void>> pollWritable() {
-        return this->pollReady(Interest::Writable | Interest::Error);
+        return this->pollReady(Interest::Writable);
     }
 
     Future<NetResult<void>> pollReady(Interest interest) {
@@ -59,7 +59,7 @@ public:
     }
 
     qsox::Error takeSocketError() {
-        return errorFromSocket(m_io.rio->fd);
+        return errorFromSocket(m_io.fd());
     }
 
 protected:
@@ -69,12 +69,7 @@ protected:
     using PollWriteFn = FunctionRef<NetResult<size_t>(const void* buf, size_t size)>;
 
     void unregister() {
-        if (!m_io.rio) return;
-        auto rt = m_io.rio->runtime.upgrade();
-        if (!rt || rt->isShuttingDown()) return;
-
-        rt->ioDriver().unregisterIo(m_io.rio);
-        m_io.rio.reset();
+        m_io.reset();
     }
 
     std::optional<qsox::Error> takeOrClearError() {
@@ -136,7 +131,7 @@ protected:
     template <typename T = std::monostate>
     std::optional<NetResult<T>> pollCustom(Context& cx, uint64_t& id, Interest interest, auto fn) {
         while (true) {
-            auto ready = m_io.pollReady(interest | Interest::Error, cx, id);
+            auto ready = m_io.pollReady(interest, cx, id);
             if (ready == 0) {
                 return std::nullopt;
             } else if (ready & Interest::Error) {

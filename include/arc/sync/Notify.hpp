@@ -3,7 +3,7 @@
 #include <arc/future/Pollable.hpp>
 #include <arc/task/WaitList.hpp>
 #include <asp/sync/Mutex.hpp>
-#include <memory>
+#include <asp/ptr/SharedPtr.hpp>
 #include <atomic>
 
 namespace arc {
@@ -25,10 +25,10 @@ struct ARC_NODISCARD Notified : Pollable<Notified> {
         Notified,
     };
 
-    std::shared_ptr<NotifyState> m_notify;
+    asp::SharedPtr<NotifyState> m_notify;
     std::atomic<State> m_waitState{State::Init};
 
-    explicit Notified(std::shared_ptr<NotifyState> state) : m_notify(std::move(state)) {}
+    explicit Notified(asp::SharedPtr<NotifyState> state) : m_notify(std::move(state)) {}
 
     // Because atomic cannot be moved, we must manually define move constructors
     Notified(Notified&&) noexcept;
@@ -60,7 +60,7 @@ public:
     void notifyAll() const;
 
 private:
-    std::shared_ptr<NotifyState> m_state;
+    asp::SharedPtr<NotifyState> m_state;
 
     void notify(Waker& waker, Notified* waiter) const;
 };

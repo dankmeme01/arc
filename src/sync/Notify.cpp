@@ -99,6 +99,6 @@ void Notify::notify(Waker& waker, Notified* waiter) const {
     }
 }
 
-Notify::Notify() : m_state(std::make_shared<NotifyState>()) {}
+Notify::Notify() : m_state(asp::make_shared<NotifyState>()) {}
 
 }

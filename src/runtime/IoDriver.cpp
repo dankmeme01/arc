@@ -56,12 +56,146 @@ void IoWaiter::wake() {
     if (eventCallback) eventCallback();
 }
 
-Registration::Registration(std::shared_ptr<IoEntry> rio) : rio(std::move(rio)) {}
+Registration::Registration(asp::SharedPtr<IoEntry> rio, IoDriver* driver)
+    : m_rio(std::move(rio)), m_driver(driver) {}
+
+Registration::operator bool() const {
+    return static_cast<bool>(m_rio);
+}
+
+Registration::~Registration() {
+    this->reset();
+}
 
 Interest Registration::pollReady(Interest interest, Context& cx, uint64_t& outId) {
-    auto curr = rio->readiness.load(acquire);
+    ARC_DEBUG_ASSERT(m_rio);
+    return m_driver->pollReady(*m_rio, interest, cx, outId);
+}
 
-    trace("IoDriver: fd {} readiness: {}", fmtFd(rio->fd), curr);
+void Registration::unregister(uint64_t id) {
+    ARC_DEBUG_ASSERT(m_rio);
+    if (id != 0) m_driver->unregisterWaiter(*m_rio, id);
+}
+
+void Registration::clearReadiness(Interest interest) {
+    ARC_DEBUG_ASSERT(m_rio);
+    m_driver->clearReadiness(*m_rio, interest);
+}
+
+SockFd Registration::fd() const {
+    ARC_DEBUG_ASSERT(m_rio);
+    return m_driver->fdForEntry(*m_rio);
+}
+
+void Registration::reset() {
+    if (m_rio) {
+        m_driver->dropRegistration(*this);
+    }
+    m_rio.reset();
+}
+
+// IO driver implementation
+
+IoDriver::IoDriver(asp::WeakPtr<Runtime> runtime) : m_runtime(std::move(runtime)) {
+    ARC_DEBUG_ASSERT(!m_runtime.expired());
+
+    static const IoDriverVtable vtable {
+        .m_registerIo = &IoDriver::vRegisterIo,
+        .m_dropRegistration = &IoDriver::vDropRegistration,
+        .m_clearReadiness = &IoDriver::vClearReadiness,
+        .m_pollReady = &IoDriver::vPollReady,
+        .m_unregisterWaiter = &IoDriver::vUnregisterWaiter,
+        .m_fdForEntry = &IoDriver::vFdForEntry,
+    };
+
+    m_vtable = &vtable;
+}
+
+IoDriver::~IoDriver() {}
+
+Registration IoDriver::registerIo(SockFd fd, Interest interest) {
+    return m_vtable->m_registerIo(this, fd, interest);
+}
+
+void IoDriver::dropRegistration(const Registration& rio) {
+    m_vtable->m_dropRegistration(this, rio);
+}
+
+void IoDriver::clearReadiness(IoEntry& rio, Interest interest) {
+    m_vtable->m_clearReadiness(this, rio, interest);
+}
+
+Interest IoDriver::pollReady(IoEntry& rio, Interest interest, Context& cx, uint64_t& outId) {
+    return m_vtable->m_pollReady(this, rio, interest, cx, outId);
+}
+
+void IoDriver::unregisterWaiter(IoEntry& rio, uint64_t id) {
+    m_vtable->m_unregisterWaiter(this, rio, id);
+}
+
+SockFd IoDriver::fdForEntry(const IoEntry& rio) {
+    return m_vtable->m_fdForEntry(rio);
+}
+
+// IoDriver actual impl
+
+Registration IoDriver::vRegisterIo(IoDriver* self, SockFd fd, Interest interest) {
+    auto ios = self->m_ios.lock();
+    auto it = ios->find(fd);
+    if (it != ios->end()) {
+        trace("IoDriver: returning already registered entry for fd {}", fmtFd(fd));
+        it->second->registrations.fetch_add(1, std::memory_order::relaxed);
+        return Registration{it->second, self};
+    }
+
+    auto entry = asp::make_shared<IoEntry>();
+    entry->fd = fd;
+    entry->runtime = self->m_runtime;
+    ios->emplace(fd, entry);
+    ios.unlock();
+
+    trace("IoDriver: registered fd {}", fmtFd(fd));
+
+    return Registration{std::move(entry), self};
+}
+
+void IoDriver::vDropRegistration(IoDriver* self, const Registration& rio) {
+    auto rt = rio.m_rio->runtime.upgrade();
+    if (!rt || rt->isShuttingDown()) return;
+
+    auto ios = self->m_ios.lock();
+    auto it = ios->find(rio.fd());
+    if (it == ios->end()) {
+        printWarn("IoDriver: attempted to drop registration for unknown fd {}", fmtFd(rio.fd()));
+        return;
+    }
+
+    size_t newRegs = it->second->registrations.fetch_sub(1, std::memory_order::relaxed) - 1;
+    trace("IoDriver: dropped registration for fd {}, refcount: {}", fmtFd(rio.fd()), newRegs);
+
+    if (newRegs == 0) {
+        trace("IoDriver: erasing entry for fd {}", fmtFd(rio.fd()));
+        ios->erase(it);
+    }
+}
+
+void IoDriver::vClearReadiness(IoDriver* self, IoEntry& rio, Interest interest) {
+    ARC_ASSERT(interest != Interest::ReadWrite);
+
+    trace("IoDriver: clearing readiness for fd {}, interest {}", fmtFd(rio.fd), static_cast<uint8_t>(interest));
+
+    auto curr = rio.readiness.load(acquire);
+    uint8_t newReady = curr & ~static_cast<uint8_t>(interest);
+    rio.readiness.store(newReady, release);
+}
+
+Interest IoDriver::vPollReady(IoDriver* self, IoEntry& rio, Interest interest, Context& cx, uint64_t& outId) {
+    // Always poll for error
+    interest |= Interest::Error;
+
+    auto curr = rio.readiness.load(acquire);
+
+    trace("IoDriver: fd {} readiness: {}", fmtFd(rio.fd), curr);
 
     uint8_t readiness = (curr & static_cast<uint8_t>(interest));
 
@@ -70,10 +204,10 @@ Interest Registration::pollReady(Interest interest, Context& cx, uint64_t& outId
     }
 
     // lock the wait list
-    auto waiters = rio->waiters.lock();
+    auto waiters = rio.waiters.lock();
 
     // check for a lost wakeup now that we are holding the lock
-    curr = rio->readiness.load(acquire);
+    curr = rio.readiness.load(acquire);
     readiness = (curr & static_cast<uint8_t>(interest));
     if (readiness != 0) {
         return readiness;
@@ -98,24 +232,21 @@ Interest Registration::pollReady(Interest interest, Context& cx, uint64_t& outId
     waiters->emplace_back(IoWaiter(cx.cloneWaker(), outId, interest));
     waiters.unlock();
 
-    trace("IoDriver: added waiter for fd {}: interest {}", fmtFd(rio->fd), static_cast<uint8_t>(interest));
+    trace("IoDriver: added waiter for fd {}: interest {}", fmtFd(rio.fd), static_cast<uint8_t>(interest));
 
     if ((interest & Interest::Readable) != 0) {
-        rio->anyRead.store(true, release);
+        rio.anyRead.store(true, release);
     }
 
     if ((interest & Interest::Writable) != 0) {
-        rio->anyWrite.store(true, release);
+        rio.anyWrite.store(true, release);
     }
 
     return 0;
 }
 
-void Registration::unregister(uint64_t id) {
-    ARC_ASSERT(rio);
-    if (id == 0) return;
-
-    auto waiters = rio->waiters.lock();
+void IoDriver::vUnregisterWaiter(IoDriver* self, IoEntry& rio, uint64_t id) {
+    auto waiters = rio.waiters.lock();
 
     auto it = std::find_if(waiters->begin(), waiters->end(), [id](const IoWaiter& waiter) {
         return waiter.id == id;
@@ -125,7 +256,7 @@ void Registration::unregister(uint64_t id) {
         return;
     }
 
-    trace("IoDriver: removed waiter for fd {}, id {}", fmtFd(rio->fd), id);
+    trace("IoDriver: removed waiter for fd {}, id {}", fmtFd(rio.fd), id);
 
     waiters->erase(it);
 
@@ -145,51 +276,12 @@ void Registration::unregister(uint64_t id) {
         }
     }
 
-    rio->anyRead.store(hasRead, release);
-    rio->anyWrite.store(hasWrite, release);
+    rio.anyRead.store(hasRead, release);
+    rio.anyWrite.store(hasWrite, release);
 }
 
-void Registration::clearReadiness(Interest interest) {
-    ARC_ASSERT(rio);
-    ARC_ASSERT(interest != Interest::ReadWrite);
-
-    trace("IoDriver: clearing readiness for fd {}, interest {}", fmtFd(rio->fd), static_cast<uint8_t>(interest));
-
-    auto curr = rio->readiness.load(acquire);
-    uint8_t newReady = curr & ~static_cast<uint8_t>(interest);
-    rio->readiness.store(newReady, release);
-}
-
-IoDriver::IoDriver(asp::WeakPtr<Runtime> runtime) : m_runtime(std::move(runtime)) {
-    ARC_DEBUG_ASSERT(!m_runtime.expired());
-}
-
-IoDriver::~IoDriver() {}
-
-Registration IoDriver::registerIo(SockFd fd, Interest interest) {
-    auto entry = std::make_shared<IoEntry>();
-    entry->fd = fd;
-    entry->runtime = m_runtime;
-
-    trace("IoDriver: registered fd {}", fmtFd(fd));
-
-    m_ioPendingQueue.lock()->push_back(entry);
-    return Registration{std::move(entry)};
-}
-
-void IoDriver::unregisterIo(const Registration& rio) {
-    this->unregisterIo(rio.rio->fd);
-}
-
-void IoDriver::unregisterIo(SockFd fd) {
-    auto ios = m_ios.lock();
-
-    auto it = ios->find(fd);
-    if (it != ios->end()) {
-        ios->erase(it);
-    }
-
-    trace("IoDriver: unregistered fd {}", fmtFd(fd));
+SockFd IoDriver::vFdForEntry(const IoEntry& rio) {
+    return rio.fd;
 }
 
 void IoDriver::doWork() {
@@ -199,21 +291,11 @@ void IoDriver::doWork() {
 
     auto ios = m_ios.lock();
 
-    // move pending ios to main list
-    {
-        auto pending = m_ioPendingQueue.lock();
-        for (auto& reg : *pending) {
-            ARC_DEBUG_ASSERT(reg);
-            ios->emplace(reg->fd, std::move(reg));
-        }
-        pending->clear();
-    }
-
     for (auto& [fd, rio] : *ios) {
         ARC_DEBUG_ASSERT(rio && fd == rio->fd);
 
-        bool read = rio->anyRead.load(std::memory_order::acquire);
-        bool write = rio->anyWrite.load(std::memory_order::acquire);
+        bool read = rio->anyRead.load(std::memory_order::relaxed);
+        bool write = rio->anyWrite.load(std::memory_order::relaxed);
 
         // trace("IoDriver: fd {} - poll read: {}, poll write: {}", fmtFd(rio->fd), read, write);
 
@@ -267,6 +349,9 @@ void IoDriver::doWork() {
         auto rio = entries[i];
         auto& pfd = fds[i];
 
+        // do nothing extra if there aren't any events
+        if (pfd.revents == 0) continue;
+
         Interest ready{};
         if (pfd.revents & POLLIN) {
             ready |= Interest::Readable;
@@ -278,7 +363,7 @@ void IoDriver::doWork() {
             ready |= Interest::Error;
         }
 
-        auto newReadiness = rio->readiness.fetch_or(ready, release) | static_cast<uint8_t>(ready);
+        auto newReadiness = rio->readiness.fetch_or(ready, relaxed) | static_cast<uint8_t>(ready);
         trace("IoDriver: fd {} - readiness {}", fmtFd(rio->fd), newReadiness);
 
         auto waiters = rio->waiters.lock();

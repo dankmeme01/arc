@@ -4,7 +4,6 @@
 #include <asp/time/Instant.hpp>
 #include <asp/sync/SpinLock.hpp>
 #include <map>
-#include <memory>
 
 namespace arc {
 
@@ -21,6 +20,15 @@ struct TimerEntryKey {
 
 using TimerQueue = std::map<TimerEntryKey, Waker, std::less<TimerEntryKey>>;
 
+class TimeDriver;
+struct TimeDriverVtable {
+    using AddEntryFn = uint64_t(*)(TimeDriver*, asp::time::Instant, Waker);
+    using RemoveEntryFn = void(*)(TimeDriver*, asp::time::Instant, uint64_t);
+
+    AddEntryFn m_addEntry;
+    RemoveEntryFn m_removeEntry;
+};
+
 class TimeDriver {
 public:
     TimeDriver(asp::WeakPtr<Runtime> runtime);
@@ -32,11 +40,15 @@ public:
 private:
     friend class Runtime;
 
+    const TimeDriverVtable* m_vtable;
     std::atomic<uint64_t> m_nextTimerId{1};
     asp::WeakPtr<Runtime> m_runtime;
     asp::SpinLock<TimerQueue> m_timers;
 
     void doWork();
+
+    static uint64_t vAddEntry(TimeDriver* self, asp::Instant expiry, Waker waker);
+    static void vRemoveEntry(TimeDriver* self, asp::Instant expiry, uint64_t id);
 };
 
 }
