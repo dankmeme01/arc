@@ -147,6 +147,8 @@ struct ARC_NODISCARD Future : PollableBase {
     }
 
     bool poll(Context& cx) {
+        ARC_DEBUG_ASSERT(m_handle, "polling a future with an invalid handle");
+
         auto child = this->child();
         auto resume = [&] {
             auto& promise = this->promise();

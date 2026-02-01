@@ -20,7 +20,9 @@ if (ARC_TRACE)
     target_compile_definitions(arc PUBLIC ARC_TRACE=1)
 endif()
 
-include(cmake/CPM.cmake)
+if (NOT COMMAND CPMAddPackage)
+    include(cmake/CPM.cmake)
+endif()
 
 if (NOT TARGET asp2)
     CPMAddPackage("gh:dankmeme01/asp2#4b18028")

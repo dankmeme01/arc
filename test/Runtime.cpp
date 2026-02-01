@@ -73,3 +73,14 @@ TEST(Runtime, OutlivedTask) {
 
     cancel.cancel();
 }
+
+TEST(Runtime, ShutdownWithTasks) {
+    auto rt = arc::Runtime::create(2);
+    auto h1 = rt->spawn([] -> arc::Future<> {
+        while (true) co_await arc::yield();
+    }());
+    rt->spawn([] -> arc::Future<> {
+        while (true) co_await arc::sleep(asp::Duration::fromMillis(1));
+    }());
+    rt->safeShutdown();
+}
