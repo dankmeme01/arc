@@ -13,7 +13,7 @@ constexpr std::pair<const char*, size_t> getTypename() {
     // Msvc:     struct std::pair<char const *,unsigned __int64> __cdecl arc::getTypename<class std::basic_string<char,struct std::char_traits<char>,class std::allocator<char> >>(void)
 #ifdef __clang__
     constexpr auto function = __PRETTY_FUNCTION__;
-    constexpr auto funclen = sizeof(__PRETTY_FUNCTION__);
+    constexpr auto funclen = sizeof(__PRETTY_FUNCTION__) - 1;
     constexpr char pfx[] = "std::pair<const char *, size_t> arc::getTypename() [T = ";
     constexpr char sfx[] = "]";
 
@@ -30,7 +30,7 @@ constexpr std::pair<const char*, size_t> getTypename() {
     constexpr size_t pfxlen = sizeof(pfx) - 1;
     constexpr size_t sfxlen = sizeof(sfx) - 1;
 
-    constexpr auto len = funclen - pfxlen - sfxlen - 1;
+    constexpr auto len = funclen - pfxlen - sfxlen;
     return {function + pfxlen, len};
 }
 
