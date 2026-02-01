@@ -34,6 +34,7 @@ constexpr std::pair<const char*, size_t> getTypename() {
     return {function + pfxlen, len};
 }
 
+#ifdef ARC_DEBUG
 inline int _unused_typename_test() {
     constexpr auto name = getTypename<int>();
     static_assert(std::string_view{name.first, name.second} == "int");
@@ -44,6 +45,7 @@ inline int _unused_typename_test() {
 
     return 0;
 }
+#endif
 
 struct PollableMetadata {
     std::string_view typeName;
