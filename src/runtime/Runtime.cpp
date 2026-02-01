@@ -6,6 +6,7 @@ using enum std::memory_order;
 
 static constexpr size_t MAX_BLOCKING_WORKERS = 128;
 static thread_local arc::Runtime* g_runtime = nullptr;
+static arc::Runtime* g_globalRuntime = nullptr;
 
 #if 0
 # define TRACE ::arc::trace
@@ -83,7 +84,7 @@ Runtime::~Runtime() {
 }
 
 Runtime* Runtime::current() {
-    return g_runtime;
+    return g_runtime ? g_runtime : g_globalRuntime;
 }
 
 void Runtime::setTerminateHandler(TerminateHandler handler) {
@@ -398,6 +399,10 @@ void Runtime::shutdown() {
     }
     tasks->clear();
     skipRemoveTask = false;
+}
+
+void setGlobalRuntime(Runtime* rt) {
+    g_globalRuntime = rt;
 }
 
 

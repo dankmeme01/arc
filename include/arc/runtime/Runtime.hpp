@@ -171,6 +171,18 @@ private:
     static void* vGetDriver(Runtime* self, DriverType ty) noexcept;
 };
 
+/// Sets the global runtime that will be returned from `Runtime::current()`.
+/// This is not thread-safe and not recommended to use in applications.
+/// It is used in cases when multiple libraries statically link arc, but share a single runtime.
+/// The library that owns the runtime will automatically have `Runtime::current()` work well,
+/// but other libraries won't. They must obtain the runtime pointer and call this function.
+///
+/// Notably, this will also lead to `Runtime::current()` being non-null not inside task context.
+void setGlobalRuntime(Runtime* rt);
+
+/// Spawns an asynchronous task on the current runtime.
+/// The returned handle can be awaited to get the result of the task, or discarded to run it in the background.
+/// If there is no current runtime, an exception is thrown.
 template <IsPollable F>
 auto spawn(F t) {
     if (auto rt = Runtime::current()) {
