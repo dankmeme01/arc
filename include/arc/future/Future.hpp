@@ -10,7 +10,7 @@
 #include "Context.hpp"
 #include "Pollable.hpp"
 
-#if 1
+#if 0
 # define TRACE ::arc::trace
 #else
 # define TRACE(...) do {} while(0)

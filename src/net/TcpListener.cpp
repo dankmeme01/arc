@@ -12,7 +12,10 @@ TcpListener::~TcpListener() {
 
 TcpListener TcpListener::fromQsox(qsox::TcpListener listener) {
     (void) listener.setNonBlocking(true);
-    auto rio = Runtime::current()->ioDriver().registerIo(listener.handle(), Interest::Readable);
+    auto rt = Runtime::current();
+    ARC_ASSERT(rt, "No runtime available to register TcpListener");
+
+    auto rio = rt->ioDriver().registerIo(listener.handle(), Interest::Readable);
     return TcpListener{std::move(listener), std::move(rio)};
 }
 

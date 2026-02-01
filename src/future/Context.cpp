@@ -6,6 +6,8 @@ using namespace asp::time;
 
 namespace arc {
 
+Context::Context(Waker* waker) : Context(waker, nullptr) {}
+
 Context::Context(Waker* waker, Runtime* runtime)
     : m_waker(waker), m_runtime(runtime) {}
 

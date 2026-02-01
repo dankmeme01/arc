@@ -1,37 +1,43 @@
 #include <arc/prelude.hpp>
 #include <gtest/gtest.h>
 
+using namespace arc;
+
 TEST(Runtime, DisabledTime) {
     auto rt = arc::Runtime::create(1, false, true, true);
-    arc::ctx().m_runtime = rt.get();
+    Waker waker = Waker::noop();
+    Context cx { &waker, rt.get() };
 
     EXPECT_THROW(rt->timeDriver(), std::exception);
     EXPECT_NO_THROW(rt->ioDriver());
     EXPECT_NO_THROW(rt->signalDriver());
 
-    EXPECT_THROW((void)arc::sleep(asp::time::Duration::fromSecs(1)).poll(), std::exception);
+    EXPECT_THROW((void)arc::sleep(asp::time::Duration::fromSecs(1)).poll(cx), std::exception);
 }
 
 TEST(Runtime, DisabledIo) {
     auto rt = arc::Runtime::create(1, true, false, true);
-    arc::ctx().m_runtime = rt.get();
+    Waker waker = Waker::noop();
+    Context cx { &waker, rt.get() };
 
     EXPECT_THROW(rt->ioDriver(), std::exception);
     EXPECT_NO_THROW(rt->timeDriver());
     EXPECT_NO_THROW(rt->signalDriver());
 
-    EXPECT_THROW((void) arc::UdpSocket::bindAny().poll(), std::exception);
+    arc::setGlobalRuntime(rt.get());
+    EXPECT_THROW((void) arc::UdpSocket::bindAny().poll(cx), std::exception);
 }
 
 TEST(Runtime, DisabledSignal) {
     auto rt = arc::Runtime::create(1, true, true, false);
-    arc::ctx().m_runtime = rt.get();
+    Waker waker = Waker::noop();
+    Context cx { &waker, rt.get() };
 
     EXPECT_THROW(rt->signalDriver(), std::exception);
     EXPECT_NO_THROW(rt->timeDriver());
     EXPECT_NO_THROW(rt->ioDriver());
 
-    EXPECT_THROW((void) arc::ctrl_c().poll(), std::exception);
+    EXPECT_THROW((void) arc::ctrl_c().poll(cx), std::exception);
 }
 
 TEST(Runtime, OutlivedSocket) {
@@ -41,15 +47,17 @@ TEST(Runtime, OutlivedSocket) {
 
     {
         auto rt = arc::Runtime::create(1);
-        arc::ctx().m_runtime = rt.get();
 
         socket.emplace(rt->blockOn(arc::UdpSocket::bindAny()).unwrap());
     }
 
+    Waker waker = Waker::noop();
+    Context cx { &waker, nullptr };
+
     // try to send data
     auto addr = qsox::SocketAddress::parse("127.0.0.1:8080").unwrap();
     auto fut = socket->sendTo("hello", 5, addr);
-    EXPECT_FALSE(fut.poll());
+    EXPECT_FALSE(fut.poll(cx));
 
     arc::drop(std::move(socket));
 }
@@ -58,8 +66,6 @@ TEST(Runtime, OutlivedTask) {
     arc::CancellationToken cancel{};
     {
         auto rt = arc::Runtime::create(1);
-        arc::ctx().m_runtime = rt.get();
-
         rt->spawn([&cancel](this auto self) -> arc::Future<> {
             co_await cancel.waitCancelled();
         }());

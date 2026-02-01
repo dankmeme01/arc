@@ -12,7 +12,10 @@ UdpSocket::~UdpSocket() {
 
 UdpSocket UdpSocket::fromQsox(qsox::UdpSocket socket) {
     (void) socket.setNonBlocking(true);
-    auto rio = Runtime::current()->ioDriver().registerIo(socket.handle(), Interest::ReadWrite);
+    auto rt = Runtime::current();
+    ARC_ASSERT(rt, "No runtime available to register UdpSocket");
+
+    auto rio = rt->ioDriver().registerIo(socket.handle(), Interest::ReadWrite);
     return UdpSocket{std::move(socket), std::move(rio)};
 }
 

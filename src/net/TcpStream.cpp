@@ -14,7 +14,10 @@ TcpStream::~TcpStream() {
 
 TcpStream TcpStream::fromQsox(qsox::TcpStream socket) {
     (void) socket.setNonBlocking(true);
-    auto rio = Runtime::current()->ioDriver().registerIo(socket.handle(), Interest::ReadWrite);
+    auto rt = Runtime::current();
+    ARC_ASSERT(rt, "No runtime available to register TcpStream");
+
+    auto rio = rt->ioDriver().registerIo(socket.handle(), Interest::ReadWrite);
     return TcpStream{std::move(socket), std::move(rio)};
 }
 

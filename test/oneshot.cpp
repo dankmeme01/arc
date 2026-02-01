@@ -19,13 +19,13 @@ TEST(oneshot, VeryBasic) {
 
 TEST(oneshot, VeryBasicAsync) {
     Waker waker = Waker::noop();
-    ctx().m_waker = &waker;
+    Context cx { &waker };
 
     auto [tx, rx] = oneshot::channel<int>();
     auto rfut = rx.recv();
-    EXPECT_FALSE(rfut.poll().has_value());
+    EXPECT_FALSE(rfut.poll(cx).has_value());
     EXPECT_TRUE(tx.send(42).isOk());
-    auto val = rfut.poll();
+    auto val = rfut.poll(cx);
     EXPECT_TRUE(val.has_value());
     EXPECT_TRUE(val->isOk());
     EXPECT_EQ(val->unwrap(), 42);
@@ -33,7 +33,7 @@ TEST(oneshot, VeryBasicAsync) {
 
 TEST(oneshot, SendAfterClosure) {
     Waker waker = Waker::noop();
-    ctx().m_waker = &waker;
+    Context cx { &waker };
 
     auto [tx, rx] = oneshot::channel<int>();
     arc::drop(std::move(rx));
@@ -44,7 +44,7 @@ TEST(oneshot, SendAfterClosure) {
 
 TEST(oneshot, RecvAfterClosure) {
     Waker waker = Waker::noop();
-    ctx().m_waker = &waker;
+    Context cx { &waker };
 
     auto [tx, rx] = oneshot::channel<int>();
     arc::drop(std::move(tx));
@@ -53,7 +53,7 @@ TEST(oneshot, RecvAfterClosure) {
     EXPECT_TRUE(recvres.unwrapErr() == chan::TryRecvOutcome::Empty);
 
     auto recvfut = rx.recv();
-    auto pres = recvfut.poll();
+    auto pres = recvfut.poll(cx);
     EXPECT_TRUE(pres.has_value());
     EXPECT_TRUE(pres->isErr());
 }

@@ -15,6 +15,7 @@ struct PollableBase;
 
 class Context {
 public:
+    Context(Waker* waker);
     Context(Waker* waker, Runtime* runtime);
 
     Waker* waker();

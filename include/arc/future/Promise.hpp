@@ -2,7 +2,7 @@
 #include "Pollable.hpp"
 #include "Future.hpp"
 
-#if 1
+#if 0
 # define TRACE ::arc::trace
 #else
 # define TRACE(...) do {} while(0)
@@ -163,7 +163,7 @@ struct PromiseBaseV : PromiseBase {
     }
 
     void return_void() noexcept {
-        trace("[Promise {}] return_void()", (void*)this);
+        TRACE("[Promise {}] return_void()", (void*)this);
     }
 };
 
@@ -192,7 +192,7 @@ struct PromiseBaseNV : PromiseBase {
 
     template <std::convertible_to<R> From>
     void return_value(From&& from) {
-        trace("[Promise {}] return_value()", (void*)this);
+        TRACE("[Promise {}] return_value()", (void*)this);
         R value = static_cast<R>(std::forward<From>(from));
         this->deliverOutput(&value);
     }
@@ -234,7 +234,7 @@ struct Promise : std::conditional_t<
     };
 
     auto final_suspend() noexcept {
-        trace("[Promise {}] final_suspend()", (void*)this);
+        TRACE("[Promise {}] final_suspend()", (void*)this);
         return FinalAwaiter{};
     }
 };

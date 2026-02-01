@@ -10,7 +10,7 @@ using namespace arc;
 
 TEST(mpsc, VeryBasicSync) {
     Waker waker = Waker::noop();
-    ctx().m_waker = &waker;
+    Context cx { &waker };
 
     auto [tx, rx] = mpsc::channel<int>(3);
 
@@ -46,21 +46,21 @@ TEST(mpsc, VeryBasicSync) {
 
 TEST(mpsc, Basic) {
     Waker waker = Waker::noop();
-    ctx().m_waker = &waker;
+    Context cx { &waker };
 
     auto [tx, rx] = mpsc::channel<int>(3);
 
     EXPECT_TRUE(tx.trySend(1).isOk());
     auto fut1 = tx.send(2);
-    EXPECT_TRUE(fut1.poll().has_value());
+    EXPECT_TRUE(fut1.poll(cx).has_value());
     EXPECT_TRUE(tx.trySend(3).isOk());
     EXPECT_FALSE(tx.trySend(4).isOk());
 
     // start fut2 and fut3 sends, should not complete yet
     auto fut2 = tx.send(5);
     auto fut3 = tx.send(6);
-    EXPECT_FALSE(fut2.poll().has_value());
-    EXPECT_FALSE(fut3.poll().has_value());
+    EXPECT_FALSE(fut2.poll(cx).has_value());
+    EXPECT_FALSE(fut3.poll(cx).has_value());
 
     // receive a value
     auto recv1 = rx.tryRecv();
@@ -68,18 +68,18 @@ TEST(mpsc, Basic) {
     EXPECT_EQ(recv1.unwrap(), 1);
 
     // poll fut2 and fut3
-    EXPECT_TRUE(fut2.poll().has_value());
-    EXPECT_FALSE(fut3.poll().has_value());
+    EXPECT_TRUE(fut2.poll(cx).has_value());
+    EXPECT_FALSE(fut3.poll(cx).has_value());
 
     // async receive
     auto futRecv = rx.recv();
-    auto pres = futRecv.poll();
+    auto pres = futRecv.poll(cx);
     EXPECT_TRUE(pres.has_value());
     EXPECT_TRUE(pres->isOk());
     EXPECT_EQ(pres->unwrap(), 2);
 
     // poll fut3 again
-    EXPECT_TRUE(fut3.poll().has_value());
+    EXPECT_TRUE(fut3.poll(cx).has_value());
 
     // receive remaining values
     for (int expected : {3, 5, 6}) {
@@ -93,7 +93,7 @@ TEST(mpsc, Basic) {
 
 TEST(mpsc, ClosedBySender) {
     Waker waker = Waker::noop();
-    ctx().m_waker = &waker;
+    Context cx { &waker };
 
     auto [tx, rx] = mpsc::channel<int>(2);
     EXPECT_TRUE(tx.trySend(1).isOk());
@@ -114,7 +114,7 @@ TEST(mpsc, ClosedBySender) {
 
 TEST(mpsc, ClosedByReceiver) {
     Waker waker = Waker::noop();
-    ctx().m_waker = &waker;
+    Context cx { &waker };
 
     auto [tx, rx] = mpsc::channel<int>(2);
     EXPECT_TRUE(tx.trySend(1).isOk());
@@ -122,20 +122,20 @@ TEST(mpsc, ClosedByReceiver) {
     auto tx2 = tx;
     auto txsend = tx.send(3);
     auto txsend2 = tx2.send(4);
-    EXPECT_FALSE(txsend.poll().has_value());
-    EXPECT_FALSE(txsend2.poll().has_value());
+    EXPECT_FALSE(txsend.poll(cx).has_value());
+    EXPECT_FALSE(txsend2.poll(cx).has_value());
 
     EXPECT_EQ(rx.tryRecv().unwrap(), 1);
 
     // now first send will succeed but not the second
-    EXPECT_TRUE(txsend.poll().has_value());
-    EXPECT_FALSE(txsend2.poll().has_value());
+    EXPECT_TRUE(txsend.poll(cx).has_value());
+    EXPECT_FALSE(txsend2.poll(cx).has_value());
 
     // drop the receiver
     arc::drop(std::move(rx));
 
     // any pending and future sends should now fail
-    auto p = txsend2.poll();
+    auto p = txsend2.poll(cx);
     EXPECT_TRUE(p.has_value());
     EXPECT_TRUE(p->isErr());
     EXPECT_EQ(p->unwrapErr(), 4);
@@ -147,7 +147,7 @@ TEST(mpsc, ClosedByReceiver) {
 
 TEST(mpsc, Unbounded) {
     Waker waker = Waker::noop();
-    ctx().m_waker = &waker;
+    Context cx { &waker };
 
     auto [tx, rx] = mpsc::channel<int>(std::nullopt);
 
@@ -164,44 +164,44 @@ TEST(mpsc, Unbounded) {
 
 TEST(mpsc, Rendezvous) {
     Waker waker = Waker::noop();
-    ctx().m_waker = &waker;
+    Context cx { &waker };
 
     auto [tx, rx] = mpsc::channel<int>(0);
 
     // try_send/send should fail/block when there's no receiver
     EXPECT_FALSE(tx.trySend(1).isOk());
     auto futsend = tx.send(42);
-    EXPECT_FALSE(futsend.poll().has_value());
+    EXPECT_FALSE(futsend.poll(cx).has_value());
 
     // try to receive now
     auto futrecv = rx.recv();
-    auto rpoll = futrecv.poll();
+    auto rpoll = futrecv.poll(cx);
     EXPECT_TRUE(rpoll.has_value());
     EXPECT_TRUE(rpoll->isOk());
     EXPECT_EQ(rpoll->unwrap(), 42);
 
     // now the send is also completed
-    auto spoll = futsend.poll();
+    auto spoll = futsend.poll(cx);
     EXPECT_TRUE(spoll.has_value());
     EXPECT_TRUE(spoll->isOk());
 }
 
-void moveFutureHelper(auto txfut, auto rxfut) {
+void moveFutureHelper(auto& cx, auto txfut, auto rxfut) {
     // tx fails to send because no receiver
-    EXPECT_FALSE(txfut.poll().has_value());
+    EXPECT_FALSE(txfut.poll(cx).has_value());
     // rx succeeds by taking from sender
-    EXPECT_TRUE(rxfut.poll().has_value());
-    EXPECT_TRUE(txfut.poll().has_value());
+    EXPECT_TRUE(rxfut.poll(cx).has_value());
+    EXPECT_TRUE(txfut.poll(cx).has_value());
 }
 
 TEST(mpsc, MoveFuture) {
     Waker waker = Waker::noop();
-    ctx().m_waker = &waker;
+    Context cx { &waker };
 
     auto [tx, rx] = mpsc::channel<int>(0);
     auto futsend = tx.send(123);
     auto futrecv = rx.recv();
-    moveFutureHelper(std::move(futsend), std::move(futrecv));
+    moveFutureHelper(cx, std::move(futsend), std::move(futrecv));
 }
 
 TEST(mpsc, LargeVolumeSmallChannel) {

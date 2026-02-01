@@ -154,8 +154,11 @@ public:
 
         while (true) {
             auto result = this->poll(cx);
-            if (result) {
-                return result;
+
+            if constexpr (std::is_void_v<T>) {
+                if (result) return;
+            } else {
+                if (result) return std::move(*result);
             }
 
             cvw.wait();

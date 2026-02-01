@@ -28,3 +28,14 @@ TEST(task, SpawnBlockingResult) {
 
     EXPECT_EQ(result, 42);
 }
+
+TEST(task, BlockingBlockOn) {
+    auto runtime = arc::Runtime::create(1);
+
+    auto handle = runtime->spawnBlocking<int>([] {
+        return 42;
+    });
+    int result = handle.blockOn();
+
+    EXPECT_EQ(result, 42);
+}

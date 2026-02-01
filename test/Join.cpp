@@ -11,7 +11,7 @@ using namespace arc;
 
 TEST(join, MpscMultiTxJoin) {
     Waker waker = Waker::noop();
-    ctx().m_waker = &waker;
+    Context cx { &waker };
 
     auto [tx, rx] = mpsc::channel<int>(1);
 
@@ -19,13 +19,13 @@ TEST(join, MpscMultiTxJoin) {
     auto tfut2 = tx.send(2);
     auto joined = arc::joinAll(std::move(tfut1), std::move(tfut2));
 
-    EXPECT_FALSE(joined.poll());
+    EXPECT_FALSE(joined.poll(cx));
 
     auto recvval = rx.tryRecv();
     EXPECT_TRUE(recvval.isOk());
     EXPECT_EQ(recvval.unwrap(), 1);
 
-    auto pollTwo = joined.poll();
+    auto pollTwo = joined.poll(cx);
     EXPECT_TRUE(pollTwo.has_value());
     auto output = std::move(pollTwo).value();
 
@@ -36,7 +36,7 @@ TEST(join, MpscMultiTxJoin) {
 
 TEST(join, JoinDyn) {
     Waker waker = Waker::noop();
-    ctx().m_waker = &waker;
+    Context cx { &waker };
 
     arc::Notify notify;
 
@@ -49,11 +49,11 @@ TEST(join, JoinDyn) {
     }
 
     auto joined = arc::joinAll(std::move(futures));
-    EXPECT_FALSE(joined.poll());
+    EXPECT_FALSE(joined.poll(cx));
 
     notify.notifyAll();
 
-    auto pollRes = joined.poll();
+    auto pollRes = joined.poll(cx);
     EXPECT_TRUE(pollRes.has_value());
     auto output = std::move(pollRes).value();
     EXPECT_EQ(output.size(), 5);
