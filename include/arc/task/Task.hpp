@@ -291,8 +291,8 @@ struct Task : TaskTypedBase<typename P::Output> {
 
         TRACE("[Task {}] running, state: {}", (void*)this, state);
 
-        auto rt = this->m_runtime.upgrade();
-        if (!rt) return false; // might happen if the runtime is shutting down
+        // auto rt = this->m_runtime.upgrade();
+        // if (!rt) return false; // might happen if the runtime is shutting down
 
         // update task state
         while (true) {

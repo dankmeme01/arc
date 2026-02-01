@@ -390,12 +390,17 @@ void Runtime::shutdown() {
     m_ioDriver.reset();
     m_signalDriver.reset();
 
-    // deallocate all tasks
+    // abort all tasks
+    // it's not safe to call destroy on them because someone still might have TaskHandles
+    // simply call abort and then run, so that stuff gets cleaned up
 
+    Context cx { nullptr };
     skipRemoveTask = true;
+
     auto tasks = m_tasks.lock();
     for (auto* task : *tasks) {
-        task->m_vtable->destroy(task);
+        task->m_vtable->abort(task);
+        task->m_vtable->run(task, cx);
     }
     tasks->clear();
     skipRemoveTask = false;
