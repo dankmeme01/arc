@@ -2,6 +2,11 @@
 #include <arc/runtime/Runtime.hpp>
 #include <arc/util/Assert.hpp>
 
+#ifdef _WIN32
+# define ARC_HAS_STACKTRACE
+# include <stacktrace>
+#endif
+
 namespace arc {
 
 #define $safe_member(where, member) \
@@ -22,7 +27,7 @@ std::string TaskDebugData::name() const noexcept {
     $safe_member(name, m_name);
     return *name.lock();
 }
-std::stacktrace TaskDebugData::creationStack() const noexcept {
+std::vector<void*> TaskDebugData::creationStack() const noexcept {
     $safe_member(stack, m_creationStack);
     return stack;
 }
@@ -202,7 +207,12 @@ void TaskBase::ensureDebugData() {
     if (!m_debugData) {
         m_debugData = asp::make_shared<TaskDebugData>();
         m_debugData->m_task = this;
-        m_debugData->m_creationStack = std::stacktrace::current(1);
+
+#ifdef ARC_HAS_STACKTRACE
+        for (auto& frame : std::stacktrace::current(1)) {
+            m_debugData->m_creationStack.push_back(frame.native_handle());
+        }
+#endif
     }
 }
 

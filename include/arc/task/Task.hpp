@@ -23,7 +23,6 @@
 #include <cstdlib>
 #include <optional>
 #include <stdexcept>
-#include <stacktrace>
 
 namespace arc {
 
@@ -43,12 +42,12 @@ struct TaskDebugData {
     std::atomic<uint64_t> m_polls{0};
     std::atomic<uint64_t> m_runtimeNs{0};
     asp::SpinLock<std::string> m_name; // present already in task but duplicated here safety
-    std::stacktrace m_creationStack;
+    std::vector<void*> m_creationStack;
 
     asp::Duration totalRuntime() const noexcept;
     uint64_t totalPolls() const noexcept;
     std::string name() const noexcept;
-    std::stacktrace creationStack() const noexcept;
+    std::vector<void*> creationStack() const noexcept;
 };
 
 struct TaskVtable {
