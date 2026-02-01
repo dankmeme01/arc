@@ -326,7 +326,7 @@ public:
         ManuallyDrop<Waker> waker{this, &WakerVtable};
         auto state = this->getState();
 
-        printWarn("[Task {}] polled, state: {}", (void*)this, state);
+        TRACE("[Task {}] polled, state: {}", (void*)this, state);
 
 #ifdef ARC_DEBUG
         this->ensureDebugData();
