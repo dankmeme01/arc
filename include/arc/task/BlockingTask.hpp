@@ -1,6 +1,7 @@
 #pragma once
 #include <arc/future/Future.hpp>
 #include <arc/task/Waker.hpp>
+#include <arc/task/CondvarWaker.hpp>
 #include <arc/util/Function.hpp>
 
 #include <asp/sync/SpinLock.hpp>
@@ -15,8 +16,8 @@ struct BlockingTaskVtable {
 };
 
 struct BlockingTaskBase {
-    asp::WeakPtr<Runtime> m_runtime;
     const BlockingTaskVtable* m_vtable;
+    asp::WeakPtr<Runtime> m_runtime;
 
     BlockingTaskBase(asp::WeakPtr<Runtime> runtime, const BlockingTaskVtable* vtable)
         : m_runtime(std::move(runtime)), m_vtable(vtable) {}
@@ -28,8 +29,8 @@ struct BlockingTaskBase {
 
 template <typename T>
 struct BlockingTask : BlockingTaskBase {
-    static std::shared_ptr<BlockingTask> create(asp::WeakPtr<Runtime> runtime, arc::MoveOnlyFunction<T()> func) {
-        return std::make_shared<BlockingTask>(std::move(runtime), std::move(func));
+    static asp::SharedPtr<BlockingTask> create(asp::WeakPtr<Runtime> runtime, arc::MoveOnlyFunction<T()> func) {
+        return asp::make_shared<BlockingTask>(std::move(runtime), std::move(func));
     }
 
     BlockingTask(asp::WeakPtr<Runtime> runtime, arc::MoveOnlyFunction<T()> func)
@@ -44,7 +45,7 @@ struct BlockingTask : BlockingTaskBase {
             return out;
         } else {
             auto myWaker = cx.waker();
-            if (!data->m_awaiter || !data->m_awaiter->equals(*myWaker)) {
+            if (myWaker && (!data->m_awaiter || !data->m_awaiter->equals(*myWaker))) {
                 data->m_awaiter = myWaker->clone();
             }
 
@@ -82,8 +83,8 @@ private:
 // Specialization for void
 template <>
 struct BlockingTask<void> : BlockingTaskBase {
-    static std::shared_ptr<BlockingTask> create(asp::WeakPtr<Runtime> runtime, arc::MoveOnlyFunction<void()> func) {
-        return std::make_shared<BlockingTask>(std::move(runtime), std::move(func));
+    static asp::SharedPtr<BlockingTask> create(asp::WeakPtr<Runtime> runtime, arc::MoveOnlyFunction<void()> func) {
+        return asp::make_shared<BlockingTask>(std::move(runtime), std::move(func));
     }
 
     BlockingTask(asp::WeakPtr<Runtime> runtime, arc::MoveOnlyFunction<void()> func)
@@ -96,7 +97,7 @@ struct BlockingTask<void> : BlockingTaskBase {
             return true;
         } else {
             auto myWaker = cx.waker();
-            if (!data->m_awaiter || !data->m_awaiter->equals(*myWaker)) {
+            if (myWaker && (!data->m_awaiter || !data->m_awaiter->equals(*myWaker))) {
                 data->m_awaiter = myWaker->clone();
             }
 
@@ -134,7 +135,7 @@ private:
 template <typename T>
 struct BlockingTaskHandle : Pollable<BlockingTaskHandle<T>, T> {
 public:
-    BlockingTaskHandle(std::shared_ptr<BlockingTask<T>> task) : m_task(std::move(task)) {}
+    BlockingTaskHandle(asp::SharedPtr<BlockingTask<T>> task) : m_task(std::move(task)) {}
     BlockingTaskHandle(const BlockingTaskHandle&) = delete;
     BlockingTaskHandle& operator=(const BlockingTaskHandle&) = delete;
     BlockingTaskHandle(BlockingTaskHandle&& other) noexcept = default;
@@ -143,9 +144,26 @@ public:
     auto poll(Context& cx) {
         return m_task->pollTask(cx);
     }
+
+    /// Blocks the current thread until the task is complete.
+    /// Do not use in async code - simply co_await instead.
+    auto blockOn() {
+        CondvarWaker cvw{};
+        auto waker = cvw.waker();
+        Context cx { &waker, nullptr };
+
+        while (true) {
+            auto result = this->poll(cx);
+            if (result) {
+                return result;
+            }
+
+            cvw.wait();
+        }
+    }
 private:
     friend class Runtime;
-    std::shared_ptr<BlockingTask<T>> m_task;
+    asp::SharedPtr<BlockingTask<T>> m_task;
 };
 
 }

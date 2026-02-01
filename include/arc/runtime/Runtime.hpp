@@ -31,7 +31,7 @@ struct RuntimeVtable {
     using EnqueueTaskFn = void(*)(Runtime*, TaskBase*);
     using SetTerminateHandlerFn = void(*)(Runtime*, TerminateHandler) noexcept;
     using InsertTaskFn = void(*)(Runtime*, TaskBase*);
-    using InsertBlockingFn = void(*)(Runtime*, std::shared_ptr<BlockingTaskBase>);
+    using InsertBlockingFn = void(*)(Runtime*, asp::SharedPtr<BlockingTaskBase>);
     using RemoveTaskFn = void(*)(Runtime*, TaskBase*) noexcept;
     using IsShuttingDownFn = bool(*)(const Runtime*) noexcept;
     using SafeShutdownFn = void(*)(Runtime*);
@@ -137,7 +137,7 @@ private:
     asp::time::Duration m_taskDeadline;
 
     std::mutex m_blockingMtx;
-    std::deque<std::shared_ptr<BlockingTaskBase>> m_blockingTasks; // protected by m_blockingMtx
+    std::deque<asp::SharedPtr<BlockingTaskBase>> m_blockingTasks; // protected by m_blockingMtx
     std::condition_variable m_blockingCv;
     std::atomic<size_t> m_blockingWorkers{0};
     std::atomic<size_t> m_freeBlockingWorkers{0};
@@ -164,7 +164,7 @@ private:
     static void vSetTerminateHandler(Runtime* self, TerminateHandler handler) noexcept;
     static void vEnqueueTask(Runtime* self, TaskBase* task);
     static void vInsertTask(Runtime* self, TaskBase* task);
-    static void vInsertBlocking(Runtime* self, std::shared_ptr<BlockingTaskBase> task);
+    static void vInsertBlocking(Runtime* self, asp::SharedPtr<BlockingTaskBase> task);
     static void vRemoveTask(Runtime* self, TaskBase* task) noexcept;
     static bool vIsShuttingDown(const Runtime* self) noexcept;
     static void vSafeShutdown(Runtime* self);

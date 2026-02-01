@@ -117,7 +117,7 @@ void Runtime::vInsertTask(Runtime* self, TaskBase* task) {
     self->m_tasks.lock()->insert(task);
 }
 
-void Runtime::vInsertBlocking(Runtime* self, std::shared_ptr<BlockingTaskBase> task) {
+void Runtime::vInsertBlocking(Runtime* self, asp::SharedPtr<BlockingTaskBase> task) {
     std::unique_lock lock(self->m_blockingMtx);
 
     auto& btasks = self->m_blockingTasks;
@@ -291,7 +291,7 @@ void Runtime::blockingWorkerLoop(size_t id) {
             break;
         }
 
-        std::shared_ptr<BlockingTaskBase> task = nullptr;
+        asp::SharedPtr<BlockingTaskBase> task = nullptr;
         {
             std::unique_lock lock(m_blockingMtx);
 
