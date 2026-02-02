@@ -15,7 +15,7 @@ This project is WIP, some things may have bugs and not be production ready, but 
 
 TODO:
 * File IO using blocking thread pool
-* Better poller. Current implementation uses `poll`/`WSAPoll`, which isn't scalable. This is not an issue for small jobs, but makes the library unsuitable for servers that handle hundreds of connections. Currently this is a non-goal as this library was mostly made for a network client rather than a server.
+* Better poller. Current implementation uses `poll`/`WSAPoll`, which isn't scalable. This is not an issue for small jobs, but makes the library unsuitable for servers that handle hundreds of connections. Currently this is a non-goal as this library was mostly made for a network client rather than a server
 
 ## Getting Started
 
