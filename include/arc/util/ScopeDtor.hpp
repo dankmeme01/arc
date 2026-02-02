@@ -6,6 +6,8 @@ namespace arc {
 template <typename F>
 auto scopeDtor(F&& func) {
     struct ScopeDtor {
+        ScopeDtor(F&& f) : m_func(std::forward<F>(f)) {}
+
         ~ScopeDtor() {
             if (m_invoke) m_func();
         }
