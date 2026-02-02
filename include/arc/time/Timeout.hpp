@@ -96,7 +96,7 @@ auto timeoutAt(asp::time::Instant expiry, Awaitable auto fut) {
 }
 
 auto timeout(asp::time::Duration dur, Awaitable auto fut) {
-    return timeoutAt(asp::time::Instant::now() + dur, std::move(fut));
+    return timeoutAt(asp::Instant::now() + dur, std::move(fut));
 }
 
 }

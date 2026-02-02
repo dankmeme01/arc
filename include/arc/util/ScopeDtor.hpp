@@ -6,9 +6,6 @@ namespace arc {
 template <typename F>
 auto scopeDtor(F&& func) {
     struct ScopeDtor {
-        std::decay_t<F> m_func;
-        bool m_invoke = true;
-
         ~ScopeDtor() {
             if (m_invoke) m_func();
         }
@@ -16,6 +13,9 @@ auto scopeDtor(F&& func) {
         void cancel() noexcept {
             m_invoke = false;
         }
+    private:
+        std::decay_t<F> m_func;
+        bool m_invoke = true;
     };
 
     return ScopeDtor{std::forward<F>(func)};

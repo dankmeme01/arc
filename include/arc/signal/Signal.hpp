@@ -48,12 +48,12 @@ struct SignalKind {
 };
 
 struct ARC_NODISCARD Signal : Pollable<Signal> {
+    explicit Signal(SignalKind kind);
+    bool poll(Context& cx);
+
+private:
     SignalKind m_kind;
     std::optional<Notified> m_notified;
-
-    explicit Signal(SignalKind kind);
-
-    bool poll(Context& cx);
 };
 
 inline auto signal(SignalKind kind) {

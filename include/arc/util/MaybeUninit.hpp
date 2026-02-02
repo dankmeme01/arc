@@ -5,11 +5,6 @@ namespace arc {
 
 template <typename T>
 struct MaybeUninit {
-    union {
-        T value;
-        char _dummy;
-    };
-
     MaybeUninit() noexcept {}
     ~MaybeUninit() noexcept {}
 
@@ -33,6 +28,12 @@ struct MaybeUninit {
     T* ptr() noexcept {
         return &value;
     }
+
+private:
+    union {
+        T value;
+        char _dummy;
+    };
 };
 
 }

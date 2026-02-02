@@ -190,6 +190,7 @@ struct ARC_NODISCARD Future : PollableBase {
         }
     }
 
+protected:
     handle_type m_handle{};
 };
 

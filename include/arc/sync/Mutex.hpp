@@ -13,8 +13,6 @@ struct Mutex;
 
 template <typename T = void, typename Mtx = Mutex<T>>
 struct MutexGuard {
-    Mtx* m_mtx = nullptr;
-
     ~MutexGuard() {
         if (m_mtx) m_mtx->m_sema.release();
     }
@@ -37,6 +35,9 @@ struct MutexGuard {
         }
         return *this;
     }
+
+private:
+    Mtx* m_mtx = nullptr;
 };
 
 template <typename RawT = void>

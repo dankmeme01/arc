@@ -83,6 +83,9 @@ private:
 };
 
 struct IoEntry {
+private:
+    friend class IoDriver;
+
     SockFd fd;
     asp::SpinLock<std::vector<IoWaiter>> waiters; // TODO: slab kind of thing
     std::atomic<bool> anyWrite{false}, anyRead{false};

@@ -16,15 +16,16 @@ struct BlockingTaskVtable {
 };
 
 struct BlockingTaskBase {
-    const BlockingTaskVtable* m_vtable;
-    asp::WeakPtr<Runtime> m_runtime;
-
     BlockingTaskBase(asp::WeakPtr<Runtime> runtime, const BlockingTaskVtable* vtable)
         : m_runtime(std::move(runtime)), m_vtable(vtable) {}
 
     void execute() {
         m_vtable->execute(this);
     }
+
+protected:
+    const BlockingTaskVtable* m_vtable;
+    asp::WeakPtr<Runtime> m_runtime;
 };
 
 template <typename T>

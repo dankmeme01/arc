@@ -6,8 +6,6 @@ namespace arc {
 /// Pins a value in memory, preventing moves and copies.
 template <typename T>
 struct Pin {
-    T value;
-
     Pin() : value() {}
 
     template <typename... Args>
@@ -36,6 +34,9 @@ struct Pin {
     T unpin() noexcept {
         return std::move(value);
     }
+
+private:
+    T value;
 };
 
 }

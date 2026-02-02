@@ -6,11 +6,6 @@ namespace arc {
 /// This type is NOT safe for types whose move constructor is non-trivial.
 template <typename T>
 struct ManuallyDrop {
-    union {
-        T value;
-        char _dummy;
-    };
-
     ManuallyDrop() : value() {}
 
     template <typename... Args>
@@ -33,6 +28,12 @@ struct ManuallyDrop {
     T& get() noexcept {
         return value;
     }
+
+private:
+    union {
+        T value;
+        char _dummy;
+    };
 };
 
 template <typename T>

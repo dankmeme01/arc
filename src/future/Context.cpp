@@ -41,7 +41,7 @@ void Context::_installWaker(Waker* waker) {
 }
 
 void Context::setTaskDeadline(Instant deadline) {
-    m_taskDeadline = deadline;
+    m_taskDeadline = deadline.rawNanos();
     m_futurePolls = 0;
 }
 
@@ -49,7 +49,7 @@ bool Context::shouldCoopYield() {
     // try to make this check as cheap as possible
     m_futurePolls++;
     if (m_futurePolls % 64 == 0) {
-        return m_taskDeadline && Instant::now() >= *m_taskDeadline;
+        return m_taskDeadline > 0 && Instant::now().rawNanos() >= m_taskDeadline;
     }
     return false;
 }
@@ -91,19 +91,16 @@ void Context::onUnhandledException(std::exception_ptr ptr) {
         this->captureStack();
     }
     printWarn("Captured exception (valid: {})", !!ptr);
-    m_currentException = ptr;
+    if (ptr) {
+        m_currentException = ptr;
+    } else {
+        m_currentException = std::make_exception_ptr(std::runtime_error("unknown exception (null when capturing)"));
+    }
 }
 
 void Context::maybeRethrow() {
-    if (m_currentException) {
-        auto exc = *m_currentException;
-        m_currentException = std::nullopt;
-
-        if (exc) {
-            std::rethrow_exception(exc);
-        } else {
-            throw std::runtime_error("unknown exception, null when rethrowing");
-        }
+    if (auto exc = std::exchange(m_currentException, nullptr)) {
+        std::rethrow_exception(exc);
     }
 }
 
@@ -121,8 +118,11 @@ void Context::captureStack() {
         }
 
         if (meta->isFuture) {
-            struct DummyFuture : Future<> {};
-            auto handle = reinterpret_cast<const DummyFuture*>(pollable)->m_handle;
+            struct DummyFuture : Future<> {
+                handle_type handle() const { return m_handle; }
+            };
+
+            auto handle = reinterpret_cast<const DummyFuture*>(pollable)->handle();
             description += fmt::format(" (handle: {})", (void*)handle.address());
         }
 

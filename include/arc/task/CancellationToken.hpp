@@ -7,9 +7,6 @@
 namespace arc {
 
 struct CancellationToken {
-    std::atomic<bool> m_cancelled{false};
-    arc::Notify m_notify;
-
     CancellationToken() = default;
 
     CancellationToken(CancellationToken&&) = delete;
@@ -40,6 +37,10 @@ struct CancellationToken {
     Awaiter waitCancelled() noexcept {
         return Awaiter{this};
     }
+
+private:
+    std::atomic<bool> m_cancelled{false};
+    arc::Notify m_notify;
 };
 
 }

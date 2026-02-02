@@ -9,17 +9,6 @@ namespace arc {
 
 class Runtime;
 
-struct TimerEntryKey {
-    asp::time::Instant expiry;
-    uint64_t id;
-
-    bool operator<(const TimerEntryKey& other) const {
-        return expiry < other.expiry;
-    }
-};
-
-using TimerQueue = std::map<TimerEntryKey, Waker, std::less<TimerEntryKey>>;
-
 class TimeDriver;
 struct TimeDriverVtable {
     using AddEntryFn = uint64_t(*)(TimeDriver*, asp::time::Instant, Waker);
@@ -39,6 +28,17 @@ public:
 
 private:
     friend class Runtime;
+
+    struct TimerEntryKey {
+        asp::time::Instant expiry;
+        uint64_t id;
+
+        bool operator<(const TimerEntryKey& other) const {
+            return expiry < other.expiry;
+        }
+    };
+
+    using TimerQueue = std::map<TimerEntryKey, Waker, std::less<TimerEntryKey>>;
 
     const TimeDriverVtable* m_vtable;
     std::atomic<uint64_t> m_nextTimerId{1};

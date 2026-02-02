@@ -66,13 +66,6 @@ struct PromiseVtable {
 };
 
 struct PromiseBase {
-    // Every field past the vtable can be changed without causing an ABI break.
-    // Fields must never be directly accessed and should only be used through the vtable.
-    const PromiseVtable* m_vtable;
-    PollableBase* m_child = nullptr;
-    Context* m_context = nullptr;
-    std::string m_debugName;
-
     void attachChild(PollableBase* child) {
         m_vtable->attachChild(this, child);
     }
@@ -125,6 +118,13 @@ struct PromiseBase {
     }
 
 protected:
+    // Every field past the vtable can be changed without causing an ABI break.
+    // Fields must never be directly accessed and should only be used through the vtable.
+    const PromiseVtable* m_vtable;
+    PollableBase* m_child = nullptr;
+    Context* m_context = nullptr;
+    std::string m_debugName;
+
     static void vAttachChild(void* self, PollableBase* child) {
         reinterpret_cast<PromiseBase*>(self)->m_child = child;
     }

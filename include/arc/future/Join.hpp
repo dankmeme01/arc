@@ -165,8 +165,7 @@ auto joinAll(Futures... futs) {
     using NVOutput = typename JoinAllFuture::StoredOutput;
 
     auto fs = std::make_tuple(JoinAllFuture{std::move(futs)}...);
-    JoinAll joinAll{std::move(fs), static_cast<NVOutput*>(nullptr)};
-    return joinAll;
+    return JoinAll{std::move(fs), static_cast<NVOutput*>(nullptr)};
 }
 
 template <typename Fut>
@@ -175,8 +174,7 @@ auto joinAll(std::vector<Fut> futs) {
     using JoinAllFuture = JoinAllFuture<Output>;
     using NVOutput = typename JoinAllFuture::StoredOutput;
 
-    JoinAllDyn joinAll{std::move(futs), static_cast<NVOutput*>(nullptr)};
-    return joinAll;
+    return JoinAllDyn{std::move(futs), static_cast<NVOutput*>(nullptr)};
 }
 
 }

@@ -48,11 +48,12 @@ private:
 
     Waker* m_waker;
     Runtime* m_runtime;
-    std::optional<asp::time::Instant> m_taskDeadline;
-    size_t m_futurePolls = 0;
+    uint32_t m_futurePolls = 0;
+    uint64_t m_taskDeadline = 0;
+    std::exception_ptr m_currentException;
     std::vector<StackEntry> m_stack;
     std::vector<std::string> m_capturedStack;
-    std::optional<std::exception_ptr> m_currentException;
+    // -- all fields above are expected to be stable and not change --
 
     void dumpStack();
     void captureStack();

@@ -7,6 +7,7 @@ namespace arc {
 struct ARC_NODISCARD Yield : Pollable<Yield> {
     bool poll(Context& cx);
 
+private:
     bool yielded = false;
 };
 

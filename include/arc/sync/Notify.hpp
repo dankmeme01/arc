@@ -25,9 +25,6 @@ struct ARC_NODISCARD Notified : Pollable<Notified> {
         Notified,
     };
 
-    asp::SharedPtr<NotifyState> m_notify;
-    std::atomic<State> m_waitState{State::Init};
-
     explicit Notified(asp::SharedPtr<NotifyState> state) : m_notify(std::move(state)) {}
 
     // Because atomic cannot be moved, we must manually define move constructors
@@ -38,6 +35,11 @@ struct ARC_NODISCARD Notified : Pollable<Notified> {
 
     bool poll(Context& cx);
     void reset();
+
+private:
+    friend class Notify;
+    asp::SharedPtr<NotifyState> m_notify;
+    std::atomic<State> m_waitState{State::Init};
 };
 
 /// Synchronization primitive that allows a task to wait for notifications, be it from another task or synchronous code.
