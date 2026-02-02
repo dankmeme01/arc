@@ -1,6 +1,6 @@
 #pragma once
 #include "Pollable.hpp"
-#include "Future.hpp"
+#include <arc/util/Trace.hpp>
 
 #if 0
 # define TRACE ::arc::trace
@@ -221,9 +221,8 @@ struct Promise : std::conditional_t<
         this->getContext()->onUnhandledException(std::current_exception());
     }
 
-    Future<T> get_return_object() {
-        return Future<T>{ Future<T>::handle_type::from_promise(*this) };
-    }
+    // Defined in Future.hpp
+    auto get_return_object();
 
     // Final awaiter
 

@@ -9,6 +9,7 @@
 #include <arc/util/Assert.hpp>
 #include "Context.hpp"
 #include "Pollable.hpp"
+#include "Promise.hpp"
 
 #if 0
 # define TRACE ::arc::trace
@@ -191,6 +192,11 @@ struct ARC_NODISCARD Future : PollableBase {
 
     handle_type m_handle{};
 };
+
+template <typename T>
+auto Promise<T>::get_return_object() {
+    return Future<T>{ Future<T>::handle_type::from_promise(*this) };
+}
 
 template <typename Fut, typename Out = typename FutureTraits<std::decay_t<Fut>>::Output>
 inline Future<Out> toPlainFuture(Fut fut) {
