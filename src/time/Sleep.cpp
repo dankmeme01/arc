@@ -43,6 +43,7 @@ Sleep& Sleep::operator=(Sleep&& other) noexcept {
     if (this != &other) {
         m_expiry = other.m_expiry;
         m_id = other.m_id;
+        m_runtime = std::move(other.m_runtime);
         other.m_id = 0;
     }
     return *this;

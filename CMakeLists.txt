@@ -25,7 +25,7 @@ if (NOT COMMAND CPMAddPackage)
 endif()
 
 if (NOT TARGET asp2)
-    CPMAddPackage("gh:dankmeme01/asp2#4b18028")
+    CPMAddPackage("gh:dankmeme01/asp2#e6c74af")
 endif()
 if (NOT TARGET qsox)
     CPMAddPackage("gh:dankmeme01/qsox#73aeabd")
