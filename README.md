@@ -358,6 +358,13 @@ Future<size_t> getSize(std::string msg) {
 }
 ```
 
+The problems above are also very prominent when spawning, for example:
+```cpp
+auto handle = arc::spawn(getSize("test"));
+```
+
+This will be undefined behavior if the string is not accepted by value, as the string ceases to exist after the task is spawned. When writing a function that is likely to be spawned as a task, pay extra attention to how it accepts arguments.
+
 ### Lambda futures
 
 Take a look at this seemingly innocent code:
@@ -371,7 +378,7 @@ auto fut = [&value] -> arc::Future<> {
 co_await fut;
 ```
 
-At a first glance it seems fine, although the lambda captures `value` by reference, it can never outlive the variable since it's awaited right away, right? Nope, try running it with ASan and watch it go crazy :)
+At a first glance it seems fine, although the lambda captures `value` by reference, it can never outlive the variable since it's awaited right away, right? But nope, this is actually a use-after-free :)
 
 This happens because lambda captures only live as long as the lambda itself. By the time we reach this line:
 ```cpp
@@ -380,7 +387,22 @@ This happens because lambda captures only live as long as the lambda itself. By 
 
 we complete the lambda invocation, and the lambda is destroyed. And with it, all captures are gone. When the lambda gets actually awaited, and code starts *actually* executing, the captures are dead and should not be used.
 
-This is a mistake that is very easy to make, especially when passing inline futures to another function, for example `arc::timeout`, `arc::select`, etc. There are three easy ways to work around this problem:
+This is a mistake that is very easy to make, especially when passing inline futures to another function, for example `arc::timeout`, `arc::select`, etc. Notably, `arc::spawn` is safe from this as long as you pass the *lambda* to it, and not the *future*, because it will store the given lambda until it's no longer needed
+```cpp
+// Good:
+auto task = arc::spawn([&value] -> arc::Future<> {
+    fmt::println("{}", value);
+    co_return;
+});
+
+// Bad, undefined behavior
+auto task = arc::spawn([&value] -> arc::Future<> {
+    fmt::println("{}", value);
+    co_return;
+}());
+```
+
+There are three easy ways to work around this problem:
 
 1. If possible, don't capture anything. By contrast, this capture-less code will be completely fine, as parameters are stored in the coroutine frame:
 ```cpp
