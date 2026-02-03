@@ -204,10 +204,12 @@ protected:
     ManuallyDrop<Fut> m_future;
     std::atomic<bool> m_droppedFuture = false;
 
-    Task(const TaskVtable* vtable, asp::WeakPtr<Runtime> runtime, Fut&& fut) requires (!UsesLambda)
-        : TaskTypedBase<typename Fut::Output>(vtable, std::move(runtime)), m_future(std::forward<Fut>(fut)) {}
+    template <typename F>
+    Task(const TaskVtable* vtable, asp::WeakPtr<Runtime> runtime, F&& fut) requires (!UsesLambda)
+        : TaskTypedBase<typename Fut::Output>(vtable, std::move(runtime)), m_future(std::forward<F>(fut)) {}
 
-    Task(const TaskVtable* vtable, asp::WeakPtr<Runtime> runtime, Lambda&& fut) requires (UsesLambda)
+    template <typename L>
+    Task(const TaskVtable* vtable, asp::WeakPtr<Runtime> runtime, L&& fut) requires (UsesLambda)
         : TaskTypedBase<typename Fut::Output>(vtable, std::move(runtime)),
           m_lambda(std::forward<Lambda>(fut)),
           m_future(std::invoke(m_lambda.get())) {}
