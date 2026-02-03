@@ -8,6 +8,7 @@
 #include <arc/util/ManuallyDrop.hpp>
 #include <arc/util/ScopeDtor.hpp>
 #include <arc/util/Assert.hpp>
+#include <arc/util/Config.hpp>
 
 #if 0
 # define TRACE trace
@@ -119,6 +120,7 @@ protected:
     uint64_t getState() noexcept;
     bool exchangeState(uint64_t& expected, uint64_t newState) noexcept;
     void ensureDebugData();
+    std::string debugName();
 
     void registerAwaiter(Waker& waker);
     void notifyAwaiter(Waker* current = nullptr);
@@ -190,22 +192,30 @@ struct TaskTypedBase : TaskBase {
     }
 };
 
-template <IsPollable P>
-struct Task : TaskTypedBase<typename P::Output> {
-    using Output = TaskTypedBase<typename P::Output>::Output;
-    using NonVoidOutput = TaskTypedBase<typename P::Output>::NVOutput;
+template <IsPollable Fut, typename Lambda = std::monostate>
+struct Task : TaskTypedBase<typename Fut::Output> {
+    using Output = TaskTypedBase<typename Fut::Output>::Output;
+    using NonVoidOutput = TaskTypedBase<typename Fut::Output>::NVOutput;
+    static constexpr bool UsesLambda = !std::is_same_v<Lambda, std::monostate>;
     static constexpr bool IsVoid = std::is_void_v<Output>;
 
 protected:
-    ManuallyDrop<P> m_future;
+    ARC_NO_UNIQUE_ADDRESS std::conditional_t<UsesLambda, ManuallyDrop<Lambda>, std::monostate> m_lambda;
+    ManuallyDrop<Fut> m_future;
     std::atomic<bool> m_droppedFuture = false;
 
-    Task(const TaskVtable* vtable, asp::WeakPtr<Runtime> runtime, P&& fut)
-        : TaskTypedBase<typename P::Output>(vtable, std::move(runtime)), m_future(std::move(fut)) {}
+    Task(const TaskVtable* vtable, asp::WeakPtr<Runtime> runtime, Fut&& fut) requires (!UsesLambda)
+        : TaskTypedBase<typename Fut::Output>(vtable, std::move(runtime)), m_future(std::forward<Fut>(fut)) {}
+
+    Task(const TaskVtable* vtable, asp::WeakPtr<Runtime> runtime, Lambda&& fut) requires (UsesLambda)
+        : TaskTypedBase<typename Fut::Output>(vtable, std::move(runtime)),
+          m_lambda(std::forward<Lambda>(fut)),
+          m_future(std::invoke(m_lambda.get())) {}
 
 public:
-    static Task* create(asp::WeakPtr<Runtime> runtime, P&& fut) {
-        auto task = new Task(&Task::vtable, std::move(runtime), std::move(fut));
+    template <typename FutOrLambda>
+    static Task* create(asp::WeakPtr<Runtime> runtime, FutOrLambda&& fut) {
+        auto task = new Task(&Task::vtable, std::move(runtime), std::forward<FutOrLambda>(fut));
 #ifdef ARC_DEBUG
         task->ensureDebugData();
 #endif
@@ -223,16 +233,21 @@ public:
     }
 
     static void vDropFuture(void* ptr) {
-        TRACE("[Task {}] dropping future", ptr);
         auto self = static_cast<Task*>(ptr);
-        ARC_DEBUG_ASSERT(!self->m_droppedFuture.exchange(true, std::memory_order::acq_rel));
+        if (self->m_droppedFuture.exchange(true, std::memory_order::acq_rel)) return;
+
+        TRACE("[{}] dropping future (has lambda: {})", self->debugName(), UsesLambda);
 
         self->m_future.drop();
+
+        if constexpr (UsesLambda) {
+            self->m_lambda.drop();
+        }
     }
 
     static void vDestroy(void* self) {
-        TRACE("[Task {}] destroying", self);
         auto task = static_cast<Task*>(self);
+        TRACE("[{}] destroying", task->debugName());
         auto rt = task->m_runtime.upgrade();
         if (rt) {
             rt->removeTask(task);
@@ -241,8 +256,8 @@ public:
     }
 
     static RawWaker vCloneWaker(void* self) {
-        TRACE("[Task {}] cloning waker", self);
         auto task = static_cast<Task*>(self);
+        TRACE("[{}] cloning waker", task->debugName());
         auto state = task->incref();
 
         if (state > (uint64_t)(std::numeric_limits<int64_t>::max())) {
@@ -259,9 +274,8 @@ public:
 
     template <bool Consume>
     static void vWake(void* ptr) {
-        TRACE("[Task {}] waking", ptr);
-
         auto self = static_cast<Task*>(ptr);
+        TRACE("[{}] waking", self->debugName());
         auto state = self->getState();
 
         while (true) {
@@ -325,7 +339,7 @@ public:
         ManuallyDrop<Waker> waker{this, &WakerVtable};
         auto state = this->getState();
 
-        TRACE("[Task {}] polled, state: {}", (void*)this, state);
+        TRACE("[{}] polled, state: {}", this->debugName(), state);
 
 #ifdef ARC_DEBUG
         this->ensureDebugData();
@@ -339,9 +353,7 @@ public:
         while (true) {
             if (state & TASK_CLOSED) {
                 // closed, drop the future
-                if (!m_droppedFuture.load(std::memory_order::acquire)) {
-                    this->vDropFuture(this);
-                }
+                this->vDropFuture(this);
 
                 auto state = this->m_state.fetch_and(~TASK_SCHEDULED, std::memory_order::acq_rel);
 
@@ -380,7 +392,7 @@ public:
         this->m_debugData->m_runtimeNs.fetch_add(taken, std::memory_order::relaxed);
 #endif
 
-        TRACE("[Task {}] future completion: {}", (void*)this, result);
+        TRACE("[{}] future completion: {}", this->debugName(), result);
 
         if (result) {
             if constexpr (!IsVoid) {
@@ -426,9 +438,8 @@ public:
                     newState &= ~TASK_SCHEDULED;
                 }
 
-                if ((state & TASK_CLOSED) && !m_droppedFuture.load(std::memory_order::acquire)) {
-                    // the thread that closed the task did not drop the future,
-                    // so we have to do it here
+                if (state & TASK_CLOSED) {
+                    // in case the future hasn't been dropped yet, do it now
                     this->vDropFuture(this);
                 }
 
@@ -489,7 +500,7 @@ struct TaskHandleBase {
     /// Throws an exception if the task was closed before completion.
     std::optional<typename TaskTypedBase<T>::NVOutput> pollTask(Context& cx) {
         auto res = m_task->vPoll(m_task, cx);
-        TRACE("[Task {}] poll result: {}", (void*)this->m_task, res);
+        TRACE("[{}] poll result: {}", this->m_task->debugName(), res);
 
         if (res && *res) {
             if constexpr (!std::is_void_v<T>) {
@@ -516,7 +527,7 @@ struct TaskHandleBase {
 
         while (true) {
             auto result = this->pollTask(cx);
-            TRACE("[Task {}] poll result: {}", (void*)this->m_task, result);
+            TRACE("[{}] poll result: {}", (void*)this->m_task, (bool)result);
 
             if (result) {
                 if constexpr (!std::is_void_v<T>) {

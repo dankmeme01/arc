@@ -91,18 +91,13 @@ public:
 
     void enqueueTask(TaskBase* task);
 
-    template <IsPollable F, typename T = typename F::Output>
-    TaskHandle<T> spawn(F fut) {
-        auto* task = Task<F>::create(weakFromThis(), std::move(fut));
+    template <typename F> requires Spawnable<std::decay_t<F>>
+    auto spawn(F&& func) {
+        auto task = createTask(std::forward<F>(func));
         m_vtable->m_insertTask(this, task);
         task->schedule();
 
-        return TaskHandle<T>{task};
-    }
-
-    template <typename L> requires ReturnsPollable<std::decay_t<L>>
-    auto spawn(L&& func) {
-        return this->spawn(std::invoke(std::forward<L>(func)));
+        return TaskHandle{task};
     }
 
     template <typename T>
@@ -128,7 +123,7 @@ public:
     std::vector<asp::SharedPtr<TaskDebugData>> getTaskStats();
 
 private:
-    template <IsPollable P>
+    template <IsPollable Fut, typename Lambda>
     friend struct Task;
 
     struct WorkerData {
@@ -164,6 +159,17 @@ private:
         auto ptr = static_cast<T*>(m_vtable->m_getDriver(this, ty));
         ARC_ASSERT(ptr, "attempted to access driver that is not available");
         return *ptr;
+    }
+
+    template <typename Fut> requires IsPollable<std::decay_t<Fut>>
+    auto createTask(Fut&& fut) {
+        return Task<Fut, std::monostate>::create(weakFromThis(), std::forward<Fut>(fut));
+    }
+
+    template <typename Lambda> requires ReturnsPollable<std::decay_t<Lambda>>
+    auto createTask(Lambda&& func) {
+        using Fut = std::invoke_result_t<std::decay_t<Lambda>>;
+        return Task<Fut, Lambda>::create(weakFromThis(), std::forward<Lambda>(func));
     }
 
     void init(bool timeDriver, bool ioDriver, bool signalDriver);

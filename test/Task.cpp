@@ -43,7 +43,6 @@ TEST(task, BlockingBlockOn) {
 TEST(task, LambdaTask) {
     auto runtime = arc::Runtime::create(1);
 
-
     runtime->spawn([] -> arc::Future<> {
         auto result = co_await arc::spawn([] -> arc::Future<int> {
             co_return 42;
@@ -90,4 +89,23 @@ TEST(task, TaskStats) {
     auto allStats = rt->getTaskStats();
     EXPECT_EQ(allStats.size(), 1);
     EXPECT_EQ(allStats[0]->name(), "hi test");
+}
+
+
+TEST(task, LambdaUseAfterFree) {
+    auto rt = arc::Runtime::create(1);
+
+    auto sptr = asp::make_shared<int>(0);
+    EXPECT_EQ(sptr.strongCount(), 1);
+
+    auto handle = rt->spawn(
+        [sptr]() -> arc::Future<> {
+            co_await arc::sleep(asp::Duration::fromMillis(1));
+            EXPECT_EQ(sptr.strongCount(), 2);
+        }
+    );
+    handle.blockOn();
+
+    // since the task terminated, the lambda should be dropped
+    EXPECT_EQ(sptr.strongCount(), 1);
 }

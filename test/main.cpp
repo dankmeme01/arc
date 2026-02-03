@@ -143,7 +143,6 @@ Future<> noop() {
 
 Future<> asyncMain(int argc, char** argv) {
     trace("Hello from asyncMain!");
-
     // spawn(printer());
 
     if (argc > 1 && std::string_view(argv[1]) == "tcp-server") {

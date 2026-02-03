@@ -24,7 +24,7 @@ if (NOT COMMAND CPMAddPackage)
     include(cmake/CPM.cmake)
 endif()
 
-if (NOT TARGET asp2)
+if (NOT TARGET asp)
     CPMAddPackage("gh:dankmeme01/asp2#e6c74af")
 endif()
 if (NOT TARGET qsox)

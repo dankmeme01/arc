@@ -22,7 +22,7 @@ namespace arc {
 template <typename T>
 struct Promise;
 
-template <IsPollable T>
+template <IsPollable Fut, typename Lambda>
 struct Task;
 
 template <typename T = void>

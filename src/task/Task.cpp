@@ -52,7 +52,7 @@ std::optional<bool> TaskBase::vPoll(void* ptr, Context& cx) {
     auto self = static_cast<TaskBase*>(ptr);
     auto state = self->getState();
 
-    trace("[Task {}] polling, cx waker: {}, state: {}", (void*)self, cx.waker() ? cx.waker()->m_data : nullptr, state);
+    trace("[{}] polling, cx waker: {}, state: {}", self->debugName(), cx.waker() ? cx.waker()->m_data : nullptr, state);
 
     while (true) {
         // if the task was closed, notify awaiter and return
@@ -214,6 +214,14 @@ void TaskBase::ensureDebugData() {
         }
 #endif
     }
+}
+
+std::string TaskBase::debugName() {
+    auto n = this->m_vtable->getName(this);
+    if (n.empty()) {
+        return fmt::format("Task @ {}", (void*)this);
+    }
+    return std::string{n};
 }
 
 void TaskBase::registerAwaiter(Waker& waker) {
