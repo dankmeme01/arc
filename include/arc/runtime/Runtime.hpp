@@ -63,6 +63,17 @@ concept ReturnsPollable = std::invocable<T> && IsPollable<std::invoke_result_t<T
 template <typename T>
 concept Spawnable = IsPollable<T> || ReturnsPollable<T>;
 
+template <typename T>
+struct SpawnableOutput;
+template <IsPollable T>
+struct SpawnableOutput<T> {
+    using type = typename T::Output;
+};
+template <ReturnsPollable T>
+struct SpawnableOutput<T> {
+    using type = typename std::invoke_result_t<T>::Output;
+};
+
 class Runtime : public asp::EnableSharedFromThis<Runtime> {
 private:
     struct ctor_tag {};
