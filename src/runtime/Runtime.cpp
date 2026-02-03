@@ -51,17 +51,21 @@ void Runtime::init(bool timeDriver, bool ioDriver, bool signalDriver) {
     // most of the initialization is deferred until here,
     // because weak_from_this() does not work inside constructor
 
+#ifdef ARC_FEATURE_TIME
     if (timeDriver) {
         m_timeDriver.emplace(weakFromThis());
     }
-
+#endif
+#ifdef ARC_FEATURE_NET
     if (ioDriver) {
         m_ioDriver.emplace(weakFromThis());
     }
-
+#endif
+#ifdef ARC_FEATURE_SIGNAL
     if (signalDriver) {
         m_signalDriver.emplace(weakFromThis());
     }
+#endif
 
     m_workers.reserve(m_workerCount);
     for (size_t i = 0; i < m_workerCount; ++i) {
@@ -144,12 +148,18 @@ void Runtime::vSafeShutdown(Runtime* self) {
 
 void* Runtime::vGetDriver(Runtime* self, DriverType ty) noexcept {
     switch (ty) {
+#ifdef ARC_FEATURE_TIME
         case DriverType::Time:
             return self->m_timeDriver ? &*self->m_timeDriver : nullptr;
+#endif
+#ifdef ARC_FEATURE_NET
         case DriverType::Io:
             return self->m_ioDriver ? &*self->m_ioDriver : nullptr;
+#endif
+#ifdef ARC_FEATURE_SIGNAL
         case DriverType::Signal:
             return self->m_signalDriver ? &*self->m_signalDriver : nullptr;
+#endif
         default:
             return nullptr;
     }
@@ -210,8 +220,10 @@ void Runtime::workerLoop(WorkerData& data, Context& cx) {
 
     while (!m_stopFlag.load(::acquire)) {
         auto now = Instant::now();
+        auto deadline = now + Duration::fromHours(1); // arbitrary long deadline
 
         // every once in a while, run timer and io drivers
+#ifdef ARC_FEATURE_TIME
         if (m_timeDriver && now >= nextTimerTask) {
             m_timeDriver->doWork();
 
@@ -220,7 +232,11 @@ void Runtime::workerLoop(WorkerData& data, Context& cx) {
                 nextTimerTask = start + timerOffset + timerTick * timerIncrement;
             } while (now >= nextTimerTask);
         }
-
+        if (m_timeDriver) {
+            deadline = (std::min)(deadline, nextTimerTask);
+        }
+#endif
+#ifdef ARC_FEATURE_NET
         if (m_ioDriver && now >= nextIoTask) {
             m_ioDriver->doWork();
 
@@ -229,25 +245,23 @@ void Runtime::workerLoop(WorkerData& data, Context& cx) {
                 nextIoTask = start + ioOffset + ioTick * ioIncrement;
             } while (now >= nextIoTask);
         }
-
-        Duration maxWait = Duration::fromHours(1); // arbitrary long duration
-        if (m_timeDriver) {
-            maxWait = (std::min)(maxWait, nextTimerTask.durationSince(now));
-        }
         if (m_ioDriver) {
-            maxWait = (std::min)(maxWait, nextIoTask.durationSince(now));
+            deadline = (std::min)(deadline, nextIoTask);
         }
+#endif
+        now = Instant::now();
+        auto wait = deadline.durationSince(now);
 
         TaskBase* task = nullptr;
         {
             std::unique_lock lock(m_mtx);
             bool success;
 
-            if (maxWait.isZero()) {
+            if (wait.isZero()) {
                 // don't wait
                 success = m_stopFlag.load(::acquire) || !m_runQueue.empty();
             } else {
-                success = m_cv.wait_for(lock, std::chrono::microseconds{maxWait.micros()}, [this] {
+                success = m_cv.wait_for(lock, std::chrono::microseconds{wait.micros()}, [this] {
                     return m_stopFlag.load(::acquire) || !m_runQueue.empty();
                 });
             }
@@ -272,9 +286,9 @@ void Runtime::workerLoop(WorkerData& data, Context& cx) {
 
         TRACE("[Worker {}] driving task {}", data.id, debugName(task));
         now = Instant::now();
-        auto deadline = now + m_taskDeadline;
+        auto taskDeadline = now + m_taskDeadline;
 
-        cx.setTaskDeadline(deadline);
+        cx.setTaskDeadline(taskDeadline);
         task->m_vtable->run(task, cx);
         auto taken = now.elapsed();
 
@@ -403,9 +417,15 @@ void Runtime::shutdown() {
     m_blockingTasks.clear();
 
     // free all drivers
+#ifdef ARC_FEATURE_TIME
     m_timeDriver.reset();
+#endif
+#ifdef ARC_FEATURE_NET
     m_ioDriver.reset();
+#endif
+#ifdef ARC_FEATURE_SIGNAL
     m_signalDriver.reset();
+#endif
 
     // abort all tasks
     // it's not safe to call destroy on them because someone still might have TaskHandles

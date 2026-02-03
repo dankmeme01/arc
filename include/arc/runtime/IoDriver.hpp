@@ -1,11 +1,17 @@
 #pragma once
+
+#include <arc/util/Config.hpp>
+#ifndef ARC_FEATURE_NET
+ARC_FATAL_NO_FEATURE(net)
+#else
+
 #include <arc/task/Waker.hpp>
-#include <qsox/BaseSocket.hpp>
 #include <asp/sync/SpinLock.hpp>
 #include <asp/sync/Mutex.hpp>
 #include <asp/ptr/SharedPtr.hpp>
 #include <arc/future/Context.hpp>
 #include <arc/util/Function.hpp>
+#include <qsox/BaseSocket.hpp>
 #include <vector>
 #include <atomic>
 
@@ -171,3 +177,5 @@ private:
 };
 
 }
+
+#endif

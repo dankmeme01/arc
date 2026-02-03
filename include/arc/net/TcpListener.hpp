@@ -1,4 +1,10 @@
 #pragma once
+
+#include <arc/util/Config.hpp>
+#ifndef ARC_FEATURE_NET
+ARC_FATAL_NO_FEATURE(net)
+#else
+
 #include "EventIoBase.hpp"
 #include "TcpStream.hpp"
 
@@ -40,3 +46,5 @@ private:
 };
 
 }
+
+#endif

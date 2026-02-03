@@ -1,5 +1,10 @@
 #pragma once
 
+#include <arc/util/Config.hpp>
+#ifndef ARC_FEATURE_TIME
+ARC_FATAL_NO_FEATURE(time)
+#else
+
 #include <arc/future/Pollable.hpp>
 #include <arc/future/Future.hpp>
 #include <arc/runtime/Runtime.hpp>
@@ -100,3 +105,5 @@ auto timeout(asp::time::Duration dur, Awaitable auto fut) {
 }
 
 }
+
+#endif

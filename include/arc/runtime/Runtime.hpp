@@ -13,9 +13,16 @@
 #include <asp/ptr/SharedPtr.hpp>
 #include <asp/time/sleep.hpp>
 #include <arc/util/Function.hpp>
-#include "TimeDriver.hpp"
-#include "SignalDriver.hpp"
-#include "IoDriver.hpp"
+
+#ifdef ARC_FEATURE_TIME
+# include "TimeDriver.hpp"
+#endif
+#ifdef ARC_FEATURE_SIGNAL
+# include "SignalDriver.hpp"
+#endif
+#ifdef ARC_FEATURE_NET
+# include "IoDriver.hpp"
+#endif
 
 namespace arc {
 
@@ -81,9 +88,15 @@ public:
     Runtime(Runtime&&) = delete;
     Runtime& operator=(Runtime&&) = delete;
 
+#ifdef ARC_FEATURE_TIME
     auto& timeDriver() { return getDriver<TimeDriver>(DriverType::Time); }
+#endif
+#ifdef ARC_FEATURE_SIGNAL
     auto& signalDriver() { return getDriver<SignalDriver>(DriverType::Signal); }
+#endif
+#ifdef ARC_FEATURE_NET
     auto& ioDriver() { return getDriver<IoDriver>(DriverType::Io); }
+#endif
 
     /// Set the function that is called when an uncaught exception causes runtime termination.
     /// By default, this function just rethrows the exception to call std::terminate().
@@ -135,10 +148,17 @@ private:
 
     size_t m_workerCount;
     std::atomic<bool> m_stopFlag{false};
-    std::optional<TimeDriver> m_timeDriver;
-    std::optional<SignalDriver> m_signalDriver;
-    std::optional<IoDriver> m_ioDriver;
     asp::SpinLock<TerminateHandler> m_terminateHandler;
+
+#ifdef ARC_FEATURE_TIME
+    std::optional<TimeDriver> m_timeDriver;
+#endif
+#ifdef ARC_FEATURE_SIGNAL
+    std::optional<SignalDriver> m_signalDriver;
+#endif
+#ifdef ARC_FEATURE_NET
+    std::optional<IoDriver> m_ioDriver;
+#endif
 
     std::mutex m_mtx;
     asp::SpinLock<std::unordered_set<TaskBase*>> m_tasks;

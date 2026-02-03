@@ -3,38 +3,43 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 project(arc VERSION 1.0.0)
-option(ARC_DEBUG "Enable debug assertions" OFF)
+
+include(cmake/Features.cmake)
 option(ARC_BUILD_TESTS "Build tests" OFF)
 option(ARC_BUILD_TESTER "Build tester" OFF)
-option(ARC_TRACE "Enable debug tracing" OFF)
 
-file(GLOB_RECURSE SOURCES CONFIGURE_DEPENDS "src/*.cpp")
-add_library(arc STATIC ${SOURCES})
+file(GLOB BASE_SOURCES CONFIGURE_DEPENDS
+    "src/future/*.cpp"
+    "src/runtime/Runtime.cpp"
+    "src/sync/*.cpp"
+    "src/task/*.cpp"
+    "src/Util.cpp"
+)
+
+add_library(arc STATIC ${BASE_SOURCES} ${ARC_OPTIONAL_SOURCES})
 target_include_directories(arc PUBLIC "include")
-
-if (ARC_DEBUG)
-    target_compile_definitions(arc PUBLIC ARC_DEBUG=1)
-endif()
-
-if (ARC_TRACE)
-    target_compile_definitions(arc PUBLIC ARC_TRACE=1)
-endif()
+target_compile_definitions(arc PUBLIC ${ARC_FEATURE_DEFINES})
 
 if (NOT COMMAND CPMAddPackage)
     include(cmake/CPM.cmake)
 endif()
 
 if (NOT TARGET asp)
-    CPMAddPackage("gh:dankmeme01/asp2#e6c74af")
-endif()
-if (NOT TARGET qsox)
-    CPMAddPackage("gh:dankmeme01/qsox#73aeabd")
+    CPMAddPackage("gh:dankmeme01/asp2#4ac728a")
 endif()
 if (NOT TARGET std23::nontype_functional)
     CPMAddPackage("gh:zhihaoy/nontype_functional#bdb0987")
 endif()
 
-target_link_libraries(arc PUBLIC asp qsox std23::nontype_functional)
+target_link_libraries(arc PUBLIC asp std23::nontype_functional)
+
+# Add qsox if networking is enabled
+if (ARC_FEATURE_NET)
+    if (NOT TARGET qsox)
+        CPMAddPackage("gh:dankmeme01/qsox#73aeabd")
+    endif()
+    target_link_libraries(arc PUBLIC qsox)
+endif()
 
 if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
     target_link_libraries(arc PUBLIC stdc++exp)

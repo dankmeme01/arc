@@ -1,9 +1,9 @@
 #include "Runtime.hpp"
+#include <Geode/Result.hpp>
 #include <optional>
 #include <cstddef>
 
 namespace arc {
-
 
 inline int _mainWrapper(int argc, char** argv, auto mainFut, std::optional<size_t> numThreads) {
     const char** cargv = const_cast<const char**>(argv);

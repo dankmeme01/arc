@@ -25,6 +25,19 @@ CPMAddPackage("gh:dankmeme01/arc@v1.1.0")
 target_link_libraries(mylib PRIVATE arc)
 ```
 
+By default, this includes all features (networking, time, signals, etc.) except for debugging ones. For fine-grained feature control, disable `ARC_FEATURE_FULL`:
+```cmake
+# The line below will disable less essential (but not all) parts of Arc
+set(ARC_FEATURE_FULL OFF CACHE BOOL "" FORCE)
+
+# Manual feature selection
+set(ARC_FEATURE_TIME OFF CACHE BOOL "" FORCE)
+set(ARC_FEATURE_NET ON CACHE BOOL "" FORCE)
+set(ARC_FEATURE_SIGNAL OFF CACHE BOOL "" FORCE)
+set(ARC_FEATURE_DEBUG ON CACHE BOOL "" FORCE)
+set(ARC_FEATURE_TRACE OFF CACHE BOOL "" FORCE)
+```
+
 To run any async code, you must have a runtime. Arc runtimes do not need to be unique or persistent, there is no global singleton runtime and you are responsible for creating one yourself. If you are a library developer and want to use Arc, you can spin up a runtime and run code like this:
 ```cpp
 #include <arc/prelude.hpp>

@@ -1,5 +1,10 @@
 #pragma once
 
+#include <arc/util/Config.hpp>
+#ifndef ARC_FEATURE_SIGNAL
+ARC_FATAL_NO_FEATURE(signal)
+#else
+
 #include <arc/signal/Signal.hpp>
 #include <arc/sync/Notify.hpp>
 #include <asp/sync/SpinLock.hpp>
@@ -38,3 +43,5 @@ private:
 };
 
 }
+
+#endif

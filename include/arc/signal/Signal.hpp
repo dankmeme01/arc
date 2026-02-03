@@ -1,5 +1,10 @@
 #pragma once
 
+#include <arc/util/Config.hpp>
+#ifndef ARC_FEATURE_SIGNAL
+ARC_FATAL_NO_FEATURE(signal)
+#else
+
 #include <arc/future/Pollable.hpp>
 #include <arc/sync/Notify.hpp>
 #include <signal.h>
@@ -65,3 +70,5 @@ inline auto ctrl_c() {
 }
 
 }
+
+#endif

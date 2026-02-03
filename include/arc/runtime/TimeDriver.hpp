@@ -1,5 +1,10 @@
 #pragma once
 
+#include <arc/util/Config.hpp>
+#ifndef ARC_FEATURE_TIME
+ARC_FATAL_NO_FEATURE(time)
+#else
+
 #include <arc/task/Task.hpp>
 #include <asp/time/Instant.hpp>
 #include <asp/sync/SpinLock.hpp>
@@ -52,3 +57,5 @@ private:
 };
 
 }
+
+#endif
