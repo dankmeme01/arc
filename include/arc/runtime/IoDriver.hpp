@@ -10,7 +10,6 @@ ARC_FATAL_NO_FEATURE(net)
 #include <asp/sync/Mutex.hpp>
 #include <asp/ptr/SharedPtr.hpp>
 #include <arc/future/Context.hpp>
-#include <arc/util/Function.hpp>
 #include <qsox/BaseSocket.hpp>
 #include <vector>
 #include <atomic>
@@ -66,7 +65,6 @@ class IoDriver;
 
 struct IoWaiter {
     IoWaiter(Waker waker, uint64_t id, Interest interest);
-    IoWaiter(arc::MoveOnlyFunction<void()> eventCallback, uint64_t id, Interest interest);
 
     IoWaiter(IoWaiter&&) noexcept = default;
     IoWaiter& operator=(IoWaiter&&) noexcept = default;
@@ -84,7 +82,6 @@ private:
 
     std::optional<Waker> waker;
     uint64_t id;
-    arc::MoveOnlyFunction<void()> eventCallback;
     Interest interest;
 };
 

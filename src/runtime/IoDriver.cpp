@@ -36,8 +36,6 @@ static uint64_t nextId() {
 
 IoWaiter::IoWaiter(Waker waker, uint64_t id, Interest interest)
     : waker(std::move(waker)), id(id), interest(interest) {}
-IoWaiter::IoWaiter(arc::MoveOnlyFunction<void()> eventCallback, uint64_t id, Interest interest)
-    : eventCallback(std::move(eventCallback)), id(id), interest(interest) {}
 
 bool IoWaiter::willWake(const Waker& other) const {
     return waker && waker->equals(other);
@@ -53,7 +51,6 @@ void IoWaiter::wake() {
         waker->wake();
         waker.reset();
     }
-    if (eventCallback) eventCallback();
 }
 
 Registration::Registration(asp::SharedPtr<IoEntry> rio, IoDriver* driver)
