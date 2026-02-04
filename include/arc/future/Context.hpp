@@ -26,7 +26,6 @@ public:
 
     void _installWaker(Waker* waker);
 
-    void setTaskDeadline(asp::Instant deadline);
     bool shouldCoopYield();
 
     void pushFrame(const PollableBase* pollable);
@@ -40,6 +39,9 @@ public:
 
 private:
     friend class Runtime;
+
+    /// Setup the context for a new task execution.
+    void setup(asp::Instant taskDeadline);
 
     struct StackEntry {
         const PollableBase* pollable;

@@ -42,9 +42,13 @@ void Context::_installWaker(Waker* waker) {
     m_waker = waker;
 }
 
-void Context::setTaskDeadline(Instant deadline) {
-    m_taskDeadline = deadline.rawNanos();
+
+void Context::setup(Instant taskDeadline) {
+    m_taskDeadline = taskDeadline.rawNanos();
     m_futurePolls = 0;
+    m_currentException = nullptr;
+    m_stack.clear();
+    m_capturedStack.clear();
 }
 
 bool Context::shouldCoopYield() {
