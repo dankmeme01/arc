@@ -280,13 +280,15 @@ void Runtime::workerLoop(WorkerData& data, Context& cx) {
 
         cx.setup(now + m_taskDeadline);
         task->m_vtable->run(task, cx);
-        auto taken = now.elapsed();
 
         TRACE("[Worker {}] finished driving task {}", data.id, task->debugName());
 
+#ifdef ARC_DEBUG
+        auto taken = now.elapsed();
         if (taken > Duration::fromMillis(100)) {
             printWarn("[Worker {}] task {} took {} to yield", data.id, task->debugName(), taken.toString());
         }
+#endif
     }
 }
 
