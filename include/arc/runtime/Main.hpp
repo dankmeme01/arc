@@ -12,11 +12,15 @@ inline int _mainWrapper(int argc, char** argv, auto mainFut, std::optional<size_
     auto runtime = arc::Runtime::create(numThreads.value_or(std::thread::hardware_concurrency()));
 
     auto runVoidMain = [&](auto&& fut) {
-        runtime->blockOn(std::forward<std::decay_t<decltype(fut)>>(fut));
+        auto task = runtime->spawn(std::forward<std::decay_t<decltype(fut)>>(fut));
+        task.setName("Arc Main");
+        task.blockOn();
     };
 
     auto runNVMain = [&](auto&& fut) {
-        decltype(auto) mainRet = runtime->blockOn(std::forward<std::decay_t<decltype(fut)>>(fut));
+        auto task = runtime->spawn(std::forward<std::decay_t<decltype(fut)>>(fut));
+        task.setName("Arc Main");
+        decltype(auto) mainRet = task.blockOn();
 
         if constexpr (std::is_convertible_v<decltype(mainRet), int>) {
             ret = static_cast<int>(mainRet);
