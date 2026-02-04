@@ -32,3 +32,7 @@
 #ifdef ARC_FEATURE_SIGNAL
 #include "signal/Signal.hpp"
 #endif
+
+#ifdef ARC_FEATURE_IOCP
+#include "iocp/IocpPipe.hpp"
+#endif

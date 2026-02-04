@@ -145,6 +145,8 @@ struct IoDriverVtable {
 class IoDriver {
 public:
     IoDriver(asp::WeakPtr<Runtime> runtime);
+    IoDriver(const IoDriver&) = delete;
+    IoDriver& operator=(const IoDriver&) = delete;
     ~IoDriver();
 
     Registration registerIo(SockFd fd, Interest interest);

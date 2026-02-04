@@ -16,15 +16,16 @@ static arc::Runtime* g_globalRuntime = nullptr;
 
 namespace arc {
 
-asp::SharedPtr<Runtime> Runtime::create(
-    size_t workers,
-    bool timeDriver,
-    bool ioDriver,
-    bool signalDriver
-) {
-    auto rt = asp::make_shared<Runtime>(ctor_tag{}, workers);
-    rt->init(timeDriver, ioDriver, signalDriver);
+asp::SharedPtr<Runtime> Runtime::create(const RuntimeOptions& options) {
+    auto rt = asp::make_shared<Runtime>(ctor_tag{}, options.workers);
+    rt->init(options);
     return rt;
+}
+
+asp::SharedPtr<Runtime> Runtime::create(size_t workers) {
+    return create(RuntimeOptions{
+        .workers = workers,
+    });
 }
 
 Runtime::Runtime(ctor_tag, size_t workers)
@@ -47,23 +48,28 @@ Runtime::Runtime(ctor_tag, size_t workers)
     m_vtable = &vtable;
 }
 
-void Runtime::init(bool timeDriver, bool ioDriver, bool signalDriver) {
+void Runtime::init(const RuntimeOptions& options) {
     // most of the initialization is deferred until here,
     // because weak_from_this() does not work inside constructor
 
 #ifdef ARC_FEATURE_TIME
-    if (timeDriver) {
+    if (options.timeDriver) {
         m_timeDriver.emplace(weakFromThis());
     }
 #endif
 #ifdef ARC_FEATURE_NET
-    if (ioDriver) {
+    if (options.ioDriver) {
         m_ioDriver.emplace(weakFromThis());
     }
 #endif
 #ifdef ARC_FEATURE_SIGNAL
-    if (signalDriver) {
+    if (options.signalDriver) {
         m_signalDriver.emplace(weakFromThis());
+    }
+#endif
+#ifdef ARC_FEATURE_IOCP
+    if (options.iocpDriver) {
+        m_iocpDriver.emplace(weakFromThis());
     }
 #endif
 
@@ -160,6 +166,10 @@ void* Runtime::vGetDriver(Runtime* self, DriverType ty) noexcept {
         case DriverType::Signal:
             return self->m_signalDriver ? &*self->m_signalDriver : nullptr;
 #endif
+#ifdef ARC_FEATURE_IOCP
+        case DriverType::Iocp:
+            return self->m_iocpDriver ? &*self->m_iocpDriver : nullptr;
+#endif
         default:
             return nullptr;
     }
@@ -227,19 +237,35 @@ void Runtime::workerLoop(WorkerData& data, Context& cx) {
             deadline = (std::min)(deadline, nextTimerTask);
         }
 #endif
-#ifdef ARC_FEATURE_NET
-        if (m_ioDriver && now >= nextIoTask) {
-            m_ioDriver->doWork();
 
-            do {
-                ioTick++;
-                nextIoTask = start + ioOffset + ioTick * ioIncrement;
-            } while (now >= nextIoTask);
-        }
-        if (m_ioDriver) {
+#if defined(ARC_FEATURE_NET) || defined(ARC_FEATURE_IOCP)
+        bool hasIoDriver = false;
+# if defined(ARC_FEATURE_NET)
+        hasIoDriver = hasIoDriver || m_ioDriver.has_value();
+# endif
+# if defined(ARC_FEATURE_IOCP)
+        hasIoDriver = hasIoDriver || m_iocpDriver.has_value();
+# endif
+
+        if (hasIoDriver) {
+            if (now >= nextIoTask) {
+#ifdef ARC_FEATURE_NET
+                if (m_ioDriver) m_ioDriver->doWork();
+#endif
+#ifdef ARC_FEATURE_IOCP
+                if (m_iocpDriver) m_iocpDriver->doWork();
+#endif
+
+                do {
+                    ioTick++;
+                    nextIoTask = start + ioOffset + ioTick * ioIncrement;
+                } while (now >= nextIoTask);
+            }
+
             deadline = (std::min)(deadline, nextIoTask);
         }
 #endif
+
         now = Instant::now();
         auto wait = deadline.durationSince(now);
 
@@ -415,6 +441,9 @@ void Runtime::shutdown() {
 #endif
 #ifdef ARC_FEATURE_SIGNAL
     m_signalDriver.reset();
+#endif
+#ifdef ARC_FEATURE_IOCP
+    m_iocpDriver.reset();
 #endif
 
     // abort all tasks

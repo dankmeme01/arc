@@ -26,6 +26,8 @@ struct TimeDriverVtable {
 class TimeDriver {
 public:
     TimeDriver(asp::WeakPtr<Runtime> runtime);
+    TimeDriver(const TimeDriver&) = delete;
+    TimeDriver& operator=(const TimeDriver&) = delete;
     ~TimeDriver();
 
     uint64_t addEntry(asp::time::Instant expiry, Waker waker);

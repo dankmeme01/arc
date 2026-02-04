@@ -25,6 +25,8 @@ struct SignalDriverVtable {
 class SignalDriver {
 public:
     SignalDriver(asp::WeakPtr<Runtime> runtime);
+    SignalDriver(const SignalDriver&) = delete;
+    SignalDriver& operator=(const SignalDriver&) = delete;
     ~SignalDriver();
 
     Notify addSignal(int signum);

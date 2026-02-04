@@ -20,6 +20,10 @@ add_library(arc STATIC ${BASE_SOURCES} ${ARC_OPTIONAL_SOURCES})
 target_include_directories(arc PUBLIC "include")
 target_compile_definitions(arc PUBLIC ${ARC_FEATURE_DEFINES})
 
+if (WIN32)
+    target_compile_definitions(arc PUBLIC NOMINMAX)
+endif()
+
 if (NOT COMMAND CPMAddPackage)
     include(cmake/CPM.cmake)
 endif()

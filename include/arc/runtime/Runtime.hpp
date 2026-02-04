@@ -23,6 +23,10 @@
 #ifdef ARC_FEATURE_NET
 # include "IoDriver.hpp"
 #endif
+#ifdef ARC_FEATURE_IOCP
+# include "IocpDriver.hpp"
+#endif
+
 
 namespace arc {
 
@@ -32,6 +36,7 @@ enum class DriverType {
     Time,
     Io,
     Signal,
+    Iocp,
 };
 
 struct RuntimeVtable {
@@ -74,18 +79,22 @@ struct SpawnableOutput<T> {
     using type = typename std::invoke_result_t<T>::Output;
 };
 
+struct RuntimeOptions {
+    size_t workers = std::thread::hardware_concurrency();
+    bool timeDriver = true;
+    bool ioDriver = true;
+    bool signalDriver = true;
+    bool iocpDriver = true;
+};
+
 class Runtime : public asp::EnableSharedFromThis<Runtime> {
 private:
     struct ctor_tag {};
 
 public:
     // Creates a runtime
-    static asp::SharedPtr<Runtime> create(
-        size_t workers = std::thread::hardware_concurrency(),
-        bool timeDriver = true,
-        bool ioDriver = true,
-        bool signalDriver = true
-    );
+    static asp::SharedPtr<Runtime> create(const RuntimeOptions& options = {});
+    static asp::SharedPtr<Runtime> create(size_t workers);
 
     // Internal constructor, use `create` instead
     Runtime(ctor_tag, size_t workers);
@@ -107,6 +116,9 @@ public:
 #endif
 #ifdef ARC_FEATURE_NET
     auto& ioDriver() { return getDriver<IoDriver>(DriverType::Io); }
+#endif
+#ifdef ARC_FEATURE_IOCP
+    auto& iocpDriver() { return getDriver<IocpDriver>(DriverType::Iocp); }
 #endif
 
     /// Set the function that is called when an uncaught exception causes runtime termination.
@@ -170,6 +182,9 @@ private:
 #ifdef ARC_FEATURE_NET
     std::optional<IoDriver> m_ioDriver;
 #endif
+#ifdef ARC_FEATURE_IOCP
+    std::optional<IocpDriver> m_iocpDriver;
+#endif
 
     std::mutex m_mtx;
     asp::SpinLock<std::unordered_set<TaskBase*>> m_tasks;
@@ -203,7 +218,7 @@ private:
         return Task<Fut, std::decay_t<Lambda>>::create(weakFromThis(), std::forward<Lambda>(func));
     }
 
-    void init(bool timeDriver, bool ioDriver, bool signalDriver);
+    void init(const RuntimeOptions& options);
     void shutdown();
 
     void workerLoop(WorkerData& data, Context& cx);
