@@ -2,6 +2,8 @@
 #include <arc/task/Task.hpp>
 #include <arc/util/Assert.hpp>
 
+constexpr size_t MAX_RECURSION_DEPTH = 512;
+
 using namespace asp::time;
 
 namespace arc {
@@ -57,6 +59,7 @@ bool Context::shouldCoopYield() {
 void Context::pushFrame(const PollableBase* pollable) {
     // trace("pushing frame {}", (void*)pollable);
     m_stack.push_back(StackEntry { pollable, "" });
+    ARC_DEBUG_ASSERT(m_stack.size() < MAX_RECURSION_DEPTH, "maximum future recursion depth exceeded");
 }
 
 void Context::popFrame() {
