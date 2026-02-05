@@ -28,33 +28,37 @@ Result<> IocpDriver::registerIo(WinHandle handle, IocpHandleContext* ctx, Handle
 }
 
 void IocpDriver::doWork() {
-    DWORD bytes;
-    ULONG_PTR key;
-    LPOVERLAPPED ov;
+    std::array<OVERLAPPED_ENTRY, 64> entries;
+    ULONG numEntries = 0;
 
-    while (true) {
-        BOOL success = GetQueuedCompletionStatus(m_iocp, &bytes, &key, &ov, 0);
-        auto* ctx = reinterpret_cast<IocpHandleContext*>(key);
+    BOOL success = GetQueuedCompletionStatusEx(m_iocp, entries.data(), entries.size(), &numEntries, 0, FALSE);
+    if (!success) {
+        auto err = GetLastError();
+        if (err != WAIT_TIMEOUT) {
+            printWarn("IocpDriver: GetQueuedCompletionStatusEx failed with error code {}", err);
+        }
+        return;
+    }
 
-        if (!success) {
-            if (!ov) {
-                // timed out
-                break;
-            }
+    for (auto i = 0u; i < numEntries; i++) {
+        auto& entry = entries[i];
+        DWORD bytes = entry.dwNumberOfBytesTransferred;
+        OVERLAPPED* ov = entry.lpOverlapped;
+        IocpHandleContext* ctx = reinterpret_cast<IocpHandleContext*>(entry.lpCompletionKey);
 
-            auto err = GetLastError();
-
-            if (ctx) {
+        // handle errors
+        if (bytes == 0) {
+            BOOL ok = GetOverlappedResult(ctx->handle(), ov, &bytes, FALSE);
+            if (!ok) {
+                auto err = GetLastError();
+                printWarn("[IocpDriver] IO {} errored: {}", ctx->handle(), err);
                 ctx->notifyError(bytes, err);
-            } else {
-                printWarn("IocpDriver: GetQueuedCompletionStatus failed with error code {}", err);
-                break;
+                continue;
             }
         }
 
-        if (ctx) {
-            ctx->notifySuccess(bytes);
-        }
+        trace("[IocpDriver] completed IO {}, {} bytes, overlapped at {}", ctx->handle(), bytes, (void*)ov);
+        ctx->notifySuccess(bytes);
     }
 }
 
@@ -64,6 +68,8 @@ Result<> IocpDriver::vRegisterIo(IocpDriver* self, WinHandle handle, IocpHandleC
     }
 
     auto result = CreateIoCompletionPort(handle, self->m_iocp, (ULONG_PTR)ctx, 0);
+    trace("[IocpDriver] Registered handle {}", handle);
+
     if (result != self->m_iocp) {
         return Err(fmt::format("failed to associate handle with IOCP: {}", lastWinError()));
     }

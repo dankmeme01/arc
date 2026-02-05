@@ -11,26 +11,30 @@ ARC_FATAL_NO_FEATURE(iocp)
 
 namespace arc {
 
-struct IocpPipeConnectAwaiter;
-struct IocpPipeReadAwaiter;
-struct IocpPipeWriteAwaiter;
+struct IocpPipeListenAwaiter;
 
 struct IocpPipeContext : public IocpHandleContext {
-    WinHandle m_pipe;
-
-    ~IocpPipeContext();
+    IocpPipeContext(HANDLE pipe) {
+        m_handle = pipe;
+    }
 };
 
 class IocpPipe {
 public:
     /// Creates a new IOCP pipe from the given handle and waits for a connection
     /// This takes ownership of the handle, regardless of whether the connection is successful or not.
-    static IocpPipeConnectAwaiter listen(WinHandle handle);
+    static IocpPipeListenAwaiter listen(WinHandle handle);
+    /// Opens the named pipe with the given name, errors if it does not exist
+    static Result<IocpPipe> open(const std::string& name);
+    /// Opens the named pipe with the given name, errors if it does not exist
+    static Result<IocpPipe> open(const std::wstring& name);
+    /// Adopt the given handle to a named pipe, allowing async reads and writes
+    static Result<IocpPipe> open(HANDLE handle);
 
     /// Read from the pipe asynchronously
-    IocpPipeReadAwaiter read(void* buffer, size_t length);
+    IocpReadAwaiter read(void* buffer, size_t length);
     /// Write to the pipe asynchronously
-    IocpPipeWriteAwaiter write(const void* buffer, size_t length);
+    IocpWriteAwaiter write(const void* buffer, size_t length);
 
     ~IocpPipe();
 
@@ -39,56 +43,28 @@ public:
     IocpPipe(IocpPipe&& other) noexcept = default;
     IocpPipe& operator=(IocpPipe&& other) = default;
 
-    WinHandle handle() const { return m_iocpContext->m_pipe; }
+    WinHandle handle() const { return m_iocpContext->handle(); }
 
 private:
-    friend struct IocpPipeConnectAwaiter;
+    friend struct IocpPipeListenAwaiter;
 
     std::unique_ptr<IocpPipeContext> m_iocpContext;
 
     IocpPipe(std::unique_ptr<IocpPipeContext> context);
 };
 
-struct IocpPipeConnectAwaiter : Pollable<IocpPipeConnectAwaiter, Result<IocpPipe>> {
-    explicit IocpPipeConnectAwaiter(WinHandle handle);
-    ~IocpPipeConnectAwaiter();
+struct IocpPipeListenAwaiter : Pollable<IocpPipeListenAwaiter, Result<IocpPipe>> {
+    explicit IocpPipeListenAwaiter(WinHandle handle);
+    ~IocpPipeListenAwaiter();
 
     std::optional<Result<IocpPipe>> poll(Context& cx);
 
 private:
     std::unique_ptr<IocpPipeContext> m_iocpContext;
-    std::optional<Waker> m_waker;
-    std::optional<Result<IocpPipe>> m_result;
+    IocpOpenAwaiter m_inner;
 
     void complete(Result<> result);
     IocpPipe intoPipe();
-};
-
-struct IocpPipeReadAwaiter : Pollable<IocpPipeReadAwaiter, Result<size_t>> {
-    IocpPipeReadAwaiter(IocpPipeContext* context, void* buffer, size_t length);
-    ~IocpPipeReadAwaiter();
-
-    std::optional<Result<size_t>> poll(Context& cx);
-
-private:
-    IocpPipeContext* m_context;
-    void* m_buffer;
-    size_t m_length;
-    std::optional<Waker> m_waker;
-    std::optional<Result<size_t>> m_result;
-};
-
-struct IocpPipeWriteAwaiter : Pollable<IocpPipeWriteAwaiter, Result<size_t>> {
-    IocpPipeWriteAwaiter(IocpPipeContext* context, const void* buffer, size_t length);
-    ~IocpPipeWriteAwaiter();
-
-    std::optional<Result<size_t>> poll(Context& cx);
-private:
-    IocpPipeContext* m_context;
-    const void* m_buffer;
-    size_t m_length;
-    std::optional<Waker> m_waker;
-    std::optional<Result<size_t>> m_result;
 };
 
 }

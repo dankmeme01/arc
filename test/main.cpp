@@ -4,6 +4,7 @@
 #include <asp/time.hpp>
 
 #include <fmt/format.h>
+#include <iostream>
 
 #ifdef _WIN32
 # include <Windows.h>
@@ -122,77 +123,65 @@ Future<Result<>> tcpListener() {
 
 static auto PIPE_NAME = L"\\\\.\\pipe\\arc_iocp_test_pipe";
 
-void pipeClient() {
-    HANDLE pipe = INVALID_HANDLE_VALUE;
+arc::Future<Result<>> pipeServer() {
     while (true) {
-        pipe = CreateFileW(
+        auto pipe = CreateNamedPipeW(
             PIPE_NAME,
-            GENERIC_READ | GENERIC_WRITE,
-            0,
-            nullptr,
-            OPEN_EXISTING,
-            FILE_FLAG_OVERLAPPED,
+            PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED,
+            PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT,
+            PIPE_UNLIMITED_INSTANCES,
+            4096,
+            4096,
+            NMPWAIT_USE_DEFAULT_WAIT,
             nullptr
         );
 
-        if (pipe != INVALID_HANDLE_VALUE) break;
+        trace("Listening for pipes ({})", pipe);
+        auto p = ARC_CO_UNWRAP(co_await IocpPipe::listen(pipe));
 
-        DWORD err = GetLastError();
-        if (err != ERROR_PIPE_BUSY) {
-            fmt::println("Failed to open pipe: {}", lastWinError(err));
-            return;
-        }
+        char buf[256];
+        ARC_CO_UNWRAP_INTO(auto read, co_await p.read(buf, sizeof(buf)));
+        fmt::println("Read {} bytes from pipe: {}", read, std::string_view(buf, read));
 
-        // Wait for the pipe to be available
-        if (!WaitNamedPipeW(PIPE_NAME, 5000)) {
-            fmt::println("WaitNamedPipe failed: {}", lastWinError());
-            return;
-        }
+        ARC_CO_UNWRAP_INTO(auto written, co_await p.write(buf, read));
+        fmt::println("Wrote {} bytes to pipe", written);
     }
-
-    fmt::println("Pipe client is connected");
-    if (!WriteFile(pipe, "Hello from client", 18, nullptr, nullptr)) {
-        fmt::println("WriteFile failed: {}", lastWinError());
-        CloseHandle(pipe);
-        return;
-    }
-
-    char buf[256];
-    DWORD readBytes = 0;
-    if (!ReadFile(pipe, buf, sizeof(buf) - 1, &readBytes, nullptr)) {
-        fmt::println("ReadFile failed: {}", lastWinError());
-        CloseHandle(pipe);
-        return;
-    }
-    buf[readBytes] = '\0';
-    fmt::println("Read from pipe: {}", buf);
 }
 
 Future<Result<>> iocpTest() {
-    auto pipe = CreateNamedPipeW(
-        PIPE_NAME,
-        PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED,
-        PIPE_TYPE_BYTE | PIPE_READMODE_BYTE | PIPE_WAIT,
-        PIPE_UNLIMITED_INSTANCES,
-        4096,
-        4096,
-        NMPWAIT_USE_DEFAULT_WAIT,
-        nullptr
-    );
+    // listen in another thread
+    arc::spawn([] -> arc::Future<> {
+        auto res = co_await pipeServer();
+        if (!res) {
+            printWarn("Pipe server terminated: {}", res.unwrapErr());
+        }
+    });
 
-    // connect to the pipe in another thread
-    std::thread([] {
-        pipeClient();
-    }).detach();
+    // interactive client
+    while (true) {
+        auto res = IocpPipe::open(PIPE_NAME);
+        if (!res) {
+            co_await arc::sleep(Duration::fromMillis(100));
+            continue;
+        }
 
-    auto p = ARC_CO_UNWRAP(co_await IocpPipe::connect(pipe));
+        printWarn("Pipe opened");
 
-    ARC_CO_UNWRAP_INTO(auto written, co_await p.write("Hello test", 11));
-    fmt::println("Wrote {} bytes to pipe", written);
+        auto pipe = std::move(res).unwrap();
+        std::cout << "> " << std::flush;
+        std::string s;
+        std::getline(std::cin, s);
+        std::cout << std::endl;
 
-    char buf[256];
-    ARC_CO_UNWRAP_INTO(auto read, co_await p.read(buf, sizeof(buf)));
-    fmt::println("Read {} bytes from pipe: {}", read, std::string_view(buf, read));
+        ARC_CO_UNWRAP(co_await pipe.write(s.data(), s.size()));
+        char buf[256];
+
+        trace("Reading into {}", (void*)buf);
+        size_t readB = ARC_CO_UNWRAP(co_await pipe.read(buf, 256));
+
+        fmt::println("Client received {} bytes: {}", readB, std::string_view{buf, readB});
+    }
+
     co_return Ok();
 }
 

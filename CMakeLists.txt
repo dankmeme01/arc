@@ -20,6 +20,10 @@ add_library(arc STATIC ${BASE_SOURCES} ${ARC_OPTIONAL_SOURCES})
 target_include_directories(arc PUBLIC "include")
 target_compile_definitions(arc PUBLIC ${ARC_FEATURE_DEFINES})
 
+target_compile_options(arc PRIVATE
+    $<$<CXX_COMPILER_ID:Clang>:-Wno-invalid-offsetof>
+)
+
 if (WIN32)
     target_compile_definitions(arc PUBLIC NOMINMAX)
 endif()
