@@ -52,23 +52,16 @@ struct PollableMetadata {
     bool isFuture = false;
 
     template <typename T, bool IsFuture = false>
-    static constexpr const PollableMetadata* create();
+    static constexpr const PollableMetadata* create() {
+        static constexpr auto value = [] {
+            auto [name, len] = getTypename<T>();
+            return PollableMetadata{
+                .typeName = std::string_view{name, len},
+                .isFuture = IsFuture,
+            };
+        }();
+        return &value;
+    }
 };
-
-template <typename T, bool IsFuture = false>
-struct PollableMetadataImpl {
-    static constexpr PollableMetadata value = [] {
-        auto [name, len] = getTypename<T>();
-        return PollableMetadata{
-            .typeName = std::string_view{name, len},
-            .isFuture = IsFuture,
-        };
-    }();
-};
-
-template <typename T, bool IsFuture>
-constexpr const PollableMetadata* PollableMetadata::create() {
-    return &PollableMetadataImpl<T, IsFuture>::value;
-}
 
 }
