@@ -1,6 +1,7 @@
 #pragma once
 #include "Pollable.hpp"
 #include <arc/util/Trace.hpp>
+#include <arc/util/MaybeUninit.hpp>
 
 #if 0
 # define TRACE ::arc::trace
@@ -17,6 +18,8 @@ struct PromiseVtable {
     using GetContextFn = Context*(*)(void*);
     using SetDebugNameFn = void(*)(void*, std::string);
     using GetDebugNameFn = std::string_view(*)(void*);
+    using GetOutputFn = void(*)(void*, void* out);
+    using DeliverOutputFn = void(*)(void*, void* value);
 
     AttachChildFn m_attachChild = nullptr;
     GetChildFn m_getChild = nullptr;
@@ -24,8 +27,8 @@ struct PromiseVtable {
     GetContextFn m_getContext = nullptr;
     SetDebugNameFn m_setDebugName = nullptr;
     GetDebugNameFn m_getDebugName = nullptr;
-    void* m_getOutput = nullptr;
-    void* m_deliverOutput = nullptr;
+    GetOutputFn m_getOutput = nullptr;
+    DeliverOutputFn m_deliverOutput = nullptr;
 
     void attachChild(void* self, PollableBase* child) const {
         m_attachChild(self, child);
@@ -56,7 +59,9 @@ struct PromiseVtable {
 
     template <typename T>
     T getOutput(void* self) const {
-        return reinterpret_cast<T (*)(void*)>(m_getOutput)(self);
+        MaybeUninit<T> output;
+        reinterpret_cast<void (*)(void*, MaybeUninit<T>*)>(m_getOutput)(self, &output);
+        return std::move(output.assumeInit());
     }
 
     template <typename T>
@@ -147,6 +152,15 @@ protected:
 };
 
 struct PromiseBaseV : PromiseBase {
+    PromiseBaseV() {
+        m_vtable = &vtable;
+    }
+
+    void return_void() noexcept {
+        TRACE("[Promise {}] return_void()", (void*)this);
+    }
+
+protected:
     static constexpr PromiseVtable vtable = {
         .m_attachChild = &PromiseBase::vAttachChild,
         .m_getChild = &PromiseBase::vGetChild,
@@ -157,36 +171,11 @@ struct PromiseBaseV : PromiseBase {
         .m_getOutput = nullptr,
         .m_deliverOutput = nullptr,
     };
-
-    PromiseBaseV() {
-        m_vtable = &vtable;
-    }
-
-    void return_void() noexcept {
-        TRACE("[Promise {}] return_void()", (void*)this);
-    }
 };
 
 template <typename R>
 struct PromiseBaseNV : PromiseBase {
     PromiseBaseNV() {
-        static const PromiseVtable vtable = {
-            .m_attachChild = &PromiseBase::vAttachChild,
-            .m_getChild = &PromiseBase::vGetChild,
-            .m_setContext = &PromiseBase::vSetContext,
-            .m_getContext = &PromiseBase::vGetContext,
-            .m_setDebugName = &PromiseBase::vSetDebugName,
-            .m_getDebugName = &PromiseBase::vGetDebugName,
-            .m_getOutput = reinterpret_cast<void*>(+[](void* self) -> R {
-                auto me = reinterpret_cast<PromiseBaseNV*>(self);
-                return std::move(*me->m_value);
-            }),
-            .m_deliverOutput = reinterpret_cast<void*>(+[](void* self, R* value) {
-                auto me = reinterpret_cast<PromiseBaseNV*>(self);
-                me->m_value = std::move(*value);
-            }),
-        };
-
         m_vtable = &vtable;
     }
 
@@ -199,6 +188,25 @@ struct PromiseBaseNV : PromiseBase {
 
 protected:
     std::optional<R> m_value;
+
+    static constexpr PromiseVtable vtable = {
+        .m_attachChild = &PromiseBase::vAttachChild,
+        .m_getChild = &PromiseBase::vGetChild,
+        .m_setContext = &PromiseBase::vSetContext,
+        .m_getContext = &PromiseBase::vGetContext,
+        .m_setDebugName = &PromiseBase::vSetDebugName,
+        .m_getDebugName = &PromiseBase::vGetDebugName,
+        .m_getOutput = [](void* self, void* outp) {
+            auto me = reinterpret_cast<PromiseBaseNV*>(self);
+            auto out = reinterpret_cast<MaybeUninit<R>*>(outp);
+            out->init(std::move(*me->m_value));
+        },
+        .m_deliverOutput = [](void* self, void* valuep) {
+            auto me = reinterpret_cast<PromiseBaseNV*>(self);
+            auto value = reinterpret_cast<R*>(valuep);
+            me->m_value = std::move(*value);
+        },
+    };
 };
 
 template <typename T>

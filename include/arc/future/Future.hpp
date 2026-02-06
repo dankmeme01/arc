@@ -32,17 +32,12 @@ struct ARC_NODISCARD Future : PollableBase {
     using promise_type = Promise<T>;
     using handle_type = std::coroutine_handle<promise_type>;
 
-    Future(handle_type handle) : m_handle(handle) {
-        static const PollableVtable vtable = {
-            .m_metadata = PollableMetadata::create<Future, true>(),
-            .m_poll = [](void* self, Context& cx) {
-                return reinterpret_cast<Future*>(self)->poll(cx);
-            },
-            .m_getOutput = reinterpret_cast<void*>(+[](void* self, Context& cx) -> T {
-                return reinterpret_cast<Future*>(self)->getOutput(cx);
-            }),
-        };
-        m_vtable = &vtable;
+    Future(handle_type handle) requires (std::is_void_v<T>) : m_handle(handle) {
+        m_vtable = &vtableVoid;
+    }
+
+    Future(handle_type handle) requires (!std::is_void_v<T>) : m_handle(handle) {
+        m_vtable = &vtableNonVoid;
     }
 
     Future(Future&& other) noexcept : m_handle(std::exchange(other.m_handle, {})) {
@@ -192,6 +187,25 @@ struct ARC_NODISCARD Future : PollableBase {
 
 protected:
     handle_type m_handle{};
+
+    static constexpr PollableVtable vtableVoid = {
+        .m_metadata = PollableMetadata::create<Future, true>(),
+        .m_poll = [](void* self, Context& cx) {
+            return reinterpret_cast<Future*>(self)->poll(cx);
+        },
+        .m_getOutput = nullptr
+    };
+
+    static constexpr PollableVtable vtableNonVoid = {
+        .m_metadata = PollableMetadata::create<Future, true>(),
+        .m_poll = [](void* self, Context& cx) {
+            return reinterpret_cast<Future*>(self)->poll(cx);
+        },
+        .m_getOutput = [](void* self, Context& cx, void* outp) {
+            auto out = reinterpret_cast<MaybeUninit<NonVoidOutput>*>(outp);
+            out->init(reinterpret_cast<Future*>(self)->getOutput(cx));
+        },
+    };
 };
 
 template <typename T>

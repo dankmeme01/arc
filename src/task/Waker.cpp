@@ -8,7 +8,7 @@ bool RawWaker::equals(const RawWaker& other) const noexcept {
 }
 
 RawWaker RawWaker::noop() noexcept {
-    static const RawWakerVtable vtable = {
+    static constexpr RawWakerVtable vtable = {
         .wake = [](void*) {},
         .wakeByRef = [](void*) {},
         .clone = [](void*) -> RawWaker {

@@ -6,6 +6,7 @@
 #include <type_traits>
 #include "PollableMetadata.hpp"
 #include "Context.hpp"
+#include <arc/util/MaybeUninit.hpp>
 
 namespace arc {
 
@@ -17,10 +18,11 @@ namespace arc {
 
 struct PollableVtable {
     using PollFn = bool(*)(void*, Context&);
+    using GetOutputFn = void(*)(void*, Context&, void* output);
 
     const PollableMetadata* m_metadata = nullptr;
     PollFn m_poll = nullptr;
-    void* m_getOutput = nullptr;
+    GetOutputFn m_getOutput = nullptr;
 
     bool poll(void* self, Context& cx) const {
         return m_poll(self, cx);
@@ -28,7 +30,9 @@ struct PollableVtable {
 
     template <typename T>
     T getOutput(void* self, Context& cx) const {
-        return reinterpret_cast<T (*)(void*, Context&)>(m_getOutput)(self, cx);
+        MaybeUninit<T> output;
+        reinterpret_cast<void(*)(void*, Context&, MaybeUninit<T>*)>(m_getOutput)(self, cx, &output);
+        return std::move(output.assumeInit());
     }
 };
 
@@ -61,32 +65,38 @@ struct Pollable : PollableBase {
     }
 
     inline Pollable() {
-        static const PollableVtable vtable = {
-            .m_metadata = PollableMetadata::create<Derived>(),
-
-            .m_poll = [](void* self, Context& cx) {
-                auto me = reinterpret_cast<Derived*>(self);
-                me->Pollable::m_output = me->poll(cx);
-                return me->Pollable::m_output.has_value();
-            },
-
-            .m_getOutput = reinterpret_cast<void*>(+[](void* self, Context& cx) -> T {
-                auto me = reinterpret_cast<Pollable*>(self);
-                return std::move(*me->m_output);
-            }),
-        };
-
         this->m_vtable = &vtable;
     }
 
 protected:
     std::optional<Output> m_output;
+
+    static constexpr PollableVtable vtable = {
+        .m_metadata = PollableMetadata::create<Derived>(),
+
+        .m_poll = [](void* self, Context& cx) {
+            auto me = reinterpret_cast<Derived*>(self);
+            me->Pollable::m_output = me->poll(cx);
+            return me->Pollable::m_output.has_value();
+        },
+
+        .m_getOutput = [](void* self, Context& cx, void* outp) {
+            auto me = reinterpret_cast<Pollable*>(self);
+            auto out = reinterpret_cast<MaybeUninit<T>*>(outp);
+            out->init(std::move(*me->m_output));
+        },
+    };
 };
 
 template <typename Derived>
 struct Pollable<Derived, void> : PollableBase {
     using Output = void;
 
+    inline Pollable() {
+        this->m_vtable = &vtable;
+    }
+
+protected:
     static constexpr PollableVtable vtable = {
         .m_metadata = PollableMetadata::create<Derived>(),
         .m_poll = [](void* self, Context& cx) {
@@ -94,10 +104,6 @@ struct Pollable<Derived, void> : PollableBase {
         },
         .m_getOutput = nullptr,
     };
-
-    inline Pollable() {
-        this->m_vtable = &vtable;
-    }
 };
 
 template <typename T>
