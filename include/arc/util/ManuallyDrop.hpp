@@ -6,12 +6,18 @@ namespace arc {
 /// This type is NOT safe for types whose move constructor is non-trivial.
 template <typename T>
 struct ManuallyDrop {
-    ManuallyDrop() : value() {}
+    ManuallyDrop() requires std::is_default_constructible_v<T> : value() {}
 
     template <typename... Args>
     ManuallyDrop(Args&&... args) : value(std::forward<Args>(args)...) {}
 
     ~ManuallyDrop() noexcept {}
+
+    ManuallyDrop(const ManuallyDrop&) = delete;
+    ManuallyDrop& operator=(const ManuallyDrop&) = delete;
+
+    ManuallyDrop(ManuallyDrop&&) = delete;
+    ManuallyDrop& operator=(ManuallyDrop&&) = delete;
 
     void drop() noexcept(noexcept(std::declval<T>().~T())) {
         value.~T();
