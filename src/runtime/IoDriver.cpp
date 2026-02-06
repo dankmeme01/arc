@@ -96,7 +96,7 @@ void Registration::reset() {
 IoDriver::IoDriver(asp::WeakPtr<Runtime> runtime) : m_runtime(std::move(runtime)) {
     ARC_DEBUG_ASSERT(!m_runtime.expired());
 
-    static const IoDriverVtable vtable {
+    static constexpr IoDriverVtable vtable {
         .m_registerIo = &IoDriver::vRegisterIo,
         .m_dropRegistration = &IoDriver::vDropRegistration,
         .m_clearReadiness = &IoDriver::vClearReadiness,

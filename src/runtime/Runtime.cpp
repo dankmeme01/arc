@@ -33,7 +33,7 @@ Runtime::Runtime(ctor_tag, size_t workers)
       m_workerCount(std::clamp<size_t>(workers, 1, 128)),
       m_taskDeadline(Duration::fromMillis((uint64_t)(5.f * std::powf(m_workerCount, 0.9f))))
 {
-    static const RuntimeVtable vtable = {
+    static constexpr RuntimeVtable vtable = {
         .m_enqueueTask = &Runtime::vEnqueueTask,
         .m_setTerminateHandler = &Runtime::vSetTerminateHandler,
         .m_insertTask = &Runtime::vInsertTask,

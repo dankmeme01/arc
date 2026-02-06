@@ -7,7 +7,7 @@ using namespace asp::time;
 namespace arc {
 
 TimeDriver::TimeDriver(asp::WeakPtr<Runtime> runtime) : m_runtime(std::move(runtime)) {
-    static const TimeDriverVtable vtable{
+    static constexpr TimeDriverVtable vtable{
         .m_addEntry = &TimeDriver::vAddEntry,
         .m_removeEntry = &TimeDriver::vRemoveEntry,
     };

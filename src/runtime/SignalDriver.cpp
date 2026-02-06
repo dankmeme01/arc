@@ -6,7 +6,7 @@
 namespace arc {
 
 SignalDriver::SignalDriver(asp::WeakPtr<Runtime> runtime) : m_runtime(std::move(runtime)) {
-    static const SignalDriverVtable vtable {
+    static constexpr SignalDriverVtable vtable {
         .m_addSignal = &SignalDriver::vAddSignal,
     };
     m_vtable = &vtable;

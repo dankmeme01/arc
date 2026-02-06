@@ -87,17 +87,15 @@ template <typename Derived>
 struct Pollable<Derived, void> : PollableBase {
     using Output = void;
 
+    static constexpr PollableVtable vtable = {
+        .m_metadata = PollableMetadata::create<Derived>(),
+        .m_poll = [](void* self, Context& cx) {
+            return reinterpret_cast<Derived*>(self)->poll(cx);
+        },
+        .m_getOutput = nullptr,
+    };
+
     inline Pollable() {
-        static const PollableVtable vtable = {
-            .m_metadata = PollableMetadata::create<Derived>(),
-
-            .m_poll = [](void* self, Context& cx) {
-                return reinterpret_cast<Derived*>(self)->poll(cx);
-            },
-
-            .m_getOutput = nullptr,
-        };
-
         this->m_vtable = &vtable;
     }
 };

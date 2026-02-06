@@ -10,7 +10,7 @@ IocpDriver::IocpDriver(asp::WeakPtr<Runtime> runtime) : m_runtime(std::move(runt
     m_iocp = CreateIoCompletionPort(INVALID_HANDLE_VALUE, nullptr, 0, 0);
     ARC_ASSERT(m_iocp != nullptr, "failed to create IOCP");
 
-    static const IocpDriverVtable vtable {
+    static constexpr IocpDriverVtable vtable {
         .m_registerIo = &IocpDriver::vRegisterIo,
     };
 

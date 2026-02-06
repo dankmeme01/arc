@@ -147,18 +147,18 @@ protected:
 };
 
 struct PromiseBaseV : PromiseBase {
-    PromiseBaseV() {
-        static const PromiseVtable vtable = {
-            .m_attachChild = &PromiseBase::vAttachChild,
-            .m_getChild = &PromiseBase::vGetChild,
-            .m_setContext = &PromiseBase::vSetContext,
-            .m_getContext = &PromiseBase::vGetContext,
-            .m_setDebugName = &PromiseBase::vSetDebugName,
-            .m_getDebugName = &PromiseBase::vGetDebugName,
-            .m_getOutput = nullptr,
-            .m_deliverOutput = nullptr,
-        };
+    static constexpr PromiseVtable vtable = {
+        .m_attachChild = &PromiseBase::vAttachChild,
+        .m_getChild = &PromiseBase::vGetChild,
+        .m_setContext = &PromiseBase::vSetContext,
+        .m_getContext = &PromiseBase::vGetContext,
+        .m_setDebugName = &PromiseBase::vSetDebugName,
+        .m_getDebugName = &PromiseBase::vGetDebugName,
+        .m_getOutput = nullptr,
+        .m_deliverOutput = nullptr,
+    };
 
+    PromiseBaseV() {
         m_vtable = &vtable;
     }
 
