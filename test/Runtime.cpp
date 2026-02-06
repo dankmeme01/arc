@@ -4,7 +4,7 @@
 using namespace arc;
 
 TEST(Runtime, DisabledTime) {
-    auto rt = arc::Runtime::create(1, false, true, true);
+    auto rt = arc::Runtime::create(RuntimeOptions { .workers = 1, .timeDriver = false });
     Waker waker = Waker::noop();
     Context cx { &waker, rt.get() };
 
@@ -16,7 +16,7 @@ TEST(Runtime, DisabledTime) {
 }
 
 TEST(Runtime, DisabledIo) {
-    auto rt = arc::Runtime::create(1, true, false, true);
+    auto rt = arc::Runtime::create(RuntimeOptions { .workers = 1, .ioDriver = false });
     Waker waker = Waker::noop();
     Context cx { &waker, rt.get() };
 
@@ -29,7 +29,7 @@ TEST(Runtime, DisabledIo) {
 }
 
 TEST(Runtime, DisabledSignal) {
-    auto rt = arc::Runtime::create(1, true, true, false);
+    auto rt = arc::Runtime::create(RuntimeOptions { .workers = 1, .signalDriver = false });
     Waker waker = Waker::noop();
     Context cx { &waker, rt.get() };
 

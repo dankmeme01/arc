@@ -1,10 +1,12 @@
 #include <arc/runtime/Runtime.hpp>
 #include <asp/thread/Thread.hpp>
+#include <asp/time/chrono.hpp>
 
 using namespace asp::time;
 using enum std::memory_order;
 
 static constexpr size_t MAX_BLOCKING_WORKERS = 128;
+static constexpr size_t MIN_BLOCKING_WORKERS = 2;
 static thread_local arc::Runtime* g_runtime = nullptr;
 static arc::Runtime* g_globalRuntime = nullptr;
 
@@ -319,24 +321,37 @@ void Runtime::workerLoop(WorkerData& data, Context& cx) {
 }
 
 void Runtime::blockingWorkerLoop(size_t id) {
-    auto lastTask = Instant::now();
+    constexpr auto IDLE_TIMEOUT = Duration::fromSecs(30);
+    auto terminateAt = Instant::now() + IDLE_TIMEOUT;
 
-    while (true) {
+    bool running = true;
+
+    while (running) {
         auto now = Instant::now();
 
-        // terminate if there has been no task in a while
-        if (now.durationSince(lastTask) >= Duration::fromSecs(30)) {
-            TRACE("[Blocking {}] exiting due to inactivity", id);
-            m_blockingWorkers.fetch_sub(1, ::acq_rel);
-            m_freeBlockingWorkers.fetch_sub(1, ::acq_rel);
-            break;
+        // terminate if there has been no task in a while, and too many blocking workers already
+        if (now >= terminateAt) {
+            auto workers = m_blockingWorkers.load(::acquire);
+
+            while (true) {
+                if (workers <= MIN_BLOCKING_WORKERS) {
+                    break; // do not terminate if we are at the minimum
+                }
+
+                if (m_blockingWorkers.compare_exchange_weak(workers, workers - 1, ::acq_rel, ::acquire)) {
+                    running = false;
+                    break;
+                }
+            }
+
+            if (!running) break;
         }
 
         asp::SharedPtr<BlockingTaskBase> task = nullptr;
         {
             std::unique_lock lock(m_blockingMtx);
 
-            bool success = m_blockingCv.wait_for(lock, std::chrono::milliseconds(100), [this] {
+            bool success = m_blockingCv.wait_for(lock, asp::toChrono(IDLE_TIMEOUT), [this] {
                 return m_stopFlag.load(::acquire) || !m_blockingTasks.empty();
             });
 
@@ -359,38 +374,38 @@ void Runtime::blockingWorkerLoop(size_t id) {
             continue;
         }
 
-        lastTask = now;
-
         TRACE("[Blocking {}] executing blocking task {}", id, (void*)task);
-        m_freeBlockingWorkers.fetch_sub(1, ::acq_rel);
+        m_busyBlockingWorkers.fetch_add(1, ::relaxed);
         task->execute();
-        m_freeBlockingWorkers.fetch_add(1, ::acq_rel);
+        m_busyBlockingWorkers.fetch_sub(1, ::relaxed);
         TRACE("[Blocking {}] finished blocking task {}", id, (void*)task);
+
+        terminateAt = Instant::now() + IDLE_TIMEOUT;
     }
+
+    TRACE("[Blocking {}] exiting due to inactivity", id);
 }
 
 void Runtime::ensureBlockingWorker(size_t tasksInQueue) {
-    auto workers = m_blockingWorkers.load(::acquire);
+    auto workers = m_blockingWorkers.load(::relaxed);
 
-    if (workers >= 128) {
+    if (workers >= MAX_BLOCKING_WORKERS) {
         return; // do not spawn more than that
     }
 
     // spawn a new worker if there are no free workers and there are tasks waiting
-    auto freeWorkers = m_freeBlockingWorkers.load(::acquire);
-    if (tasksInQueue > 0 && freeWorkers == 0) {
+    if (tasksInQueue > 0 && m_busyBlockingWorkers.load(::relaxed) >= workers) {
         this->spawnBlockingWorker();
     }
 }
 
 void Runtime::spawnBlockingWorker() {
-    auto num = m_blockingWorkers.fetch_add(1, ::acq_rel) + 1;
+    auto num = m_blockingWorkers.fetch_add(1, ::relaxed) + 1;
     if (num > MAX_BLOCKING_WORKERS) {
-        m_blockingWorkers.fetch_sub(1, ::acq_rel);
+        m_blockingWorkers.fetch_sub(1, ::relaxed);
         return; // do not spawn more than that
     }
 
-    m_freeBlockingWorkers.fetch_add(1, ::acq_rel);
     size_t workerId = m_nextBlockingWorkerId.fetch_add(1, ::relaxed);
 
     std::thread th([this, workerId] {

@@ -197,7 +197,7 @@ private:
     std::deque<asp::SharedPtr<BlockingTaskBase>> m_blockingTasks; // protected by m_blockingMtx
     std::condition_variable m_blockingCv;
     std::atomic<size_t> m_blockingWorkers{0};
-    std::atomic<size_t> m_freeBlockingWorkers{0};
+    std::atomic<size_t> m_busyBlockingWorkers{0};
     std::atomic<size_t> m_nextBlockingWorkerId{0};
 
     template <typename T>
