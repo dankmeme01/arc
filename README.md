@@ -78,6 +78,8 @@ When using the helper macro, the arguments of the main function must be either `
 
 ## Examples
 
+All examples here may not be fully complete and are simplified for demonstration purposes. The `examples` subfolder contains examples of actual compilable programs.
+
 Creating a runtime and blocking on a single async function, creating tasks
 ```cpp
 #include <arc/prelude.hpp>

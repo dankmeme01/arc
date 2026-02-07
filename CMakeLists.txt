@@ -6,7 +6,7 @@ project(arc VERSION 1.0.0)
 
 include(cmake/Features.cmake)
 option(ARC_BUILD_TESTS "Build tests" OFF)
-option(ARC_BUILD_TESTER "Build tester" OFF)
+option(ARC_BUILD_EXAMPLES "Build examples" OFF)
 
 file(GLOB BASE_SOURCES CONFIGURE_DEPENDS
     "src/future/*.cpp"
@@ -53,18 +53,8 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Linux")
     target_link_libraries(arc PUBLIC stdc++exp)
 endif()
 
-if (ARC_BUILD_TESTER)
-    # small executable for testing
-
-    file(GLOB_RECURSE TESTER_SOURCES CONFIGURE_DEPENDS "test/main.cpp")
-    add_executable(arc_tester ${TESTER_SOURCES})
-    target_link_libraries(arc_tester PRIVATE arc asp fmt std23::nontype_functional)
-
-    # add asan
-    if (NOT WIN32)
-        target_compile_options(arc_tester PRIVATE -fsanitize=address -fsanitize=leak -fno-omit-frame-pointer -g)
-        target_link_options(arc_tester PRIVATE -fsanitize=address -fsanitize=leak)
-    endif()
+if (ARC_BUILD_EXAMPLES)
+    add_subdirectory(examples)
 endif()
 
 if (ARC_BUILD_TESTS)
