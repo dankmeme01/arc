@@ -22,6 +22,10 @@ public:
     // Creates a new TCP listener, binding to the given address
     static Future<NetResult<TcpListener>> bind(const qsox::SocketAddress& address);
 
+    // Creates a new TCP listener, binding to the given address
+    // Convenience shorthand, address must be in format ip:port
+    static Future<NetResult<TcpListener>> bind(std::string_view address);
+
     TcpListener(TcpListener&& other) noexcept = default;
     TcpListener& operator=(TcpListener&& other) noexcept = default;
 

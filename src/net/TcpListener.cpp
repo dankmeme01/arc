@@ -24,6 +24,15 @@ Future<NetResult<TcpListener>> TcpListener::bind(const qsox::SocketAddress& addr
     co_return Ok(fromQsox(std::move(listener)));
 }
 
+Future<NetResult<TcpListener>> TcpListener::bind(std::string_view address) {
+    auto res = qsox::SocketAddress::parse(address);
+    if (!res) {
+        co_return Err(Error::InvalidArgument);
+    }
+
+    co_return co_await bind(*res);
+}
+
 Future<NetResult<std::pair<arc::TcpStream, qsox::SocketAddress>>> TcpListener::accept() {
     auto res = co_await this->rioPoll([this](Context& cx, uint64_t& id) {
         return this->pollAccept(cx, id);
