@@ -546,9 +546,13 @@ struct TaskHandleBase {
         }
     }
 
+    /// Aborts the task, ensuring it will not complete and will not get scheduled again.
+    /// If the task is currently being executed, it will still run until it yields.
+    /// Invalidates this handle, throws if the handle is already invalid.
     void abort() {
         this->validate();
         m_task->abort();
+        m_task = nullptr;
     }
 
     void setName(std::string name) {
