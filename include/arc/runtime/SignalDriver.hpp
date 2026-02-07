@@ -32,6 +32,8 @@ public:
     Notify addSignal(int signum);
 
 private:
+    friend class SignalManager;
+
     const SignalDriverVtable* m_vtable;
     asp::WeakPtr<Runtime> m_runtime;
     asp::SpinLock<std::vector<std::pair<int, Notify>>> m_signals;

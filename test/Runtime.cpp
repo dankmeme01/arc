@@ -1,5 +1,6 @@
 #include <arc/prelude.hpp>
 #include <gtest/gtest.h>
+#include <signal.h>
 
 using namespace arc;
 
@@ -84,3 +85,65 @@ TEST(Runtime, ShutdownWithTasks) {
     }());
     rt->safeShutdown();
 }
+
+TEST(Runtime, MultiRuntimeMpsc) {
+    auto rt1 = arc::Runtime::create(1);
+    auto rt2 = arc::Runtime::create(1);
+
+    auto [tx, rx] = arc::mpsc::channel<int>();
+
+    rt1->spawn([tx = std::move(tx)] -> arc::Future<> {
+        EXPECT_TRUE(co_await tx.send(42));
+    }).blockOn();
+
+    rt2->spawn([rx = std::move(rx)] mutable -> arc::Future<> {
+        auto res = co_await rx.recv();
+        EXPECT_TRUE(res);
+        EXPECT_EQ(res.unwrap(), 42);
+    }).blockOn();
+}
+
+#ifdef SIGUSR1
+
+TEST(Runtime, MultiRuntimeSignal) {
+    auto rt1 = arc::Runtime::create(1);
+    auto rt2 = arc::Runtime::create(1);
+
+    bool completed1 = false;
+    bool completed2 = false;
+
+    arc::Semaphore sem{0};
+
+    auto h1 = rt1->spawn([&completed1, &sem] -> arc::Future<> {
+        auto fut = arc::signal(SignalKind::User1);
+        sem.release(1);
+
+        co_await fut;
+        completed1 = true;
+    });
+
+    auto h2 = rt2->spawn([&completed2, &sem] -> arc::Future<> {
+        auto fut = arc::signal(SignalKind::User1);
+        sem.release(1);
+
+        co_await fut;
+        completed2 = true;
+    });
+
+
+    sem.acquireBlocking(2);
+    std::this_thread::sleep_for(std::chrono::milliseconds{1});
+
+    EXPECT_FALSE(completed1);
+    EXPECT_FALSE(completed2);
+
+    ::raise(SIGUSR1);
+
+    h1.blockOn();
+    h2.blockOn();
+
+    EXPECT_TRUE(completed1);
+    EXPECT_TRUE(completed2);
+}
+
+#endif
