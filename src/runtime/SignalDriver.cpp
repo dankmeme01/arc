@@ -45,8 +45,6 @@ private:
 
         auto it = lock->find(sig);
         if (it != lock->end()) {
-            printWarn("Invoke {}, drivers: {}", sig, it->second.size());
-
             for (auto driver : it->second) {
                 driver->handleSignal(sig);
             }
