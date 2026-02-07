@@ -520,8 +520,8 @@ struct TaskHandleBase {
         }
     }
 
-    /// Blocks until the task is completed.
-    /// Do not use this inside async code.
+    /// Blocks until the task is completed. Do not use this inside async code.
+    /// Invalidates this handle, throws if the handle is already invalid.
     typename TaskTypedBase<T>::Output blockOn() {
         this->validate();
         CondvarWaker cvw;
@@ -535,6 +535,8 @@ struct TaskHandleBase {
             TRACE("[{}] poll result: {}", (void*)this->m_task, (bool)result);
 
             if (result) {
+                this->detach();
+
                 if constexpr (!std::is_void_v<T>) {
                     return std::move(*result);
                 } else {
