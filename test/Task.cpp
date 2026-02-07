@@ -91,7 +91,6 @@ TEST(task, TaskStats) {
     EXPECT_EQ(allStats[0]->name(), "hi test");
 }
 
-
 TEST(task, LambdaUseAfterFree) {
     auto rt = arc::Runtime::create(1);
 
@@ -108,4 +107,23 @@ TEST(task, LambdaUseAfterFree) {
 
     // since the task terminated, the lambda should be dropped
     EXPECT_EQ(sptr.strongCount(), 1);
+}
+
+TEST(task, NullHandle) {
+    arc::TaskHandle<int> handle;
+    EXPECT_FALSE(handle);
+    EXPECT_FALSE(handle.isValid());
+    EXPECT_THROW(handle.blockOn(), std::runtime_error);
+}
+
+TEST(task, Detach) {
+    auto runtime = arc::Runtime::create(1);
+    arc::TaskHandle<int> handle = runtime->spawn([] -> arc::Future<int> {
+        co_await arc::never();
+        co_return 42;
+    });
+
+    EXPECT_TRUE(handle.isValid());
+    handle.detach();
+    EXPECT_FALSE(handle.isValid());
 }

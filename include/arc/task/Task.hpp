@@ -479,6 +479,7 @@ template <typename T>
 struct TaskHandleBase {
     TaskTypedBase<T>* m_task = nullptr;
 
+    TaskHandleBase() = default;
     TaskHandleBase(TaskTypedBase<T>* task) : m_task(task) {}
 
     TaskHandleBase(const TaskHandleBase&) = delete;
@@ -487,20 +488,21 @@ struct TaskHandleBase {
     TaskHandleBase(TaskHandleBase&& other) noexcept : m_task(std::exchange(other.m_task, nullptr)) {}
     TaskHandleBase& operator=(TaskHandleBase&& other) noexcept {
         if (this != &other) {
-            if (m_task) m_task->detach();
+            this->detach();
             m_task = std::exchange(other.m_task, nullptr);
         }
         return *this;
     }
 
     ~TaskHandleBase() {
-        if (m_task) m_task->detach();
+        this->detach();
     }
 
     /// Polls the task. Returns the return value if the future is completed,
     /// or std::nullopt if it is still pending.
     /// Throws an exception if the task was closed before completion.
     std::optional<typename TaskTypedBase<T>::NVOutput> pollTask(Context& cx) {
+        this->validate();
         auto res = m_task->vPoll(m_task, cx);
         TRACE("[{}] poll result: {}", this->m_task->debugName(), res);
 
@@ -520,7 +522,8 @@ struct TaskHandleBase {
 
     /// Blocks until the task is completed.
     /// Do not use this inside async code.
-    typename TaskTypedBase<T>::Output blockOn() noexcept {
+    typename TaskTypedBase<T>::Output blockOn() {
+        this->validate();
         CondvarWaker cvw;
         auto waker = cvw.waker();
         m_task->registerAwaiter(waker);
@@ -543,21 +546,50 @@ struct TaskHandleBase {
         }
     }
 
-    void abort() noexcept {
+    void abort() {
+        this->validate();
         m_task->abort();
     }
 
-    void setName(std::string name) noexcept {
+    void setName(std::string name) {
+        this->validate();
         m_task->setName(std::move(name));
     }
 
-    asp::SharedPtr<TaskDebugData> getDebugData() noexcept {
+    asp::SharedPtr<TaskDebugData> getDebugData() {
+        this->validate();
         return m_task->getDebugData();
+    }
+
+    /// Checks if the handle is valid (i.e. it points to a task that hasn't been detached yet).
+    bool isValid() const noexcept {
+        return m_task != nullptr;
+    }
+
+    /// Detaches from the task, letting it discard the return value and automatically cleanup once finished.
+    /// This is automatically called when the handle is destroyed. Does nothing if the handle is invalid.
+    void detach() noexcept {
+        if (m_task) {
+            m_task->detach();
+            m_task = nullptr;
+        }
+    }
+
+    operator bool() const noexcept {
+        return this->isValid();
+    }
+
+protected:
+    void validate() const {
+        if (!m_task) [[unlikely]] {
+            throw std::runtime_error("Invalid task handle");
+        }
     }
 };
 
 template <typename T>
 struct TaskHandle : Pollable<TaskHandle<T>, T>, TaskHandleBase<T> {
+    TaskHandle() = default;
     TaskHandle(TaskTypedBase<T>* task) : TaskHandleBase<T>(task) {}
 
     std::optional<T> poll(Context& cx) {
@@ -567,6 +599,7 @@ struct TaskHandle : Pollable<TaskHandle<T>, T>, TaskHandleBase<T> {
 
 template <>
 struct TaskHandle<void> : Pollable<TaskHandle<void>, void>, TaskHandleBase<void> {
+    TaskHandle() = default;
     TaskHandle(TaskTypedBase<void>* task) : TaskHandleBase<void>(task) {}
 
     bool poll(Context& cx) {
