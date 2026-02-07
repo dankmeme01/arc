@@ -77,7 +77,7 @@ Awaiter Interval::tick() noexcept {
     return Awaiter{this};
 }
 
-Interval interval(asp::time::Duration period) {
+Interval interval(asp::time::Duration period) noexcept {
     return Interval(period);
 }
 

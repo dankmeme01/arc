@@ -13,11 +13,11 @@ Context::Context(Waker* waker) : Context(waker, nullptr) {}
 Context::Context(Waker* waker, Runtime* runtime)
     : m_waker(waker), m_runtime(runtime) {}
 
-Waker* Context::waker() {
+Waker* Context::waker() noexcept {
     return m_waker;
 }
 
-TaskBase* Context::currentTask() {
+TaskBase* Context::currentTask() noexcept {
     if (m_waker) {
         auto raw = m_waker->m_data;
         return static_cast<TaskBase*>(raw);
@@ -30,20 +30,20 @@ Waker Context::cloneWaker() {
     return m_waker->clone();
 }
 
-Runtime* Context::runtime() {
+Runtime* Context::runtime() noexcept {
     return m_runtime;
 }
 
-void Context::wake() {
+void Context::wake() noexcept {
     m_waker->wakeByRef();
 }
 
-void Context::_installWaker(Waker* waker) {
+void Context::_installWaker(Waker* waker) noexcept {
     m_waker = waker;
 }
 
 
-void Context::setup(Instant taskDeadline) {
+void Context::setup(Instant taskDeadline) noexcept {
     m_taskDeadline = taskDeadline.rawNanos();
     m_futurePolls = 0;
     m_currentException = nullptr;
@@ -51,7 +51,7 @@ void Context::setup(Instant taskDeadline) {
     m_capturedStack.clear();
 }
 
-bool Context::shouldCoopYield() {
+bool Context::shouldCoopYield() noexcept {
     // try to make this check as cheap as possible
     m_futurePolls++;
     if (m_futurePolls % 64 == 0) {
@@ -66,13 +66,13 @@ void Context::pushFrame(const PollableBase* pollable) {
     ARC_DEBUG_ASSERT(m_stack.size() < MAX_RECURSION_DEPTH, "maximum future recursion depth exceeded");
 }
 
-void Context::popFrame() {
+void Context::popFrame() noexcept {
     ARC_DEBUG_ASSERT(!m_stack.empty(), "popFrame() called on empty future stack");
     // trace("popping frame {}", (void*)m_stack.back());
     m_stack.pop_back();
 }
 
-void Context::markFrame(std::string name) {
+void Context::markFrame(std::string name) noexcept {
     if (m_stack.empty()) {
         return;
     }

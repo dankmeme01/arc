@@ -52,7 +52,7 @@ struct PollableBase {
     bool await_suspend(std::coroutine_handle<> h);
     void await_resume() noexcept {}
 
-    void attachToParent(std::coroutine_handle<> h);
+    void attachToParent(std::coroutine_handle<> h) noexcept;
     Context* contextFromParent() const noexcept;
 };
 
@@ -113,7 +113,7 @@ concept IsPollable = std::derived_from<T, PollableBase>;
 template <typename T, auto F>
 struct CustomFnAwaiter : Pollable<CustomFnAwaiter<T, F>> {
     // assume that F is a memfn on T
-    explicit CustomFnAwaiter(T* obj) : m_obj(obj) {}
+    explicit CustomFnAwaiter(T* obj) noexcept : m_obj(obj) {}
 
     bool poll(Context& cx) {
         return (m_obj->*F)(cx);

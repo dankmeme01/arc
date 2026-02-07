@@ -9,7 +9,7 @@ bool PollableBase::await_suspend(std::coroutine_handle<> h) {
     return !m_vtable->poll(this, *this->contextFromParent());
 }
 
-void PollableBase::attachToParent(std::coroutine_handle<> h) {
+void PollableBase::attachToParent(std::coroutine_handle<> h) noexcept {
     m_parent = h;
 
     auto p = std::coroutine_handle<Promise<void>>::from_address(h.address());

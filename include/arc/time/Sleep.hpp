@@ -13,7 +13,7 @@ ARC_FATAL_NO_FEATURE(time)
 namespace arc {
 
 struct ARC_NODISCARD Sleep : Pollable<Sleep> {
-    explicit Sleep(asp::time::Instant expiry) : m_expiry(expiry) {}
+    explicit Sleep(asp::time::Instant expiry) noexcept : m_expiry(expiry) {}
     ~Sleep();
 
     Sleep(Sleep&& other) noexcept;
@@ -27,9 +27,9 @@ private:
     asp::WeakPtr<Runtime> m_runtime;
 };
 
-Sleep sleep(asp::time::Duration duration);
-Sleep sleepFor(asp::time::Duration duration);
-Sleep sleepUntil(asp::time::Instant expiry);
+Sleep sleep(asp::time::Duration duration) noexcept;
+Sleep sleepFor(asp::time::Duration duration) noexcept;
+Sleep sleepUntil(asp::time::Instant expiry) noexcept;
 
 }
 

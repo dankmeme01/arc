@@ -33,7 +33,7 @@ if (NOT COMMAND CPMAddPackage)
 endif()
 
 if (NOT TARGET asp)
-    CPMAddPackage("gh:dankmeme01/asp2#dd502d6")
+    CPMAddPackage("gh:dankmeme01/asp2#224563f")
 endif()
 if (NOT TARGET std23::nontype_functional)
     CPMAddPackage("gh:zhihaoy/nontype_functional#bdb0987")

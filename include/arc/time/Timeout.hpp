@@ -26,7 +26,7 @@ template <
     typename Output = TimeoutResult<std::conditional_t<IsVoid, std::monostate, FutOut>>
 >
 struct ARC_NODISCARD Timeout : Pollable<Timeout<Fut>, Output> {
-    explicit Timeout(Fut fut, asp::Instant expiry)
+    explicit Timeout(Fut fut, asp::Instant expiry) noexcept
         : m_future(std::move(fut)), m_expiry(expiry) {}
 
     ~Timeout() {
@@ -96,11 +96,11 @@ private:
     uint64_t m_id = 0;
 };
 
-auto timeoutAt(asp::time::Instant expiry, Awaitable auto fut) {
+auto timeoutAt(asp::time::Instant expiry, Awaitable auto fut) noexcept {
     return Timeout{std::move(fut), expiry};
 }
 
-auto timeout(asp::time::Duration dur, Awaitable auto fut) {
+auto timeout(asp::time::Duration dur, Awaitable auto fut) noexcept {
     return timeoutAt(asp::Instant::now() + dur, std::move(fut));
 }
 

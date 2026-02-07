@@ -32,7 +32,7 @@ std::vector<void*> TaskDebugData::creationStack() const noexcept {
     return stack;
 }
 
-void TaskBase::schedule() noexcept {
+void TaskBase::schedule() {
     m_vtable->schedule(this);
 }
 
@@ -107,7 +107,7 @@ std::optional<bool> TaskBase::vPoll(void* ptr, Context& cx) {
     }
 }
 
-void TaskBase::vAbort(void* ptr, bool force) noexcept {
+void TaskBase::vAbort(void* ptr, bool force) {
     auto self = static_cast<TaskBase*>(ptr);
 
     auto state = self->getState();
@@ -257,7 +257,7 @@ std::optional<Waker> TaskBase::vTakeAwaiter(void* ptr, const Waker* current) {
     return out;
 }
 
-void TaskBase::vSetName(void* ptr, std::string name) {
+void TaskBase::vSetName(void* ptr, std::string name) noexcept {
     auto self = static_cast<TaskBase*>(ptr);
     self->m_name = std::move(name);
     if (self->m_debugData) {
@@ -265,7 +265,7 @@ void TaskBase::vSetName(void* ptr, std::string name) {
     }
 }
 
-std::string_view TaskBase::vGetName(void* ptr) {
+std::string_view TaskBase::vGetName(void* ptr) noexcept {
     auto self = static_cast<TaskBase*>(ptr);
     return self->m_name;
 }

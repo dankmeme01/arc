@@ -18,19 +18,19 @@ public:
     Context(Waker* waker);
     Context(Waker* waker, Runtime* runtime);
 
-    Waker* waker();
-    TaskBase* currentTask();
+    Waker* waker() noexcept;
+    TaskBase* currentTask() noexcept;
     Waker cloneWaker();
-    Runtime* runtime();
-    void wake();
+    Runtime* runtime() noexcept;
+    void wake() noexcept;
 
-    void _installWaker(Waker* waker);
+    void _installWaker(Waker* waker) noexcept;
 
-    bool shouldCoopYield();
+    bool shouldCoopYield() noexcept;
 
     void pushFrame(const PollableBase* pollable);
-    void popFrame();
-    void markFrame(std::string name);
+    void popFrame() noexcept;
+    void markFrame(std::string name) noexcept;
     void markFrameFromSource(const std::source_location& loc = std::source_location::current());
 
     void printFutureStack();
@@ -41,7 +41,7 @@ private:
     friend class Runtime;
 
     /// Setup the context for a new task execution.
-    void setup(asp::Instant taskDeadline);
+    void setup(asp::Instant taskDeadline) noexcept;
 
     struct StackEntry {
         const PollableBase* pollable;
@@ -64,7 +64,7 @@ private:
 /// Sets a debugging name for the current Future.
 /// This helps with debugging, as the name will be included in the stack trace during unhandled exceptions.
 /// The macro ARC_FRAME() can be used instead to automatically set the name to function name and file + line information.
-inline void markFrame(Context& cx, std::string name) {
+inline void markFrame(Context& cx, std::string name) noexcept {
     cx.markFrame(std::move(name));
 }
 

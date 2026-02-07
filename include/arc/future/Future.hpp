@@ -1,9 +1,7 @@
 #pragma once
 #include <coroutine>
 #include <utility>
-#include <exception>
 #include <variant>
-#include <optional>
 
 #include <arc/util/Trace.hpp>
 #include <arc/util/Assert.hpp>
@@ -32,11 +30,11 @@ struct ARC_NODISCARD Future : PollableBase {
     using promise_type = Promise<T>;
     using handle_type = std::coroutine_handle<promise_type>;
 
-    Future(handle_type handle) requires (std::is_void_v<T>) : m_handle(handle) {
+    Future(handle_type handle) noexcept requires (std::is_void_v<T>) : m_handle(handle) {
         m_vtable = &vtableVoid;
     }
 
-    Future(handle_type handle) requires (!std::is_void_v<T>) : m_handle(handle) {
+    Future(handle_type handle) noexcept requires (!std::is_void_v<T>) : m_handle(handle) {
         m_vtable = &vtableNonVoid;
     }
 
@@ -64,11 +62,11 @@ struct ARC_NODISCARD Future : PollableBase {
         }
     }
 
-    promise_type& promise() {
+    promise_type& promise() noexcept {
         return m_handle.promise();
     }
 
-    PollableBase* child() {
+    PollableBase* child() noexcept {
         return this->promise().getChild();
     }
 
@@ -209,7 +207,7 @@ protected:
 };
 
 template <typename T>
-auto Promise<T>::get_return_object() {
+auto Promise<T>::get_return_object() noexcept {
     return Future<T>{ Future<T>::handle_type::from_promise(*this) };
 }
 

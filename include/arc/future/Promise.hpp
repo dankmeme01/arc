@@ -30,20 +30,20 @@ struct PromiseVtable {
     GetOutputFn m_getOutput = nullptr;
     DeliverOutputFn m_deliverOutput = nullptr;
 
-    void attachChild(void* self, PollableBase* child) const {
+    void attachChild(void* self, PollableBase* child) const noexcept {
         m_attachChild(self, child);
     }
 
-    PollableBase* getChild(void* self) const {
+    PollableBase* getChild(void* self) const noexcept {
         return m_getChild(self);
     }
 
-    void setContext(void* self, Context* cx) const {
+    void setContext(void* self, Context* cx) const noexcept {
         TRACE("[Promise {}] setContext({})", self, (void*)cx);
         m_setContext(self, cx);
     }
 
-    Context* getContext(void* self) const {
+    Context* getContext(void* self) const noexcept {
         auto ctx = m_getContext(self);
         TRACE("[Promise {}] getContext() -> {}", self, (void*)ctx);
         return ctx;
@@ -71,19 +71,19 @@ struct PromiseVtable {
 };
 
 struct PromiseBase {
-    void attachChild(PollableBase* child) {
+    void attachChild(PollableBase* child) noexcept {
         m_vtable->attachChild(this, child);
     }
 
-    PollableBase* getChild() {
+    PollableBase* getChild() noexcept {
         return m_vtable->getChild(this);
     }
 
-    void setContext(Context* cx) {
+    void setContext(Context* cx) noexcept {
         m_vtable->setContext(this, cx);
     }
 
-    Context* getContext() {
+    Context* getContext() noexcept {
         return m_vtable->getContext(this);
     }
 
@@ -118,7 +118,7 @@ struct PromiseBase {
         PromiseBase* await_resume() noexcept { return promise; }
     };
 
-    static auto current() {
+    static auto current() noexcept {
         return CurrentAwaiter{};
     }
 
@@ -130,16 +130,16 @@ protected:
     Context* m_context = nullptr;
     std::string m_debugName;
 
-    static void vAttachChild(void* self, PollableBase* child) {
+    static void vAttachChild(void* self, PollableBase* child) noexcept {
         reinterpret_cast<PromiseBase*>(self)->m_child = child;
     }
-    static PollableBase* vGetChild(void* self) {
+    static PollableBase* vGetChild(void* self) noexcept {
         return reinterpret_cast<PromiseBase*>(self)->m_child;
     }
-    static void vSetContext(void* self, Context* cx) {
+    static void vSetContext(void* self, Context* cx) noexcept {
         reinterpret_cast<PromiseBase*>(self)->m_context = cx;
     }
-    static Context* vGetContext(void* self) {
+    static Context* vGetContext(void* self) noexcept {
         return reinterpret_cast<PromiseBase*>(self)->m_context;
     }
     static void vSetDebugName(void* self, std::string name) {
@@ -230,7 +230,7 @@ struct Promise : std::conditional_t<
     }
 
     // Defined in Future.hpp
-    auto get_return_object();
+    auto get_return_object() noexcept;
 
     // Final awaiter
 

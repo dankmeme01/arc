@@ -49,15 +49,15 @@ Sleep& Sleep::operator=(Sleep&& other) noexcept {
     return *this;
 }
 
-Sleep sleep(asp::time::Duration duration) {
+Sleep sleep(asp::time::Duration duration) noexcept {
     return sleepFor(duration);
 }
 
-Sleep sleepFor(asp::time::Duration duration) {
+Sleep sleepFor(asp::time::Duration duration) noexcept {
     return Sleep(Instant::now() + duration);
 }
 
-Sleep sleepUntil(asp::time::Instant expiry) {
+Sleep sleepUntil(asp::time::Instant expiry) noexcept {
     return Sleep(expiry);
 }
 

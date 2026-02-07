@@ -14,13 +14,6 @@ ARC_FATAL_NO_FEATURE(net)
 
 namespace arc {
 
-struct LogOnDtor {
-    LogOnDtor(std::string_view name) : m_name(name) {}
-    ~LogOnDtor() { trace("{}", m_name); }
-private:
-    std::string_view m_name;
-};
-
 template <typename T = void>
 using NetResult = qsox::NetResult<T>;
 

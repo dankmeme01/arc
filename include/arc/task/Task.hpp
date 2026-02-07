@@ -81,7 +81,7 @@ struct TaskVtable {
 };
 
 struct TaskBase {
-    void schedule() noexcept;
+    void schedule();
     void abort() noexcept;
     void setName(std::string name) noexcept;
     asp::SharedPtr<TaskDebugData> getDebugData() noexcept;
@@ -101,7 +101,7 @@ protected:
     template <typename T>
     friend struct TaskHandleBase;
 
-    TaskBase(const TaskVtable* vtable, asp::WeakPtr<Runtime> runtime)
+    TaskBase(const TaskVtable* vtable, asp::WeakPtr<Runtime> runtime) noexcept
         : m_vtable(vtable), m_runtime(std::move(runtime)) {}
 
     TaskBase(const TaskBase&) = delete;
@@ -126,15 +126,15 @@ protected:
     void notifyAwaiter(Waker* current = nullptr);
     std::optional<Waker> takeAwaiter(const Waker* current = nullptr);
 
-    static void vAbort(void* self, bool force) noexcept;
+    static void vAbort(void* self, bool force);
     static void vSchedule(void* self);
     static void vDropRef(void* self);
     static void vDropWaker(void* ptr);
     static void vRegisterAwaiter(void* ptr, Waker& waker);
     static void vNotifyAwaiter(void* ptr, Waker* current);
     static std::optional<Waker> vTakeAwaiter(void* ptr, const Waker* current);
-    static void vSetName(void* ptr, std::string name);
-    static std::string_view vGetName(void* ptr);
+    static void vSetName(void* ptr, std::string name) noexcept;
+    static std::string_view vGetName(void* ptr) noexcept;
     static asp::SharedPtr<TaskDebugData> vGetDebugData(void* ptr);
 };
 
@@ -479,8 +479,8 @@ template <typename T>
 struct TaskHandleBase {
     TaskTypedBase<T>* m_task = nullptr;
 
-    TaskHandleBase() = default;
-    TaskHandleBase(TaskTypedBase<T>* task) : m_task(task) {}
+    TaskHandleBase() noexcept = default;
+    TaskHandleBase(TaskTypedBase<T>* task) noexcept : m_task(task) {}
 
     TaskHandleBase(const TaskHandleBase&) = delete;
     TaskHandleBase& operator=(const TaskHandleBase&) = delete;
@@ -589,8 +589,8 @@ protected:
 
 template <typename T>
 struct TaskHandle : Pollable<TaskHandle<T>, T>, TaskHandleBase<T> {
-    TaskHandle() = default;
-    TaskHandle(TaskTypedBase<T>* task) : TaskHandleBase<T>(task) {}
+    TaskHandle() noexcept = default;
+    TaskHandle(TaskTypedBase<T>* task) noexcept : TaskHandleBase<T>(task) {}
 
     std::optional<T> poll(Context& cx) {
         return this->pollTask(cx);
@@ -599,8 +599,8 @@ struct TaskHandle : Pollable<TaskHandle<T>, T>, TaskHandleBase<T> {
 
 template <>
 struct TaskHandle<void> : Pollable<TaskHandle<void>, void>, TaskHandleBase<void> {
-    TaskHandle() = default;
-    TaskHandle(TaskTypedBase<void>* task) : TaskHandleBase<void>(task) {}
+    TaskHandle() noexcept = default;
+    TaskHandle(TaskTypedBase<void>* task) noexcept : TaskHandleBase<void>(task) {}
 
     bool poll(Context& cx) {
         auto res = TaskHandleBase::pollTask(cx);

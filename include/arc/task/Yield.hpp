@@ -5,7 +5,7 @@
 namespace arc {
 
 struct ARC_NODISCARD Yield : Pollable<Yield> {
-    bool poll(Context& cx) {
+    bool poll(Context& cx) noexcept {
         if (!yielded) {
             yielded = true;
             cx.wake();
@@ -24,7 +24,7 @@ inline Yield yield() noexcept {
 }
 
 struct ARC_NODISCARD Never : Pollable<Never> {
-    bool poll(Context& cx) {
+    bool poll(Context& cx) noexcept {
         return false;
     }
 };
@@ -34,7 +34,7 @@ inline Never never() noexcept {
 }
 
 struct ARC_NODISCARD CoopYield : Pollable<CoopYield> {
-    bool poll(Context& cx) {
+    bool poll(Context& cx) noexcept {
         if (yielded) return true;
 
         if (!cx.shouldCoopYield()) {

@@ -55,7 +55,7 @@ private:
     bool doPoll(Context& cx);
 };
 
-Interval interval(asp::time::Duration period);
+Interval interval(asp::time::Duration period) noexcept;
 
 }
 
