@@ -42,7 +42,7 @@ struct Shared {
         this->close();
     }
 
-    TrySendOutcome send(T& value) {
+    TrySendOutcome send(T& value) const {
         if (this->isClosed()) {
             return TrySendOutcome::Closed;
         }
@@ -51,7 +51,7 @@ struct Shared {
         return TrySendOutcome::Success;
     }
 
-    Result<T, TryRecvOutcome> tryRecv() {
+    Result<T, TryRecvOutcome> tryRecv() const {
         auto value = m_data.lock()->pop();
 
         if (value) {
@@ -61,7 +61,7 @@ struct Shared {
         return Err(TryRecvOutcome::Empty);
     }
 
-    Result<T, TryRecvOutcome> tryRecvOrRegister(RecvAwaiter<T>* awaiter, Context& cx) {
+    Result<T, TryRecvOutcome> tryRecvOrRegister(RecvAwaiter<T>* awaiter, Context& cx) const {
         auto data = m_data.lock();
         auto value = data->pop();
 
@@ -78,7 +78,7 @@ struct Shared {
         return Err(TryRecvOutcome::Empty);
     }
 
-    void deregisterReceiver(RecvAwaiter<T>* awaiter) {
+    void deregisterReceiver(RecvAwaiter<T>* awaiter) const {
         m_data.lock()->recvWaiter = nullptr;
     }
 
@@ -119,7 +119,7 @@ struct Sender {
 
     /// Sends a value over the channel. This never blocks and will send the value immediately.
     /// It is undefined behavior to call this more than once. The only possible failure case is if the channel is closed by receiver.
-    SendResult<T> send(T value) {
+    SendResult<T> send(T value) const {
         auto outcome = m_data->send(value);
         if (outcome == TrySendOutcome::Success) {
             return Ok();

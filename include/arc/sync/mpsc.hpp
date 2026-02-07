@@ -58,11 +58,11 @@ struct Shared {
         }
     }
 
-    void senderCloned() {
+    void senderCloned()  {
         m_senders.fetch_add(1, std::memory_order::relaxed);
     }
 
-    TrySendOutcome trySend(T& value) {
+    TrySendOutcome trySend(T& value) const {
         if (this->isClosed()) {
             return TrySendOutcome::Closed;
         }
@@ -71,7 +71,7 @@ struct Shared {
         return success ? TrySendOutcome::Success : TrySendOutcome::Full;
     }
 
-    TrySendOutcome trySendAtFront(T& value) {
+    TrySendOutcome trySendAtFront(T& value) const {
         if (this->isClosed()) {
             return TrySendOutcome::Closed;
         }
@@ -289,12 +289,12 @@ struct Sender {
 
     /// Attempts to send a value, waiting if there is no capacity left.
     /// Returns the value back if the channel is closed.
-    SendAwaiter<T> send(T value) {
+    SendAwaiter<T> send(T value) const {
         return SendAwaiter<T>{m_data, std::move(value)};
     }
 
     /// Attempts to send a value without blocking, returns the value if the channel is full or closed.
-    SendResult<T> trySend(T value) {
+    SendResult<T> trySend(T value) const {
         auto outcome = m_data->trySend(value);
         if (outcome == TrySendOutcome::Success) {
             return Ok();
