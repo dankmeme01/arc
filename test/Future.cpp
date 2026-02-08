@@ -16,6 +16,18 @@ TEST(future, Never) {
     EXPECT_FALSE(neverFut.poll(cx));
     EXPECT_FALSE(neverFut.poll(cx));
     EXPECT_FALSE(neverFut.poll(cx));
+
+    // never can use various types
+    auto lambda = [] -> arc::Future<int> {
+        if (true) {
+            co_return co_await arc::never<int>();
+        } else {
+            co_return 1;
+        }
+    };
+
+    auto fut = lambda();
+    EXPECT_FALSE(fut.poll(cx));
 }
 
 TEST(future, Yield) {

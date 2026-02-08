@@ -23,14 +23,16 @@ inline Yield yield() noexcept {
     return Yield{};
 }
 
-struct ARC_NODISCARD Never : Pollable<Never> {
-    bool poll(Context& cx) noexcept {
-        return false;
+template <typename T = std::monostate>
+struct ARC_NODISCARD Never : Pollable<Never<T>, T> {
+    std::optional<T> poll(Context& cx) noexcept {
+        return std::nullopt;
     }
 };
 
-inline Never never() noexcept {
-    return Never{};
+template <typename T = std::monostate>
+inline Never<T> never() noexcept {
+    return Never<T>{};
 }
 
 struct ARC_NODISCARD CoopYield : Pollable<CoopYield> {
