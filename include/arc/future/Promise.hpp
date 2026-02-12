@@ -118,12 +118,12 @@ struct PromiseBase {
     }
 
     void setException(std::exception_ptr exc) {
-        trace("SetException({}, {})", (void*)this, exc ? "yes" : "no");
+        TRACE("SetException({}, {})", (void*)this, exc ? "yes" : "no");
         m_vtable->setException(this, exc);
     }
 
     std::exception_ptr getException() {
-        trace("GetException({})", (void*)this);
+        TRACE("GetException({})", (void*)this);
         return m_vtable->getException(this);
     }
 

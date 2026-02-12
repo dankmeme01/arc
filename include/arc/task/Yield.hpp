@@ -10,9 +10,8 @@ struct ARC_NODISCARD Yield : Pollable<Yield> {
             yielded = true;
             cx.wake();
             return false;
-        } else {
-            return true;
         }
+        return true;
     }
 
 private:

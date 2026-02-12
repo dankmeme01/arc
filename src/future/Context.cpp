@@ -108,17 +108,22 @@ void Context::captureStack() {
         auto meta = pollable->m_vtable->m_metadata;
 
         std::string description{marker};
-        if (description.empty()) {
+        if (description.empty() && meta) {
             description = meta->typeName;
         }
 
-        if (meta->isFuture) {
+        if (meta && meta->isFuture) {
             struct DummyFuture : Future<> {
                 handle_type handle() const { return m_handle; }
             };
 
             auto handle = reinterpret_cast<const DummyFuture*>(pollable)->handle();
             description += fmt::format(" (handle: {})", (void*)handle.address());
+        }
+
+        if (description.empty()) {
+            // no metadata available
+            description = fmt::format("<unknown pollable @ {}>", (void*)pollable);
         }
 
         m_capturedStack.push_back(std::move(description));
