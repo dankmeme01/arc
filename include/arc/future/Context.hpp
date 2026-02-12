@@ -20,7 +20,7 @@ public:
 
     Waker* waker() noexcept;
     TaskBase* currentTask() noexcept;
-    Waker cloneWaker();
+    Waker cloneWaker() const noexcept;
     Runtime* runtime() noexcept;
     void wake() noexcept;
 
