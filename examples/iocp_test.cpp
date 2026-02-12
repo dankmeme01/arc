@@ -2,6 +2,7 @@
 
 #ifdef _WIN32
 
+#include <iostream>
 #include <Windows.h>
 
 static auto PIPE_NAME = L"\\\\.\\pipe\\arc_iocp_test_pipe";

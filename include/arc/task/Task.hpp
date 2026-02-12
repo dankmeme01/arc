@@ -10,7 +10,7 @@
 #include <arc/util/Assert.hpp>
 #include <arc/util/Config.hpp>
 
-#if 0
+#if 1
 # define TRACE trace
 #else
 # define TRACE(...) do {} while(0)
@@ -112,6 +112,7 @@ protected:
     std::optional<Waker> m_awaiter;
     std::string m_name;
     asp::SharedPtr<TaskDebugData> m_debugData;
+    std::exception_ptr m_exception;
 
     static bool shouldDestroy(uint64_t state) noexcept;
     uint64_t incref() noexcept;
@@ -397,8 +398,18 @@ public:
         TRACE("[{}] future completion: {}", this->debugName(), result);
 
         if (result) {
-            if constexpr (!IsVoid) {
-                this->m_value = future->m_vtable->getOutput<NonVoidOutput>(future, cx);
+            try {
+                if constexpr (!IsVoid) {
+                    this->m_value = future->m_vtable->getOutput<NonVoidOutput>(future, cx);
+                } else {
+                    auto func = future->m_vtable->m_getOutput;
+                    if (func) func(future, cx, nullptr);
+                }
+            } catch (const std::exception& e) {
+                this->m_exception = std::current_exception();
+
+                printError("[{}] Task terminated due to exception: {}", this->debugName(), e.what());
+                cx.dumpStack();
             }
 
             this->vDropFuture(this);
@@ -500,13 +511,18 @@ struct TaskHandleBase {
 
     /// Polls the task. Returns the return value if the future is completed,
     /// or std::nullopt if it is still pending.
-    /// Throws an exception if the task was closed before completion.
+    /// Throws an exception if the task was closed before completion or if the task threw.
     std::optional<typename TaskTypedBase<T>::NVOutput> pollTask(Context& cx) {
         this->validate();
         auto res = m_task->vPoll(m_task, cx);
         TRACE("[{}] poll result: {}", this->m_task->debugName(), res);
 
         if (res && *res) {
+            if (m_task->m_exception) {
+                TRACE("[{}] rethrowing exception from task", m_task->debugName());
+                std::rethrow_exception(m_task->m_exception);
+            }
+
             if constexpr (!std::is_void_v<T>) {
                 return std::move(m_task->m_value.value());
             } else {

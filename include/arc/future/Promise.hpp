@@ -20,6 +20,8 @@ struct PromiseVtable {
     using GetDebugNameFn = std::string_view(*)(void*);
     using GetOutputFn = void(*)(void*, void* out);
     using DeliverOutputFn = void(*)(void*, void* value);
+    using SetExceptionFn = void(*)(void*, std::exception_ptr);
+    using GetExceptionFn = std::exception_ptr(*)(void*);
 
     AttachChildFn m_attachChild = nullptr;
     GetChildFn m_getChild = nullptr;
@@ -29,6 +31,8 @@ struct PromiseVtable {
     GetDebugNameFn m_getDebugName = nullptr;
     GetOutputFn m_getOutput = nullptr;
     DeliverOutputFn m_deliverOutput = nullptr;
+    SetExceptionFn m_setException = nullptr;
+    GetExceptionFn m_getException = nullptr;
 
     void attachChild(void* self, PollableBase* child) const noexcept {
         m_attachChild(self, child);
@@ -68,6 +72,14 @@ struct PromiseVtable {
     void deliverOutput(void* self, T* value) const {
         reinterpret_cast<void (*)(void*, T*)>(m_deliverOutput)(self, value);
     }
+
+    void setException(void* self, std::exception_ptr exc) const {
+        m_setException(self, exc);
+    }
+
+    std::exception_ptr getException(void* self) const {
+        return m_getException(self);
+    }
 };
 
 struct PromiseBase {
@@ -105,6 +117,16 @@ struct PromiseBase {
         m_vtable->deliverOutput(this, value);
     }
 
+    void setException(std::exception_ptr exc) {
+        trace("SetException({}, {})", (void*)this, exc ? "yes" : "no");
+        m_vtable->setException(this, exc);
+    }
+
+    std::exception_ptr getException() {
+        trace("GetException({})", (void*)this);
+        return m_vtable->getException(this);
+    }
+
     struct CurrentAwaiter {
         PromiseBase* promise = nullptr;
 
@@ -129,6 +151,7 @@ protected:
     PollableBase* m_child = nullptr;
     Context* m_context = nullptr;
     std::string m_debugName;
+    std::exception_ptr m_exception;
 
     static void vAttachChild(void* self, PollableBase* child) noexcept {
         reinterpret_cast<PromiseBase*>(self)->m_child = child;
@@ -148,6 +171,12 @@ protected:
     static std::string_view vGetDebugName(void* self) {
         auto& name = reinterpret_cast<PromiseBase*>(self)->m_debugName;
         return name;
+    }
+    static void vSetException(void* self, std::exception_ptr exc) {
+        reinterpret_cast<PromiseBase*>(self)->m_exception = exc;
+    }
+    static std::exception_ptr vGetException(void* self) {
+        return reinterpret_cast<PromiseBase*>(self)->m_exception;
     }
 };
 
@@ -170,6 +199,8 @@ protected:
         .m_getDebugName = &PromiseBase::vGetDebugName,
         .m_getOutput = nullptr,
         .m_deliverOutput = nullptr,
+        .m_setException = &PromiseBase::vSetException,
+        .m_getException = &PromiseBase::vGetException,
     };
 };
 
@@ -206,6 +237,8 @@ protected:
             auto value = reinterpret_cast<R*>(valuep);
             me->m_value = std::move(*value);
         },
+        .m_setException = &PromiseBase::vSetException,
+        .m_getException = &PromiseBase::vGetException,
     };
 };
 
@@ -226,7 +259,9 @@ struct Promise : std::conditional_t<
     void unhandled_exception() {
         trace("[Promise {}] unhandled_exception()", (void*)this);
 
-        this->getContext()->onUnhandledException(std::current_exception());
+        auto exc = std::current_exception();
+        this->getContext()->onUnhandledException();
+        this->setException(exc);
     }
 
     // Defined in Future.hpp

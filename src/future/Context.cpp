@@ -46,7 +46,7 @@ void Context::_installWaker(Waker* waker) noexcept {
 void Context::setup(Instant taskDeadline) noexcept {
     m_taskDeadline = taskDeadline.rawNanos();
     m_futurePolls = 0;
-    m_currentException = nullptr;
+    m_unused = nullptr;
     m_stack.clear();
     m_capturedStack.clear();
 }
@@ -68,7 +68,7 @@ void Context::pushFrame(const PollableBase* pollable) {
 
 void Context::popFrame() noexcept {
     ARC_DEBUG_ASSERT(!m_stack.empty(), "popFrame() called on empty future stack");
-    // trace("popping frame {}", (void*)m_stack.back());
+    // trace("popping frame {}", (void*)&m_stack.back());
     m_stack.pop_back();
 }
 
@@ -91,23 +91,11 @@ void Context::printFutureStack() {
     m_capturedStack = std::move(prevStack);
 }
 
-void Context::onUnhandledException(std::exception_ptr ptr) {
+void Context::onUnhandledException() {
     // capture the stack trace, as later when dumpStack() is invoked,
     // futures might already be destroyed and we will run into UB
     if (m_capturedStack.empty()) {
         this->captureStack();
-    }
-    printWarn("Captured exception (valid: {})", !!ptr);
-    if (ptr) {
-        m_currentException = ptr;
-    } else {
-        m_currentException = std::make_exception_ptr(std::runtime_error("unknown exception (null when capturing)"));
-    }
-}
-
-void Context::maybeRethrow() {
-    if (auto exc = std::exchange(m_currentException, nullptr)) {
-        std::rethrow_exception(exc);
     }
 }
 
@@ -135,10 +123,12 @@ void Context::captureStack() {
 
         m_capturedStack.push_back(std::move(description));
     }
+
+    trace("Captured {} frames", m_capturedStack.size());
 }
 
 void Context::dumpStack() {
-    printError("=== Future stack trace ===");
+    printError("=== Future stack trace (most recent call first) ===");
     if (!m_capturedStack.empty()) {
         for (const auto& line : m_capturedStack) {
             printError(" - {}", line);

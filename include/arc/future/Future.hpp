@@ -118,7 +118,6 @@ struct ARC_NODISCARD Future : PollableBase {
 
             cx->pushFrame(this);
             m_handle.resume();
-            cx->maybeRethrow();
             cx->popFrame();
 
             if (m_handle.done()) {
@@ -132,8 +131,9 @@ struct ARC_NODISCARD Future : PollableBase {
     T await_resume() {
         TRACE("[{}] await_resume()", this->debugName());
 
-        auto cx = this->promise().getContext();
-        TRACE("[{}] await_resume(): context from promise: {}", this->debugName(), (void*)cx);
+        auto& promise = this->promise();
+        auto cx = promise.getContext();
+        TRACE("[{}] await_resume(): context: {}, exception", this->debugName(), (void*)cx);
 
         ARC_DEBUG_ASSERT(cx, "context is null in await_resume");
 
@@ -147,10 +147,12 @@ struct ARC_NODISCARD Future : PollableBase {
         auto resume = [&] {
             auto& promise = this->promise();
             promise.setContext(&cx);
+
+            cx.pushFrame(this);
             m_handle.resume();
+            cx.popFrame();
 
             if (m_handle.done()) {
-                cx.maybeRethrow();
                 return true;
             }
             return false;
@@ -159,7 +161,18 @@ struct ARC_NODISCARD Future : PollableBase {
         TRACE("[{}] poll(), child: {}", this->debugName(), (void*)child);
 
         if (child) {
-            bool done = child->m_vtable->poll(child, cx);
+            cx.pushFrame(this);
+
+            bool done;
+            try {
+                done = child->m_vtable->poll(child, cx);
+            } catch (...) {
+                cx.onUnhandledException();
+                cx.popFrame();
+                throw;
+            }
+            cx.popFrame();
+
             TRACE("[{}] poll() -> child done: {}", this->debugName(), done);
             if (done) {
                 this->promise().attachChild(nullptr);
@@ -174,10 +187,8 @@ struct ARC_NODISCARD Future : PollableBase {
         }
     }
 
-
     T getOutput(Context& cx) {
-        cx.maybeRethrow();
-
+        this->maybeRethrow();
         if constexpr (!std::is_void_v<T>) {
             return this->promise().template getOutput<T>();
         }
@@ -191,7 +202,9 @@ protected:
         .m_poll = [](void* self, Context& cx) {
             return reinterpret_cast<Future*>(self)->poll(cx);
         },
-        .m_getOutput = nullptr
+        .m_getOutput = [](void* self, Context& cx, void* outp) {
+            reinterpret_cast<Future*>(self)->getOutput(cx);
+        },
     };
 
     static constexpr PollableVtable vtableNonVoid = {
@@ -204,6 +217,14 @@ protected:
             out->init(reinterpret_cast<Future*>(self)->getOutput(cx));
         },
     };
+
+    void maybeRethrow() {
+        auto exc = this->promise().getException();
+        trace("[{}] maybeRethrow(), exception: {}", this->debugName(), exc ? "yes" : "no");
+        if (exc) {
+            std::rethrow_exception(exc);
+        }
+    }
 };
 
 template <typename T>

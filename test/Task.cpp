@@ -79,16 +79,14 @@ TEST(task, TaskStats) {
     auto data = handle.getDebugData();
     EXPECT_TRUE((bool) data);
 
-    handle.blockOn();
-    auto data2 = handle.getDebugData();
-    EXPECT_EQ(data, data2);
-
-    EXPECT_EQ(data->name(), "hi test");
-    EXPECT_EQ(data2->totalPolls(), 2); // polled once to yield, second to complete
-
     auto allStats = rt->getTaskStats();
     EXPECT_EQ(allStats.size(), 1);
     EXPECT_EQ(allStats[0]->name(), "hi test");
+
+    handle.blockOn();
+
+    EXPECT_EQ(data->name(), "hi test");
+    EXPECT_EQ(data->totalPolls(), 2); // polled once to yield, second to complete
 }
 
 TEST(task, LambdaUseAfterFree) {

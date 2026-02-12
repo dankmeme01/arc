@@ -34,8 +34,8 @@ public:
     void markFrameFromSource(const std::source_location& loc = std::source_location::current());
 
     void printFutureStack();
-    void onUnhandledException(std::exception_ptr ptr);
-    void maybeRethrow();
+    void dumpStack();
+    void onUnhandledException();
 
 private:
     friend class Runtime;
@@ -52,12 +52,11 @@ private:
     Runtime* m_runtime;
     uint32_t m_futurePolls = 0;
     uint64_t m_taskDeadline = 0;
-    std::exception_ptr m_currentException;
+    std::exception_ptr m_unused;
     std::vector<StackEntry> m_stack;
     std::vector<std::string> m_capturedStack;
     // -- all fields above are expected to be stable and not change --
 
-    void dumpStack();
     void captureStack();
 };
 

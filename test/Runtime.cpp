@@ -26,7 +26,10 @@ TEST(Runtime, DisabledIo) {
     EXPECT_NO_THROW(rt->signalDriver());
 
     arc::setGlobalRuntime(rt.get());
-    EXPECT_THROW((void) arc::UdpSocket::bindAny().poll(cx), std::exception);
+
+    EXPECT_THROW(rt->blockOn([] -> arc::Future<> {
+        (void) co_await arc::UdpSocket::bindAny();
+    }()), std::exception);
 }
 
 TEST(Runtime, DisabledSignal) {
