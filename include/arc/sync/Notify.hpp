@@ -25,7 +25,7 @@ struct ARC_NODISCARD Notified : Pollable<Notified> {
         Notified,
     };
 
-    explicit Notified(asp::SharedPtr<NotifyState> state) : m_notify(std::move(state)) {}
+    explicit Notified(asp::SharedPtr<NotifyState> state) noexcept : m_notify(std::move(state)) {}
 
     // Because atomic cannot be moved, we must manually define move constructors
     Notified(Notified&&) noexcept;
@@ -52,7 +52,7 @@ public:
     Notify& operator=(const Notify& other) = default;
 
     /// Returns an awaitable future that completes when notified.
-    Notified notified() const;
+    Notified notified() const noexcept;
 
     /// Notifies one waiter. If no waiter is present, up to a single permit can be stored,
     /// and the next call to `notified()` will complete immediately. This does not happen if `store` is false.

@@ -1,15 +1,29 @@
 #include "common.hpp"
 
-Future<> asyncMain() {
-    int x = co_await arc::pollFunc([] -> std::optional<int> {
-        return 42;
-    });
+struct ThrowingPollable : arc::Pollable<ThrowingPollable> {
+    bool poll(arc::Context& cx) {
+        throw std::runtime_error("This pollable always throws");
+        return true;
+    }
+};
 
-    printWarn("{}", x);
-    x = co_await arc::pollFunc([](arc::Context& cx) -> std::optional<int> {
-        return 42;
-    });
-    printWarn("{}", x);
+struct NothrowPollable : arc::NoexceptPollable<NothrowPollable, void> {
+    bool poll(arc::Context& cx) noexcept {
+        return true;
+    }
+};
+
+Future<> asyncMain() {
+    co_await NothrowPollable{};
+
+    try {
+        co_await ThrowingPollable{};
+        fmt::println("Caught no exception");
+    } catch (const std::exception& e) {
+        fmt::println("Caught exception from ThrowingPollable: {}", e.what());
+    } catch (...) {
+        fmt::println("Caught unknown exception from ThrowingPollable");
+    }
 }
 
 ARC_DEFINE_MAIN_NT(asyncMain, 1);

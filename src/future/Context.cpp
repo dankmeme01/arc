@@ -25,7 +25,7 @@ TaskBase* Context::currentTask() noexcept {
     return nullptr;
 }
 
-Waker Context::cloneWaker() {
+Waker Context::cloneWaker() const noexcept {
     ARC_ASSERT(m_waker, "no current waker");
     return m_waker->clone();
 }
@@ -49,6 +49,7 @@ void Context::setup(Instant taskDeadline) noexcept {
     m_unused = nullptr;
     m_stack.clear();
     m_capturedStack.clear();
+    m_stack.reserve(32);
 }
 
 bool Context::shouldCoopYield() noexcept {

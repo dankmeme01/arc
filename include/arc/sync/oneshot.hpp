@@ -42,7 +42,7 @@ struct Shared {
         this->close();
     }
 
-    TrySendOutcome send(T& value) const {
+    TrySendOutcome send(T& value) const noexcept(Storage<T>::NoexceptMovable) {
         if (this->isClosed()) {
             return TrySendOutcome::Closed;
         }
@@ -51,7 +51,7 @@ struct Shared {
         return TrySendOutcome::Success;
     }
 
-    Result<T, TryRecvOutcome> tryRecv() const {
+    Result<T, TryRecvOutcome> tryRecv() const noexcept(Storage<T>::NoexceptMovable) {
         auto value = m_data.lock()->pop();
 
         if (value) {
@@ -61,7 +61,7 @@ struct Shared {
         return Err(TryRecvOutcome::Empty);
     }
 
-    Result<T, TryRecvOutcome> tryRecvOrRegister(RecvAwaiter<T>* awaiter, Context& cx) const {
+    Result<T, TryRecvOutcome> tryRecvOrRegister(RecvAwaiter<T>* awaiter, Context& cx) const noexcept(Storage<T>::NoexceptMovable) {
         auto data = m_data.lock();
         auto value = data->pop();
 
@@ -119,7 +119,7 @@ struct Sender {
 
     /// Sends a value over the channel. This never blocks and will send the value immediately.
     /// It is undefined behavior to call this more than once. The only possible failure case is if the channel is closed by receiver.
-    SendResult<T> send(T value) const {
+    SendResult<T> send(T value) const noexcept(Storage<T>::NoexceptMovable) {
         auto outcome = m_data->send(value);
         if (outcome == TrySendOutcome::Success) {
             return Ok();
@@ -133,8 +133,8 @@ private:
 };
 
 template <typename T>
-struct ARC_NODISCARD RecvAwaiter : Pollable<RecvAwaiter<T>, RecvResult<T>> {
-    explicit RecvAwaiter(std::shared_ptr<Shared<T>> data)
+struct ARC_NODISCARD RecvAwaiter : Pollable<RecvAwaiter<T>, RecvResult<T>, Storage<T>::NoexceptMovable> {
+    explicit RecvAwaiter(std::shared_ptr<Shared<T>> data) noexcept
         : m_data(std::move(data)) {}
 
     RecvAwaiter(RecvAwaiter&& other) noexcept
@@ -152,7 +152,7 @@ struct ARC_NODISCARD RecvAwaiter : Pollable<RecvAwaiter<T>, RecvResult<T>> {
         if (m_data) m_data->deregisterReceiver(this);
     }
 
-    std::optional<RecvResult<T>> poll(Context& cx) {
+    std::optional<RecvResult<T>> poll(Context& cx) noexcept(Storage<T>::NoexceptMovable) {
         // We have two valid states for being polled, and the 3rd completed state:
         // 1. Initial state, m_value is not set, m_waker is not set
         // 2. Waiting state, m_value is not set, m_waker is set
@@ -201,7 +201,7 @@ private:
     asp::SpinLock<> m_lock;
 
     /// Attempts to externally insert the value into this receiver, only works if in the waiting state
-    bool tryDeliver(T& value) {
+    bool tryDeliver(T& value) noexcept(Storage<T>::NoexceptMovable) {
         auto guard = m_lock.lock();
         if (!m_waker || m_value) {
             return false;
@@ -232,11 +232,11 @@ struct Receiver {
         if (m_data) m_data->receiverDropped();
     }
 
-    RecvAwaiter<T> recv() {
+    RecvAwaiter<T> recv() noexcept {
         return RecvAwaiter<T>{m_data};
     }
 
-    Result<T, TryRecvOutcome> tryRecv() {
+    Result<T, TryRecvOutcome> tryRecv() noexcept(Storage<T>::NoexceptMovable) {
         return m_data->tryRecv();
     }
 

@@ -30,6 +30,8 @@ enum class TryRecvOutcome {
 
 template <typename T, typename SendAwaiter, typename RecvAwaiter>
 struct MpscStorage {
+    static constexpr bool NoexceptMovable = std::is_nothrow_move_constructible_v<T> && std::is_nothrow_move_assignable_v<T>;
+
     explicit MpscStorage(std::optional<size_t> capacity) : capacity(capacity) {}
 
     std::deque<T> queue;
@@ -42,7 +44,7 @@ struct MpscStorage {
         return recvWaiter || !capacity || queue.size() < *capacity;
     }
 
-    void clear() {
+    void clear() noexcept {
         queue.clear();
     }
 
@@ -50,13 +52,13 @@ struct MpscStorage {
         sendWaiters.push_back(waiter);
     }
 
-    void registerRecvWaiter(RecvAwaiter* waiter) {
+    void registerRecvWaiter(RecvAwaiter* waiter) noexcept {
         recvWaiter = waiter;
     }
 
     /// Pops and returns a value from the queue if one is present.
     /// Unblocks a waiting sender if applicable.
-    std::optional<T> pop() {
+    std::optional<T> pop() noexcept(NoexceptMovable) {
         if (!queue.empty()) {
             T value = std::move(queue.front());
             queue.pop_front();
@@ -103,13 +105,14 @@ private:
     }
 
     /// Unblocks a sender, takes their value and pushes to the queue
-    void unblockSender() {
+    void unblockSender() noexcept(NoexceptMovable) {
+        // effectively noexcept if the caller ensured there's capacity
         if (auto val = this->takeFromSender()) {
             queue.push_back(std::move(*val));
         }
     }
 
-    std::optional<T> takeFromSender() {
+    std::optional<T> takeFromSender() noexcept(NoexceptMovable) {
         if (sendWaiters.empty()) {
             return std::nullopt;
         }
@@ -124,6 +127,8 @@ private:
 
 template <typename T, typename RecvAwaiter>
 struct OneshotStorage {
+    static constexpr bool NoexceptMovable = std::is_nothrow_move_constructible_v<T> && std::is_nothrow_move_assignable_v<T>;
+
     explicit OneshotStorage() {}
 
     std::optional<T> value;
@@ -135,12 +140,12 @@ struct OneshotStorage {
         return true;
     }
 
-    void registerRecvWaiter(RecvAwaiter* waiter) {
+    void registerRecvWaiter(RecvAwaiter* waiter) noexcept {
         recvWaiter = waiter;
     }
 
     /// Returns the value, if present.
-    std::optional<T> pop() {
+    std::optional<T> pop() noexcept(NoexceptMovable) {
         if (value) {
             return std::move(*value);
         }
@@ -148,7 +153,7 @@ struct OneshotStorage {
     }
 
     /// Attempts to push a value directly into the receiver's slot if one is present, otherwise stores it.
-    void push(T& value) {
+    void push(T& value) noexcept(NoexceptMovable) {
         if (this->deliverToReceiver(value)) {
             return;
         }
@@ -158,7 +163,7 @@ struct OneshotStorage {
     }
 
 private:
-    bool deliverToReceiver(T& value) {
+    bool deliverToReceiver(T& value) noexcept(NoexceptMovable) {
         if (recvWaiter && recvWaiter->tryDeliver(value)) {
             recvWaiter = nullptr;
             return true;

@@ -22,17 +22,17 @@ enum class MissedTickBehavior {
 };
 
 struct Interval {
-    explicit Interval(asp::time::Duration period);
+    explicit Interval(asp::time::Duration period) noexcept;
     ~Interval();
     Interval(Interval&& other) noexcept;
     Interval& operator=(Interval&& other) noexcept;
 
-    struct ARC_NODISCARD Awaiter : Pollable<Awaiter> {
+    struct ARC_NODISCARD Awaiter : NoexceptPollable<Awaiter> {
         explicit Awaiter(Interval* interval) : m_interval(interval) {}
         Awaiter(Awaiter&&) noexcept = default;
         Awaiter& operator=(Awaiter&&) noexcept = default;
 
-        bool poll(Context& cx);
+        bool poll(Context& cx) noexcept;
     private:
         Interval* m_interval;
     };
@@ -52,7 +52,7 @@ private:
     uint64_t m_id = 0;
     asp::WeakPtr<Runtime> m_runtime;
 
-    bool doPoll(Context& cx);
+    bool doPoll(Context& cx) noexcept;
 };
 
 Interval interval(asp::time::Duration period) noexcept;

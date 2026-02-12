@@ -37,7 +37,7 @@ struct BlockingTask : BlockingTaskBase {
     BlockingTask(asp::WeakPtr<Runtime> runtime, arc::MoveOnlyFunction<T()> func)
         : BlockingTaskBase(std::move(runtime), &vtable), m_func(std::move(func)) {}
 
-    std::optional<T> pollTask(Context& cx) {
+    std::optional<T> pollTask(Context& cx) noexcept {
         auto data = m_data.lock();
 
         if (data->m_result) {
@@ -134,7 +134,7 @@ private:
 };
 
 template <typename T>
-struct BlockingTaskHandle : Pollable<BlockingTaskHandle<T>, T> {
+struct BlockingTaskHandle : NoexceptPollable<BlockingTaskHandle<T>, T> {
 public:
     BlockingTaskHandle(asp::SharedPtr<BlockingTask<T>> task) : m_task(std::move(task)) {}
     BlockingTaskHandle(const BlockingTaskHandle&) = delete;
@@ -142,13 +142,13 @@ public:
     BlockingTaskHandle(BlockingTaskHandle&& other) noexcept = default;
     BlockingTaskHandle& operator=(BlockingTaskHandle&& other) noexcept = default;
 
-    auto poll(Context& cx) {
+    auto poll(Context& cx) noexcept {
         return m_task->pollTask(cx);
     }
 
     /// Blocks the current thread until the task is complete.
     /// Do not use in async code - simply co_await instead.
-    auto blockOn() {
+    auto blockOn() noexcept {
         CondvarWaker cvw{};
         auto waker = cvw.waker();
         Context cx { &waker, nullptr };

@@ -67,7 +67,7 @@ bool Notified::poll(Context& cx) {
     }
 }
 
-Notified Notify::notified() const {
+Notified Notify::notified() const noexcept {
     return Notified{m_state};
 }
 

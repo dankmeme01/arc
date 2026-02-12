@@ -140,16 +140,24 @@ struct ARC_NODISCARD Future : PollableBase {
         return this->getOutput(*cx);
     }
 
-    bool poll(Context& cx) {
+    bool poll(Context& cx) noexcept {
         ARC_DEBUG_ASSERT(m_handle, "polling a future with an invalid handle");
 
         auto child = this->child();
-        auto resume = [&] {
+        auto resume = [&] noexcept {
             auto& promise = this->promise();
             promise.setContext(&cx);
 
             cx.pushFrame(this);
-            m_handle.resume();
+
+            try {
+                m_handle.resume();
+            } catch (const std::exception& e) {
+                printError("[{}] future threw when calling handle.resume(): {}", this->debugName(), e.what());
+                cx.dumpStack();
+                std::terminate();
+            }
+
             cx.popFrame();
 
             if (m_handle.done()) {
@@ -163,14 +171,7 @@ struct ARC_NODISCARD Future : PollableBase {
         if (child) {
             cx.pushFrame(this);
 
-            bool done;
-            try {
-                done = child->m_vtable->poll(child, cx);
-            } catch (...) {
-                cx.onUnhandledException();
-                cx.popFrame();
-                throw;
-            }
+            bool done = child->m_vtable->poll(child, cx);
             cx.popFrame();
 
             TRACE("[{}] poll() -> child done: {}", this->debugName(), done);
@@ -199,7 +200,7 @@ protected:
 
     static constexpr PollableVtable vtableVoid = {
         .m_metadata = PollableMetadata::create<Future, true>(),
-        .m_poll = [](void* self, Context& cx) {
+        .m_poll = [](void* self, Context& cx) noexcept {
             return reinterpret_cast<Future*>(self)->poll(cx);
         },
         .m_getOutput = [](void* self, Context& cx, void* outp) {
@@ -209,7 +210,7 @@ protected:
 
     static constexpr PollableVtable vtableNonVoid = {
         .m_metadata = PollableMetadata::create<Future, true>(),
-        .m_poll = [](void* self, Context& cx) {
+        .m_poll = [](void* self, Context& cx) noexcept {
             return reinterpret_cast<Future*>(self)->poll(cx);
         },
         .m_getOutput = [](void* self, Context& cx, void* outp) {

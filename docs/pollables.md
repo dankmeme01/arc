@@ -113,7 +113,7 @@ co_await Yield{};
 A couple of quick notes:
 * `arc::Pollable` accepts two template arguments - the concrete pollable type (this is [CRTP](https://en.wikipedia.org/wiki/Curiously_recurring_template_pattern)) and the actual output type (if the poll function returns `std::optional<int>`, you want simply `int` there)
 * `void` can be omitted for void pollables, `arc::Pollable<Yield>` is valid
-* You should make your `poll` method `noexcept` whenever possible (if it can't throw) - this lets Arc eliminate all exception handling code for your pollable, thus reducing its size and binary bloat.
+* If your pollable cannot throw, you should always mark the `poll` method as `noexcept` and inherit `arc::NoexceptPollable<Derived, T>` instead - this lets Arc eliminate all exception handling code for your pollable, thus reducing its size and binary bloat.
 
 The main advantage of pollable structs over `pollFunc` is that they're reusable and easier to manage (e.g. you can add helper methods or fields). Under the hood, `pollFunc` simply creates an anonymous pollable struct for you, so there's little difference between them.
 

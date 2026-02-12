@@ -4,7 +4,7 @@
 
 namespace arc {
 
-struct ARC_NODISCARD Yield : Pollable<Yield> {
+struct ARC_NODISCARD Yield : NoexceptPollable<Yield> {
     bool poll(Context& cx) noexcept {
         if (!yielded) {
             yielded = true;
@@ -23,7 +23,7 @@ inline Yield yield() noexcept {
 }
 
 template <typename T = std::monostate>
-struct ARC_NODISCARD Never : Pollable<Never<T>, T> {
+struct ARC_NODISCARD Never : NoexceptPollable<Never<T>, T> {
     std::optional<T> poll(Context& cx) noexcept {
         return std::nullopt;
     }
@@ -34,7 +34,7 @@ inline Never<T> never() noexcept {
     return Never<T>{};
 }
 
-struct ARC_NODISCARD CoopYield : Pollable<CoopYield> {
+struct ARC_NODISCARD CoopYield : NoexceptPollable<CoopYield> {
     bool poll(Context& cx) noexcept {
         if (yielded) return true;
 

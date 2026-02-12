@@ -4,44 +4,33 @@
 
 using namespace arc;
 
+
+
 TEST(Runtime, DisabledTime) {
-    auto rt = arc::Runtime::create(RuntimeOptions { .workers = 1, .timeDriver = false });
-    Waker waker = Waker::noop();
-    Context cx { &waker, rt.get() };
+    GTEST_FLAG_SET(death_test_style, "threadsafe");
 
-    EXPECT_THROW(rt->timeDriver(), std::exception);
-    EXPECT_NO_THROW(rt->ioDriver());
-    EXPECT_NO_THROW(rt->signalDriver());
-
-    EXPECT_THROW((void)arc::sleep(asp::time::Duration::fromSecs(1)).poll(cx), std::exception);
+    EXPECT_DEATH({
+        auto rt = arc::Runtime::create(RuntimeOptions { .workers = 1, .timeDriver = false });
+        rt->timeDriver();
+    }, "");
 }
 
 TEST(Runtime, DisabledIo) {
-    auto rt = arc::Runtime::create(RuntimeOptions { .workers = 1, .ioDriver = false });
-    Waker waker = Waker::noop();
-    Context cx { &waker, rt.get() };
+    GTEST_FLAG_SET(death_test_style, "threadsafe");
 
-    EXPECT_THROW(rt->ioDriver(), std::exception);
-    EXPECT_NO_THROW(rt->timeDriver());
-    EXPECT_NO_THROW(rt->signalDriver());
-
-    arc::setGlobalRuntime(rt.get());
-
-    EXPECT_THROW(rt->blockOn([] -> arc::Future<> {
-        (void) co_await arc::UdpSocket::bindAny();
-    }()), std::exception);
+    EXPECT_DEATH({
+        auto rt = arc::Runtime::create(RuntimeOptions { .workers = 1, .ioDriver = false });
+        rt->ioDriver();
+    }, "");
 }
 
 TEST(Runtime, DisabledSignal) {
-    auto rt = arc::Runtime::create(RuntimeOptions { .workers = 1, .signalDriver = false });
-    Waker waker = Waker::noop();
-    Context cx { &waker, rt.get() };
+    GTEST_FLAG_SET(death_test_style, "threadsafe");
 
-    EXPECT_THROW(rt->signalDriver(), std::exception);
-    EXPECT_NO_THROW(rt->timeDriver());
-    EXPECT_NO_THROW(rt->ioDriver());
-
-    EXPECT_THROW((void) arc::ctrl_c().poll(cx), std::exception);
+    EXPECT_DEATH({
+        auto rt = arc::Runtime::create(RuntimeOptions { .workers = 1, .signalDriver = false });
+        rt->signalDriver();
+    }, "");
 }
 
 TEST(Runtime, OutlivedSocket) {

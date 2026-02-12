@@ -103,7 +103,7 @@ struct Shared {
         return TrySendOutcome::Full;
     }
 
-    void deregisterSender(SendAwaiter<T>* awaiter) {
+    void deregisterSender(SendAwaiter<T>* awaiter) noexcept {
         auto data = m_data.lock();
         auto it = std::find(data->sendWaiters.begin(), data->sendWaiters.end(), awaiter);
         if (it != data->sendWaiters.end()) {
@@ -111,7 +111,7 @@ struct Shared {
         }
     }
 
-    Result<T, TryRecvOutcome> tryRecv() {
+    Result<T, TryRecvOutcome> tryRecv() noexcept(ChannelData<T>::NoexceptMovable) {
         auto value = m_data.lock()->pop();
 
         if (value) {
@@ -121,7 +121,7 @@ struct Shared {
         return Err(this->isClosed() ? TryRecvOutcome::Closed : TryRecvOutcome::Empty);
     }
 
-    Result<T, TryRecvOutcome> tryRecvOrRegister(RecvAwaiter<T>* awaiter, Context& cx) {
+    Result<T, TryRecvOutcome> tryRecvOrRegister(RecvAwaiter<T>* awaiter, Context& cx) noexcept(ChannelData<T>::NoexceptMovable) {
         auto data = m_data.lock();
         auto value = data->pop();
 
@@ -142,7 +142,7 @@ struct Shared {
         return Err(TryRecvOutcome::Empty);
     }
 
-    void deregisterReceiver(RecvAwaiter<T>* awaiter) {
+    void deregisterReceiver(RecvAwaiter<T>* awaiter) noexcept {
         m_data.lock()->recvWaiter = nullptr;
     }
 
@@ -155,7 +155,7 @@ struct Shared {
         return empty;
     }
 
-    bool empty() const {
+    bool empty() const noexcept {
         return m_data.lock()->queue.empty();
     }
 
@@ -241,7 +241,7 @@ private:
     asp::SpinLock<> m_lock;
 
     /// Attempts to externally take the value from this sender, only works if in the waiting state
-    std::optional<T> tryTake() {
+    std::optional<T> tryTake() noexcept(ChannelData<T>::NoexceptMovable) {
         auto guard = m_lock.lock();
         if (!m_waker || !m_value) {
             return std::nullopt;
@@ -306,7 +306,7 @@ struct Sender {
     /// Checks if the channel has any capacity to accept new messages.
     /// Note that this is only a hint, if this returns `true` there is no
     /// guarantee that a subsequent `send()` will succeed without blocking.
-    bool hasCapacity() const {
+    bool hasCapacity() const noexcept {
         return m_data->hasCapacity();
     }
 
@@ -315,8 +315,8 @@ private:
 };
 
 template <typename T>
-struct ARC_NODISCARD RecvAwaiter : Pollable<RecvAwaiter<T>, RecvResult<T>> {
-    explicit RecvAwaiter(std::shared_ptr<Shared<T>> data)
+struct ARC_NODISCARD RecvAwaiter : Pollable<RecvAwaiter<T>, RecvResult<T>, ChannelData<T>::NoexceptMovable> {
+    explicit RecvAwaiter(std::shared_ptr<Shared<T>> data) noexcept
         : m_data(std::move(data)) {}
 
     RecvAwaiter(RecvAwaiter&& other) noexcept
@@ -343,7 +343,7 @@ struct ARC_NODISCARD RecvAwaiter : Pollable<RecvAwaiter<T>, RecvResult<T>> {
         }
     }
 
-    std::optional<RecvResult<T>> poll(Context& cx) {
+    std::optional<RecvResult<T>> poll(Context& cx) noexcept(ChannelData<T>::NoexceptMovable) {
         // We have two valid states for being polled, and the 3rd completed state:
         // 1. Initial state, m_value is not set, m_waker is not set
         // 2. Waiting state, m_value is not set, m_waker is set
@@ -427,11 +427,11 @@ struct Receiver {
         if (m_data) m_data->receiverDropped();
     }
 
-    RecvAwaiter<T> recv() {
+    RecvAwaiter<T> recv() noexcept {
         return RecvAwaiter<T>{m_data};
     }
 
-    Result<T, TryRecvOutcome> tryRecv() {
+    Result<T, TryRecvOutcome> tryRecv() noexcept(ChannelData<T>::NoexceptMovable) {
         return m_data->tryRecv();
     }
 
@@ -439,7 +439,7 @@ struct Receiver {
         return m_data->drain();
     }
 
-    bool empty() const {
+    bool empty() const noexcept {
         return m_data->empty();
     }
 

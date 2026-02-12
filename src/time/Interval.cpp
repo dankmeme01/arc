@@ -9,13 +9,13 @@ using Awaiter = Interval::Awaiter;
 
 // Awaiter
 
-bool Awaiter::poll(Context& cx) {
+bool Awaiter::poll(Context& cx) noexcept {
     return m_interval->doPoll(cx);
 }
 
 // Interval
 
-Interval::Interval(Duration period)
+Interval::Interval(Duration period) noexcept
     : m_current(Instant::now()),
       m_period(period) {}
 
@@ -43,7 +43,7 @@ Interval& Interval::operator=(Interval&& other) noexcept {
     return *this;
 }
 
-bool Interval::doPoll(Context& cx) {
+bool Interval::doPoll(Context& cx) noexcept {
     m_runtime = cx.runtime()->weakFromThis();
     auto& driver = cx.runtime()->timeDriver();
     auto now = Instant::now();

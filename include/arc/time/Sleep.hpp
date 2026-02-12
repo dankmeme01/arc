@@ -12,14 +12,14 @@ ARC_FATAL_NO_FEATURE(time)
 
 namespace arc {
 
-struct ARC_NODISCARD Sleep : Pollable<Sleep> {
+struct ARC_NODISCARD Sleep : NoexceptPollable<Sleep> {
     explicit Sleep(asp::time::Instant expiry) noexcept : m_expiry(expiry) {}
     ~Sleep();
 
     Sleep(Sleep&& other) noexcept;
     Sleep& operator=(Sleep&& other) noexcept;
 
-    bool poll(Context& cx);
+    bool poll(Context& cx) noexcept;
 
 private:
     asp::time::Instant m_expiry;

@@ -6,7 +6,7 @@ using namespace asp::time;
 
 namespace arc {
 
-bool Sleep::poll(Context& cx) {
+bool Sleep::poll(Context& cx) noexcept {
     if (cx.shouldCoopYield()) {
         return false;
     }
