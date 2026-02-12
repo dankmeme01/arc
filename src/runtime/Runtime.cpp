@@ -207,19 +207,54 @@ void Runtime::workerLoopWrapper(WorkerData& data) {
     }
 }
 
+class PeriodicScheduler {
+public:
+    PeriodicScheduler(Instant start, Duration offset, Duration increment)
+        : m_base(start + offset), m_next(m_base), m_increment(increment) {}
+
+    bool tick(const Instant& now = Instant::now()) {
+        if (now < m_next) {
+            return false;
+        }
+
+        // recalculate the time of the next tick
+        auto elapsed = now.durationSince(m_base);
+        m_tick = elapsed.nanos() / m_increment.nanos() + 1; // add 1 since the first tick is actually -1
+        m_next = m_base + m_increment * m_tick;
+
+        return true;
+    }
+
+    const Instant& next() const {
+        return m_next;
+    }
+
+private:
+    Instant m_base;
+    Instant m_next;
+    Duration m_increment;
+    uint64_t m_tick = 0;
+
+    void catchUp() {}
+};
+
 void Runtime::workerLoop(WorkerData& data, Context& cx) {
+    auto start = Instant::now();
+
     float mult = std::powf(m_workers.size(), 0.9f);
     auto timerIncrement = Duration::fromMicros(500.f * mult);
     auto ioIncrement = Duration::fromMicros(800.f * mult);
 
-    auto timerOffset = (timerIncrement * data.id) / m_workers.size();
-    auto ioOffset = (ioIncrement * data.id) / m_workers.size();
-
-    auto start = Instant::now();
-    auto nextTimerTask = start + timerOffset;
-    auto nextIoTask = start + ioOffset;
-    uint64_t timerTick = 0;
-    uint64_t ioTick = 0;
+    PeriodicScheduler timerSched {
+        start,
+        (timerIncrement * data.id) / m_workers.size(),
+        timerIncrement,
+    };
+    PeriodicScheduler ioSched {
+        start,
+        (ioIncrement * data.id) / m_workers.size(),
+        ioIncrement,
+    };
 
     while (!m_stopFlag.load(::acquire)) {
         auto now = Instant::now();
@@ -227,16 +262,11 @@ void Runtime::workerLoop(WorkerData& data, Context& cx) {
 
         // every once in a while, run timer and io drivers
 #ifdef ARC_FEATURE_TIME
-        if (m_timeDriver && now >= nextTimerTask) {
+        if (m_timeDriver && timerSched.tick(now)) {
             m_timeDriver->doWork();
-
-            do {
-                timerTick++;
-                nextTimerTask = start + timerOffset + timerTick * timerIncrement;
-            } while (now >= nextTimerTask);
         }
         if (m_timeDriver) {
-            deadline = (std::min)(deadline, nextTimerTask);
+            deadline = (std::min)(deadline, timerSched.next());
         }
 #endif
 
@@ -250,21 +280,16 @@ void Runtime::workerLoop(WorkerData& data, Context& cx) {
 # endif
 
         if (hasIoDriver) {
-            if (now >= nextIoTask) {
+            if (ioSched.tick(now)) {
 #ifdef ARC_FEATURE_NET
                 if (m_ioDriver) m_ioDriver->doWork();
 #endif
 #ifdef ARC_FEATURE_IOCP
                 if (m_iocpDriver) m_iocpDriver->doWork();
 #endif
-
-                do {
-                    ioTick++;
-                    nextIoTask = start + ioOffset + ioTick * ioIncrement;
-                } while (now >= nextIoTask);
             }
 
-            deadline = (std::min)(deadline, nextIoTask);
+            deadline = (std::min)(deadline, ioSched.next());
         }
 #endif
 
