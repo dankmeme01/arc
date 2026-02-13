@@ -110,6 +110,7 @@ protected:
     static bool shouldDestroy(uint64_t state) noexcept;
     uint64_t incref() noexcept;
     uint64_t decref() noexcept;
+    size_t refcount() const noexcept;
     void setState(uint64_t newState) noexcept;
     uint64_t getState() noexcept;
     bool exchangeState(uint64_t& expected, uint64_t newState) noexcept;

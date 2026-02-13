@@ -194,7 +194,7 @@ Interest IoDriver::vPollReady(IoDriver* self, IoEntry& rio, Interest interest, C
 
     auto curr = rio.readiness.load(acquire);
 
-    ARC_TRACE("IoDriver: fd {} readiness: {}", fmtFd(rio.fd), curr);
+    // ARC_TRACE("IoDriver: fd {} readiness: {}", fmtFd(rio.fd), curr);
 
     uint8_t readiness = (curr & static_cast<uint8_t>(interest));
 
@@ -367,12 +367,12 @@ void IoDriver::doWork() {
         }
 
         auto newReadiness = rio->readiness.fetch_or(ready, relaxed) | static_cast<uint8_t>(ready);
-        ARC_TRACE("IoDriver: fd {} - readiness {}", fmtFd(rio->fd), newReadiness);
+        // ARC_TRACE("IoDriver: fd {} - readiness {}", fmtFd(rio->fd), newReadiness);
 
         auto waiters = rio->waiters.lock();
         for (auto& waiter : *waiters) {
             if (waiter.satisfiedBy(ready)) {
-                ARC_TRACE("IoDriver: will wake waker id {}", waiter.getId());
+                // ARC_TRACE("IoDriver: will wake waker id {}", waiter.getId());
                 waiter.wake();
             }
         }

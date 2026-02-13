@@ -193,11 +193,17 @@ bool TaskBase::shouldDestroy(uint64_t state) noexcept {
 }
 
 uint64_t TaskBase::incref() noexcept {
+    ARC_TRACE("[{}] incref (prev state: {}, refcount: {})", this->debugName(), this->getState(), this->refcount());
     return m_state.fetch_add(TASK_REFERENCE, std::memory_order::relaxed);
 }
 
 uint64_t TaskBase::decref() noexcept {
+    ARC_TRACE("[{}] decref (prev state: {}, refcount: {})", this->debugName(), this->getState(), this->refcount());
     return m_state.fetch_sub(TASK_REFERENCE, std::memory_order::acq_rel) - TASK_REFERENCE;
+}
+
+size_t TaskBase::refcount() const noexcept {
+    return (m_state.load(std::memory_order::acquire) & ~(TASK_REFERENCE - 1)) / TASK_REFERENCE;
 }
 
 void TaskBase::setState(uint64_t newState) noexcept {
@@ -286,9 +292,9 @@ asp::SharedPtr<TaskDebugData> TaskBase::vGetDebugData(void* ptr) {
 
 void TaskBase::vRegisterAwaiter(void* ptr, Waker& waker) {
     auto self = static_cast<TaskBase*>(ptr);
-    ARC_TRACE("[Task {}] registering waker {}", (void*)self, waker.m_data);
 
     auto state = self->m_state.fetch_or(0, std::memory_order::acquire);
+    ARC_TRACE("[{}] registering waker {} (state: {})", self->debugName(), waker.m_data, state);
 
     while (true) {
         // if we are notifying, wake and return without registering
@@ -314,7 +320,7 @@ void TaskBase::vRegisterAwaiter(void* ptr, Waker& waker) {
         // if there was a notification, take out the awaiter
         if (state & TASK_NOTIFYING) {
             w = std::move(self->m_awaiter);
-            self->m_awaiter->reset();
+            self->m_awaiter.reset();
         }
 
         // the new state is not being notified nor registering, but there might be an awaiter
@@ -338,7 +344,7 @@ void TaskBase::vRegisterAwaiter(void* ptr, Waker& waker) {
 
 void TaskBase::vNotifyAwaiter(void* ptr, Waker* current) {
     auto self = static_cast<TaskBase*>(ptr);
-    ARC_TRACE("[Task {}] notifying waker {} (cur: {})", (void*)self, self->m_awaiter ? self->m_awaiter->m_data : nullptr, current->m_data);
+    ARC_TRACE("[{}] notifying waker {} (cur: {})", self->debugName(), self->m_awaiter ? self->m_awaiter->m_data : nullptr, current->m_data);
 
     auto w = self->takeAwaiter(current);
 
