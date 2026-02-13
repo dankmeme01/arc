@@ -143,9 +143,9 @@ public:
         return handle;
     }
 
-    template <IsPollable F, typename T = typename F::Output>
-    T blockOn(F fut) {
-        auto handle = this->spawn(std::move(fut));
+    template <typename F> requires Spawnable<std::decay_t<F>>
+    auto blockOn(F&& func) {
+        auto handle = this->spawn(std::forward<F>(func));
         return handle.blockOn();
     }
 
