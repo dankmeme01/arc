@@ -133,7 +133,7 @@ private:
     };
 };
 
-template <typename T>
+template <typename T = void>
 struct BlockingTaskHandle : NoexceptPollable<BlockingTaskHandle<T>, T> {
 public:
     BlockingTaskHandle(asp::SharedPtr<BlockingTask<T>> task) : m_task(std::move(task)) {}

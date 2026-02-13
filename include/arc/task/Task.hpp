@@ -507,7 +507,7 @@ public:
     }
 };
 
-template <typename T>
+template <typename T = void>
 struct TaskHandleBase {
     TaskTypedBase<T>* m_task = nullptr;
 
@@ -632,7 +632,7 @@ protected:
     }
 };
 
-template <typename T>
+template <typename T = void>
 struct TaskHandle : Pollable<TaskHandle<T>, T>, TaskHandleBase<T> {
     TaskHandle() noexcept = default;
     TaskHandle(TaskTypedBase<T>* task) noexcept : TaskHandleBase<T>(task) {}
