@@ -57,4 +57,31 @@ inline CoopYield coopYield() noexcept {
     return CoopYield{};
 }
 
+template <typename T = void>
+struct ARC_NODISCARD Ready : Pollable<Ready<T>, T, std::is_void_v<T> || std::is_nothrow_move_constructible_v<T>> {
+    using NonVoidOutput = std::conditional_t<std::is_void_v<T>, std::monostate, T>;
+    explicit Ready(NonVoidOutput value = {}) : m_value(std::move(value)) {}
+
+    auto poll(Context& cx) noexcept(std::is_void_v<T> || std::is_nothrow_move_constructible_v<T>) {
+        if constexpr (std::is_void_v<T>) {
+            return true;
+        } else {
+            return std::optional<NonVoidOutput>{std::move(m_value)};
+        }
+    }
+
+private:
+    ARC_NO_UNIQUE_ADDRESS NonVoidOutput m_value;
+};
+
+/// Immediately returns ready, with the given value (if any)
+template <typename T>
+inline Ready<T> ready(T value = {}) noexcept requires (!std::is_void_v<T>) {
+    return Ready<T>{std::move(value)};
+}
+
+inline Ready<> ready() noexcept {
+    return Ready<>{};
+}
+
 }
