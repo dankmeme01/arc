@@ -5,6 +5,12 @@
 #include <arc/util/Trace.hpp>
 #include <arc/util/Function.hpp>
 
+#if 0
+# define TRACE ::arc::trace
+#else
+# define TRACE(...) do {} while(0)
+#endif
+
 namespace arc {
 
 template <typename Output, typename Cbt>
@@ -60,12 +66,12 @@ struct ARC_NODISCARD Select : Pollable<Select<Futures...>> {
             if (m_winner != static_cast<size_t>(-1)) return;
             auto& selectee = std::get<Is>(t);
 
-            trace("[Select] checking selectee {}, active: {}", Is, selectee.active);
+            TRACE("[Select] checking selectee {}, active: {}", Is, selectee.active);
             if (selectee.active) {
                 auto res = selectee.future.poll(cx);
                 if (res) {
                     m_winner = Is;
-                    trace("[Select] selectee {} finished!", Is);
+                    TRACE("[Select] selectee {} finished!", Is);
                 }
             }
         }()), ...);
