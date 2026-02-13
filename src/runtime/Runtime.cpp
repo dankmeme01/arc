@@ -140,9 +140,7 @@ void Runtime::vInsertBlocking(Runtime* self, asp::SharedPtr<BlockingTaskBase> ta
     self->m_blockingCv.notify_one();
 }
 
-static bool skipRemoveTask = false;
 void Runtime::vRemoveTask(Runtime* self, TaskBase* task) noexcept {
-    if (skipRemoveTask) return;
     self->m_tasks.lock()->erase(task);
 }
 
@@ -491,7 +489,6 @@ void Runtime::shutdown() {
     // simply call abort and then run, so that stuff gets cleaned up
 
     Context cx { nullptr };
-    skipRemoveTask = true;
 
     auto tasks = m_tasks.lock();
     for (auto* task : *tasks) {
@@ -499,7 +496,6 @@ void Runtime::shutdown() {
         task->m_vtable->run(task, cx);
     }
     tasks->clear();
-    skipRemoveTask = false;
 }
 
 void setGlobalRuntime(Runtime* rt) {
