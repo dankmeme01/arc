@@ -61,3 +61,26 @@ TEST(join, JoinDyn) {
         EXPECT_EQ(val, 42);
     }
 }
+
+
+TEST(join, JoinDynVoid) {
+    Waker waker = Waker::noop();
+    Context cx { &waker };
+
+    arc::Notify notify;
+
+    std::vector<Future<>> futures;
+    for (size_t i = 0; i < 5; i++) {
+        futures.push_back([&](this auto self) -> Future<> {
+            co_await notify.notified();
+        }());
+    }
+
+    auto joined = arc::joinAll(std::move(futures));
+    EXPECT_FALSE(joined.poll(cx));
+
+    notify.notifyAll();
+
+    auto pollRes = joined.poll(cx);
+    EXPECT_TRUE(pollRes);
+}

@@ -3,6 +3,12 @@
 #include "Future.hpp"
 #include <arc/util/Assert.hpp>
 
+#if 0
+# define TRACE ::arc::trace
+#else
+# define TRACE(...) do {} while(0)
+#endif
+
 namespace arc {
 
 template <typename Output>
@@ -66,12 +72,12 @@ struct ARC_NODISCARD JoinAll : Pollable<JoinAll<FRet, Futures...>, std::array<FR
         (([&]() {
             auto& fut = std::get<Is>(t);
 
-            trace("[JoinAll] checking future {}, active: {}", Is, !fut.output.has_value());
+            TRACE("[JoinAll] checking future {}, active: {}", Is, !fut.output.has_value());
             if (!fut.output) {
                 auto res = fut.future.poll(cx);
                 if (res) {
                     fut.output = fut.future.getOutput();
-                    trace("[JoinAll] future {} finished!", Is);
+                    TRACE("[JoinAll] future {} finished!", Is);
                 } else {
                     allDone = false;
                 }
@@ -101,10 +107,23 @@ private:
     std::optional<std::tuple<Futures...>> m_futures;
 };
 
+template <typename Out>
+struct JoinAllDynOutputType_ {
+    using type = std::vector<Out>;
+};
+template <>
+struct JoinAllDynOutputType_<void> {
+    using type = void;
+};
+template <typename FRet>
+using JoinAllDynOutputType = typename JoinAllDynOutputType_<FRet>::type;
+
 template <typename FRet, typename Fut>
-struct ARC_NODISCARD JoinAllDyn : Pollable<JoinAllDyn<FRet, Fut>, std::vector<FRet>> {
-    using JoinAllOutput = std::vector<FRet>;
+struct ARC_NODISCARD JoinAllDyn : Pollable<JoinAllDyn<FRet, Fut>, JoinAllDynOutputType<FRet>> {
+    using JoinAllOutput = JoinAllDynOutputType<FRet>;
+    using PollOutput = std::conditional_t<std::is_void_v<JoinAllOutput>, bool, std::optional<JoinAllOutput>>;
     using TransformedFut = JoinAllFuture<FRet>;
+    static constexpr bool IsVoid = std::is_void_v<JoinAllOutput>;
 
     explicit JoinAllDyn(std::vector<Fut>&& futs, FRet*) {
         for (auto& fut : futs) {
@@ -113,39 +132,45 @@ struct ARC_NODISCARD JoinAllDyn : Pollable<JoinAllDyn<FRet, Fut>, std::vector<FR
         futs.clear();
     }
 
-    std::optional<JoinAllOutput> poll(Context& cx) {
+    PollOutput poll(Context& cx) {
         bool allDone = true;
 
         for (size_t i = 0; i < m_futures.size(); i++) {
             auto& fut = m_futures[i];
 
-            trace("[JoinAll] checking future {}, active: {}", i, !fut.output.has_value());
+            TRACE("[JoinAll] checking future {}, active: {}", i, !fut.output.has_value());
 
             if (!fut.output) {
                 auto res = fut.future.poll(cx);
                 if (res) {
-                    fut.output = fut.future.getOutput();
-                    trace("[JoinAll] future {} finished!", i);
+                    if constexpr (!IsVoid) {
+                        fut.output = fut.future.getOutput();
+                    }
+                    TRACE("[JoinAll] future {} finished!", i);
                 } else {
                     allDone = false;
                 }
             }
         }
 
-        if (!allDone) {
-            return std::nullopt;
-        }
-
-        JoinAllOutput out;
-        out.reserve(m_futures.size());
-
-        for (auto& fut : m_futures) {
-            if constexpr (!TransformedFut::IsVoid) {
-                out.emplace_back(std::move(*fut.output));
+        if constexpr (IsVoid) {
+            return allDone;
+        } else {
+            if (!allDone) {
+                return std::nullopt;
             }
-        }
 
-        return std::make_optional<JoinAllOutput>(std::move(out));
+            JoinAllOutput out;
+            out.reserve(m_futures.size());
+
+            for (auto& fut : m_futures) {
+                if constexpr (!TransformedFut::IsVoid) {
+                    out.emplace_back(std::move(*fut.output));
+                }
+            }
+
+            return std::make_optional<JoinAllOutput>(std::move(out));
+        }
     }
 
 private:
@@ -174,7 +199,7 @@ auto joinAll(std::vector<Fut> futs) {
     using JoinAllFuture = JoinAllFuture<Output>;
     using NVOutput = typename JoinAllFuture::StoredOutput;
 
-    return JoinAllDyn{std::move(futs), static_cast<NVOutput*>(nullptr)};
+    return JoinAllDyn{std::move(futs), static_cast<Output*>(nullptr)};
 }
 
 }
