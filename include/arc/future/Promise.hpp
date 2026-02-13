@@ -151,19 +151,23 @@ struct PromiseBaseNV : PromiseBase {
 protected:
     std::optional<R> m_value;
 
+    static void vGetOutput(void* self, void* outp) {
+        auto me = reinterpret_cast<PromiseBaseNV*>(self);
+        auto out = reinterpret_cast<MaybeUninit<R>*>(outp);
+        out->init(std::move(*me->m_value));
+    }
+    
+    static void vDeliverOutput(void* self, void* valuep) {
+        auto me = reinterpret_cast<PromiseBaseNV*>(self);
+        auto value = reinterpret_cast<R*>(valuep);
+        me->m_value = std::move(*value);
+    }
+
     static constexpr PromiseVtable vtable = {
         .m_setDebugName = &PromiseBase::vSetDebugName,
         .m_getDebugName = &PromiseBase::vGetDebugName,
-        .m_getOutput = [](void* self, void* outp) {
-            auto me = reinterpret_cast<PromiseBaseNV*>(self);
-            auto out = reinterpret_cast<MaybeUninit<R>*>(outp);
-            out->init(std::move(*me->m_value));
-        },
-        .m_deliverOutput = [](void* self, void* valuep) {
-            auto me = reinterpret_cast<PromiseBaseNV*>(self);
-            auto value = reinterpret_cast<R*>(valuep);
-            me->m_value = std::move(*value);
-        },
+        .m_getOutput = &PromiseBaseNV::vGetOutput,
+        .m_deliverOutput = &PromiseBaseNV::vDeliverOutput,
     };
 };
 

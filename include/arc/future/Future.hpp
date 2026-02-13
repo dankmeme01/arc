@@ -24,12 +24,8 @@ struct ARC_NODISCARD Future : PollableBase {
     using promise_type = Promise<T>;
     using handle_type = std::coroutine_handle<promise_type>;
 
-    Future(handle_type handle) noexcept requires (std::is_void_v<T>) : m_handle(handle) {
-        m_vtable = &vtableVoid;
-    }
-
-    Future(handle_type handle) noexcept requires (!std::is_void_v<T>) : m_handle(handle) {
-        m_vtable = &vtableNonVoid;
+    Future(handle_type handle) noexcept : m_handle(handle) {
+        m_vtable = &vtable<std::is_void_v<T>>;
     }
 
     Future(Future&& other) noexcept : m_handle(std::exchange(other.m_handle, {})) {
@@ -184,25 +180,27 @@ struct ARC_NODISCARD Future : PollableBase {
 
 protected:
     handle_type m_handle{};
-
-    static constexpr PollableVtable vtableVoid = {
-        .m_poll = [](void* self, Context& cx) noexcept {
-            return reinterpret_cast<Future*>(self)->poll(cx);
-        },
-        .m_getOutput = [](void* self, void* outp) {
-            reinterpret_cast<Future*>(self)->getOutput();
-        },
-        .m_metadata = PollableMetadata::create<Future, true>(),
-    };
-
-    static constexpr PollableVtable vtableNonVoid = {
-        .m_poll = [](void* self, Context& cx) noexcept {
-            return reinterpret_cast<Future*>(self)->poll(cx);
-        },
-        .m_getOutput = [](void* self, void* outp) {
+    
+    static bool vPoll(void* self, Context& cx) noexcept {
+        auto me = static_cast<Future*>(self);
+        return me->poll(cx);
+    }
+    
+    template <bool Void>
+    static void vGetOutput(void* self, void* outp) {
+        auto me = static_cast<Future*>(self);
+        if constexpr (Void) {
+            me->getOutput();
+        } else {
             auto out = reinterpret_cast<MaybeUninit<NonVoidOutput>*>(outp);
-            out->init(reinterpret_cast<Future*>(self)->getOutput());
-        },
+            out->init(me->getOutput());
+        }
+    }
+
+    template <bool Void>
+    static constexpr PollableVtable vtable {
+        .m_poll = &Future::vPoll,
+        .m_getOutput = &Future::vGetOutput<Void>,
         .m_metadata = PollableMetadata::create<Future, true>(),
     };
 

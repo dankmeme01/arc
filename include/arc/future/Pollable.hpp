@@ -143,7 +143,12 @@ protected:
 
         // instead of just checking the template argument, check if the actual poll function is noexcept
         // here we can actually do it, unlike in the class scope
+#if defined __clang__ || defined __GNUC__
         constexpr bool IsNothrowPollable = NothrowPoll && ::arc::IsNothrowPollable<Derived>;
+#else
+        constexpr bool IsNothrowPollable = NothrowPoll;
+#endif
+
         static_assert(!NothrowPoll || IsNothrowPollable, "if NoexceptPollable is used, the poll function MUST be noexcept");
 
         return PollableVtable {
@@ -200,7 +205,11 @@ protected:
 
         // instead of checking the template argument, check if the actual poll function is noexcept
         // here we can actually do it, unlike in the class scope
+#if defined __clang__ || defined __GNUC__
         constexpr bool IsNothrowPollable = NothrowPoll && ::arc::IsNothrowPollable<Derived>;
+#else
+        constexpr bool IsNothrowPollable = NothrowPoll;
+#endif
         static_assert(!NothrowPoll || IsNothrowPollable, "if NoexceptPollable is used, the poll function MUST be noexcept");
 
         if constexpr (IsNothrowPollable) {
