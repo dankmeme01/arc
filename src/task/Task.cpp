@@ -180,7 +180,7 @@ void TaskBase::vDropWaker(void* ptr) {
 }
 
 bool TaskBase::shouldDestroy(uint64_t state) noexcept {
-    return (state & ~(TASK_REFERENCE - 1)) == 0 && (state & TASK_TASK) == 0;
+    return (state & ~(TASK_REFERENCE - 1)) == 0 && (state & TASK_HANDLE) == 0;
 }
 
 uint64_t TaskBase::incref() noexcept {

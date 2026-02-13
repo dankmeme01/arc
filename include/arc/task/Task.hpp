@@ -27,15 +27,17 @@
 
 namespace arc {
 
-static constexpr uint64_t TASK_SCHEDULED   = 1 << 0;
-static constexpr uint64_t TASK_COMPLETED   = 1 << 1;
-static constexpr uint64_t TASK_RUNNING     = 1 << 3;
-static constexpr uint64_t TASK_CLOSED      = 1 << 4;
-static constexpr uint64_t TASK_AWAITER     = 1 << 5;
-static constexpr uint64_t TASK_NOTIFYING   = 1 << 6;
-static constexpr uint64_t TASK_REGISTERING = 1 << 7;
-static constexpr uint64_t TASK_TASK        = 1 << 8;
-static constexpr uint64_t TASK_REFERENCE   = 1 << 12;
+static constexpr uint64_t TASK_SCHEDULED   = 1 << 0; // scheduled to run again asap
+static constexpr uint64_t TASK_RUNNING     = 1 << 1; // currently running
+static constexpr uint64_t TASK_COMPLETED   = 1 << 2; // has completed, successfully or with an exception
+static constexpr uint64_t TASK_CLOSED      = 1 << 3; // closed, return value will be unavailable
+static constexpr uint64_t TASK_AWAITER     = 1 << 4; // has an awaiter
+static constexpr uint64_t TASK_NOTIFYING   = 1 << 5; // currently taking the awaiter to notify it
+static constexpr uint64_t TASK_REGISTERING = 1 << 6; // currently registering the awaiter
+static constexpr uint64_t TASK_HANDLE      = 1 << 7; // presence of an active TaskHandle
+static constexpr uint64_t TASK_REFERENCE   = 1 << 12; // single reference
+
+static constexpr uint64_t TASK_INITIAL_STATE = TASK_SCHEDULED | TASK_REFERENCE | TASK_HANDLE;
 
 struct TaskDebugData {
     size_t m_debugDataSize{sizeof(TaskDebugData)};
@@ -107,7 +109,7 @@ protected:
     TaskBase(const TaskBase&) = delete;
     TaskBase& operator=(const TaskBase&) = delete;
 
-    std::atomic<uint64_t> m_state{TASK_SCHEDULED | TASK_REFERENCE | TASK_TASK};
+    std::atomic<uint64_t> m_state{TASK_INITIAL_STATE};
     asp::WeakPtr<Runtime> m_runtime;
     std::optional<Waker> m_awaiter;
     std::string m_name;
@@ -154,7 +156,7 @@ struct TaskTypedBase : TaskBase {
         auto state = this->getState();
 
         // commonly, the task is being detached right after being created, assume this may be the case
-        auto expected = TASK_SCHEDULED | TASK_REFERENCE | TASK_TASK;
+        auto expected = TASK_INITIAL_STATE;
         if (this->exchangeState(expected, TASK_SCHEDULED | TASK_REFERENCE)) {
             return out;
         }
@@ -169,7 +171,7 @@ struct TaskTypedBase : TaskBase {
                 }
             } else {
                 // if this is the last reference and the task isn't closed, close and schedule again
-                auto newState = state & ~TASK_TASK;
+                auto newState = state & ~TASK_HANDLE;
                 if ((state & (~(TASK_REFERENCE - 1) | TASK_CLOSED)) == 0) {
                     newState = TASK_SCHEDULED | TASK_CLOSED | TASK_REFERENCE;
                 }
@@ -417,13 +419,13 @@ public:
             // the task is completed, update state
             while (true) {
                 auto newState = (state & ~TASK_RUNNING & ~TASK_SCHEDULED) | TASK_COMPLETED;
-                if ((state & TASK_TASK) == 0) {
+                if ((state & TASK_HANDLE) == 0) {
                     newState |= TASK_CLOSED;
                 }
 
                 if (this->exchangeState(state, newState)) {
                     // if the task handle is destroyed or was closed while running, drop output value
-                    if ((state & TASK_TASK) == 0 || (state & TASK_CLOSED) != 0) {
+                    if ((state & TASK_HANDLE) == 0 || (state & TASK_CLOSED) != 0) {
                         this->m_value.reset();
                     }
 
@@ -512,15 +514,22 @@ struct TaskHandleBase {
     /// Polls the task. Returns the return value if the future is completed,
     /// or std::nullopt if it is still pending.
     /// Throws an exception if the task was closed before completion or if the task threw.
+    /// If the task is completed or threw, invalidates this handle.
     std::optional<typename TaskTypedBase<T>::NVOutput> pollTask(Context& cx) {
         this->validate();
         auto res = m_task->vPoll(m_task, cx);
         TRACE("[{}] poll result: {}", this->m_task->debugName(), res);
 
         if (res && *res) {
-            if (m_task->m_exception) {
+            auto exc = m_task->m_exception;
+
+            auto _dtor = scopeDtor([this] {
+                this->detach();
+            });
+
+            if (exc) {
                 TRACE("[{}] rethrowing exception from task", m_task->debugName());
-                std::rethrow_exception(m_task->m_exception);
+                std::rethrow_exception(exc);
             }
 
             if constexpr (!std::is_void_v<T>) {
@@ -551,8 +560,6 @@ struct TaskHandleBase {
             TRACE("[{}] poll result: {}", (void*)this->m_task, (bool)result);
 
             if (result) {
-                this->detach();
-
                 if constexpr (!std::is_void_v<T>) {
                     return std::move(*result);
                 } else {
@@ -570,7 +577,7 @@ struct TaskHandleBase {
     void abort() {
         this->validate();
         m_task->abort();
-        m_task = nullptr;
+        this->detach();
     }
 
     void setName(std::string name) {
