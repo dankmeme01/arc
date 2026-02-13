@@ -32,7 +32,7 @@ Waker::Waker(Waker&& other) noexcept {
 
 Waker& Waker::operator=(Waker&& other) noexcept {
     if (this != &other) {
-        this->reset();
+        this->destroy();
         m_data = other.m_data;
         m_vtable = other.m_vtable;
         other.reset();
