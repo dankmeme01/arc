@@ -1,9 +1,9 @@
 #pragma once
 #include <vector>
-#include <string>
 #include <exception>
 #include <source_location>
 #include <asp/time/Instant.hpp>
+#include <asp/ptr/BoxedString.hpp>
 #include <fmt/core.h>
 
 namespace arc {
@@ -30,7 +30,7 @@ public:
 
     void pushFrame(const PollableBase* pollable);
     void popFrame() noexcept;
-    void markFrame(std::string name) noexcept;
+    void markFrame(asp::UniqueBoxedString name) noexcept;
     void markFrameFromSource(const std::source_location& loc = std::source_location::current());
 
     void printFutureStack();
@@ -45,7 +45,7 @@ private:
 
     struct StackEntry {
         const PollableBase* pollable;
-        std::string name;
+        asp::UniqueBoxedString name;
     };
 
     Waker* m_waker;
@@ -54,7 +54,7 @@ private:
     uint64_t m_taskDeadline = 0;
     std::exception_ptr m_unused;
     std::vector<StackEntry> m_stack;
-    std::vector<std::string> m_capturedStack;
+    std::vector<asp::UniqueBoxedString> m_capturedStack;
     // -- all fields above are expected to be stable and not change --
 
     void captureStack();
@@ -63,7 +63,7 @@ private:
 /// Sets a debugging name for the current Future.
 /// This helps with debugging, as the name will be included in the stack trace during unhandled exceptions.
 /// The macro ARC_FRAME() can be used instead to automatically set the name to function name and file + line information.
-inline void markFrame(Context& cx, std::string name) noexcept {
+inline void markFrame(Context& cx, asp::UniqueBoxedString name) noexcept {
     cx.markFrame(std::move(name));
 }
 

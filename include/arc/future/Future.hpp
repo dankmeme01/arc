@@ -77,7 +77,7 @@ struct ARC_NODISCARD Future : PollableBase {
         return dname.empty() ? defaultName() : std::string(dname);
     }
 
-    void setDebugName(std::string name) {
+    void setDebugName(asp::BoxedString name) {
         this->promise().setDebugName(std::move(name));
     }
 

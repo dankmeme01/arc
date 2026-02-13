@@ -63,7 +63,7 @@ bool Context::shouldCoopYield() noexcept {
 
 void Context::pushFrame(const PollableBase* pollable) {
     // trace("pushing frame {}", (void*)pollable);
-    m_stack.push_back(StackEntry { pollable, "" });
+    m_stack.push_back(StackEntry { pollable, {} });
     ARC_DEBUG_ASSERT(m_stack.size() < MAX_RECURSION_DEPTH, "maximum future recursion depth exceeded");
 }
 
@@ -73,7 +73,7 @@ void Context::popFrame() noexcept {
     m_stack.pop_back();
 }
 
-void Context::markFrame(std::string name) noexcept {
+void Context::markFrame(asp::UniqueBoxedString name) noexcept {
     if (m_stack.empty()) {
         return;
     }
@@ -82,7 +82,7 @@ void Context::markFrame(std::string name) noexcept {
 }
 
 void Context::markFrameFromSource(const std::source_location& loc) {
-    this->markFrame(fmt::format("{} ({}:{})", loc.function_name(), loc.file_name(), loc.line()));
+    this->markFrame(asp::UniqueBoxedString::format("{} ({}:{})", loc.function_name(), loc.file_name(), loc.line()));
 }
 
 void Context::printFutureStack() {
@@ -105,10 +105,10 @@ void Context::captureStack() {
 
     for (auto it = m_stack.rbegin(); it != m_stack.rend(); ++it) {
         auto pollable = it->pollable;
-        auto marker = it->name;
+        auto& marker = it->name;
         auto meta = pollable->m_vtable->m_metadata;
 
-        std::string description{marker};
+        std::string description{marker.view()};
         if (description.empty() && meta) {
             description = meta->typeName;
         }
@@ -127,7 +127,7 @@ void Context::captureStack() {
             description = fmt::format("<unknown pollable @ {}>", (void*)pollable);
         }
 
-        m_capturedStack.push_back(std::move(description));
+        m_capturedStack.push_back(asp::UniqueBoxedString{description});
     }
 
     trace("Captured {} frames", m_capturedStack.size());
@@ -144,7 +144,7 @@ void Context::dumpStack() {
 
     for (auto it = m_stack.rbegin(); it != m_stack.rend(); ++it) {
         auto pollable = it->pollable;
-        auto marker = it->name;
+        auto& marker = it->name;
 
         if (marker.empty()) {
             printError(" - <unknown pollable @ {}>", (void*)pollable);

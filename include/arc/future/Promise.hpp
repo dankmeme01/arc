@@ -16,8 +16,8 @@ struct PromiseVtable {
     using GetChildFn = PollableBase*(*)(void*);
     using SetContextFn = void(*)(void*, Context*);
     using GetContextFn = Context*(*)(void*);
-    using SetDebugNameFn = void(*)(void*, std::string);
-    using GetDebugNameFn = std::string_view(*)(void*);
+    using SetDebugNameFn = void(*)(void*, asp::BoxedString);
+    using GetDebugNameFn = asp::BoxedString(*)(void*);
     using GetOutputFn = void(*)(void*, void* out);
     using DeliverOutputFn = void(*)(void*, void* value);
     using SetExceptionFn = void(*)(void*, std::exception_ptr);
@@ -53,11 +53,11 @@ struct PromiseVtable {
         return ctx;
     }
 
-    void setDebugName(void* self, std::string name) const {
+    void setDebugName(void* self, asp::BoxedString name) const {
         m_setDebugName(self, std::move(name));
     }
 
-    std::string_view getDebugName(void* self) const {
+    asp::BoxedString getDebugName(void* self) const {
         return m_getDebugName(self);
     }
 
@@ -99,11 +99,11 @@ struct PromiseBase {
         return m_vtable->getContext(this);
     }
 
-    void setDebugName(std::string name) {
+    void setDebugName(asp::BoxedString name) {
         m_vtable->setDebugName(this, std::move(name));
     }
 
-    std::string_view getDebugName() {
+    asp::BoxedString getDebugName() {
         return m_vtable->getDebugName(this);
     }
 
@@ -150,7 +150,7 @@ protected:
     const PromiseVtable* m_vtable;
     PollableBase* m_child = nullptr;
     Context* m_context = nullptr;
-    std::string m_debugName;
+    asp::BoxedString m_debugName;
     std::exception_ptr m_exception;
 
     static void vAttachChild(void* self, PollableBase* child) noexcept {
@@ -165,10 +165,10 @@ protected:
     static Context* vGetContext(void* self) noexcept {
         return reinterpret_cast<PromiseBase*>(self)->m_context;
     }
-    static void vSetDebugName(void* self, std::string name) {
+    static void vSetDebugName(void* self, asp::BoxedString name) {
         reinterpret_cast<PromiseBase*>(self)->m_debugName = std::move(name);
     }
-    static std::string_view vGetDebugName(void* self) {
+    static asp::BoxedString vGetDebugName(void* self) {
         auto& name = reinterpret_cast<PromiseBase*>(self)->m_debugName;
         return name;
     }

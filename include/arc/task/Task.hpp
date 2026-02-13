@@ -44,12 +44,12 @@ struct TaskDebugData {
     std::atomic<TaskBase*> m_task = nullptr;
     std::atomic<uint64_t> m_polls{0};
     std::atomic<uint64_t> m_runtimeNs{0};
-    asp::SpinLock<std::string> m_name; // present already in task but duplicated here safety
+    asp::SpinLock<asp::BoxedString> m_name; // present already in task but duplicated here safety
     std::vector<void*> m_creationStack;
 
     asp::Duration totalRuntime() const noexcept;
     uint64_t totalPolls() const noexcept;
-    std::string name() const noexcept;
+    asp::BoxedString name() const noexcept;
     std::vector<void*> creationStack() const noexcept;
 };
 
@@ -62,8 +62,8 @@ struct TaskVtable {
     using RegisterAwaiterFn = void(*)(void*, Waker&);
     using NotifyAwaiterFn = void(*)(void*, Waker*);
     using TakeAwaiterFn = std::optional<Waker>(*)(void*, const Waker*);
-    using SetNameFn = void(*)(void*, std::string);
-    using GetNameFn = std::string_view(*)(void*);
+    using SetNameFn = void(*)(void*, asp::BoxedString);
+    using GetNameFn = asp::BoxedString(*)(void*);
     using GetDebugDataFn = asp::SharedPtr<TaskDebugData>(*)(void*);
 
     Fn schedule;
@@ -85,7 +85,7 @@ struct TaskVtable {
 struct TaskBase {
     void schedule();
     void abort() noexcept;
-    void setName(std::string name) noexcept;
+    void setName(asp::BoxedString name) noexcept;
     asp::SharedPtr<TaskDebugData> getDebugData() noexcept;
 
     /// Polls the task. Returns:
@@ -112,7 +112,7 @@ protected:
     std::atomic<uint64_t> m_state{TASK_INITIAL_STATE};
     asp::WeakPtr<Runtime> m_runtime;
     std::optional<Waker> m_awaiter;
-    std::string m_name;
+    asp::BoxedString m_name;
     asp::SharedPtr<TaskDebugData> m_debugData;
     std::exception_ptr m_exception;
 
@@ -136,8 +136,8 @@ protected:
     static void vRegisterAwaiter(void* ptr, Waker& waker);
     static void vNotifyAwaiter(void* ptr, Waker* current);
     static std::optional<Waker> vTakeAwaiter(void* ptr, const Waker* current);
-    static void vSetName(void* ptr, std::string name) noexcept;
-    static std::string_view vGetName(void* ptr) noexcept;
+    static void vSetName(void* ptr, asp::BoxedString name) noexcept;
+    static asp::BoxedString vGetName(void* ptr) noexcept;
     static asp::SharedPtr<TaskDebugData> vGetDebugData(void* ptr);
 };
 
@@ -580,7 +580,7 @@ struct TaskHandleBase {
         this->detach();
     }
 
-    void setName(std::string name) {
+    void setName(asp::BoxedString name) {
         this->validate();
         m_task->setName(std::move(name));
     }

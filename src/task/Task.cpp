@@ -23,10 +23,11 @@ uint64_t TaskDebugData::totalPolls() const noexcept {
     return polls.load(std::memory_order::relaxed);
 }
 
-std::string TaskDebugData::name() const noexcept {
+asp::BoxedString TaskDebugData::name() const noexcept {
     $safe_member(name, m_name);
     return *name.lock();
 }
+
 std::vector<void*> TaskDebugData::creationStack() const noexcept {
     $safe_member(stack, m_creationStack);
     return stack;
@@ -40,7 +41,7 @@ void TaskBase::abort() noexcept {
     m_vtable->abort(this, false);
 }
 
-void TaskBase::setName(std::string name) noexcept {
+void TaskBase::setName(asp::BoxedString name) noexcept {
     m_vtable->setName(this, std::move(name));
 }
 
@@ -257,7 +258,7 @@ std::optional<Waker> TaskBase::vTakeAwaiter(void* ptr, const Waker* current) {
     return out;
 }
 
-void TaskBase::vSetName(void* ptr, std::string name) noexcept {
+void TaskBase::vSetName(void* ptr, asp::BoxedString name) noexcept {
     auto self = static_cast<TaskBase*>(ptr);
     self->m_name = std::move(name);
     if (self->m_debugData) {
@@ -265,7 +266,7 @@ void TaskBase::vSetName(void* ptr, std::string name) noexcept {
     }
 }
 
-std::string_view TaskBase::vGetName(void* ptr) noexcept {
+asp::BoxedString TaskBase::vGetName(void* ptr) noexcept {
     auto self = static_cast<TaskBase*>(ptr);
     return self->m_name;
 }
