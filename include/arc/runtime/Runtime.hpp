@@ -209,13 +209,13 @@ private:
 
     template <typename Fut> requires IsPollable<std::decay_t<Fut>>
     auto createTask(Fut&& fut) {
-        return Task<std::decay_t<Fut>, std::monostate>::create(weakFromThis(), std::forward<Fut>(fut));
+        return Task<std::decay_t<Fut>, std::monostate>::create(this, std::forward<Fut>(fut));
     }
 
     template <typename Lambda> requires ReturnsPollable<std::decay_t<Lambda>>
     auto createTask(Lambda&& func) {
         using Fut = std::invoke_result_t<std::decay_t<Lambda>>;
-        return Task<Fut, std::decay_t<Lambda>>::create(weakFromThis(), std::forward<Lambda>(func));
+        return Task<Fut, std::decay_t<Lambda>>::create(this, std::forward<Lambda>(func));
     }
 
     void init(const RuntimeOptions& options);

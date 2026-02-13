@@ -35,6 +35,7 @@ static constexpr uint64_t TASK_AWAITER     = 1 << 4; // has an awaiter
 static constexpr uint64_t TASK_NOTIFYING   = 1 << 5; // currently taking the awaiter to notify it
 static constexpr uint64_t TASK_REGISTERING = 1 << 6; // currently registering the awaiter
 static constexpr uint64_t TASK_HANDLE      = 1 << 7; // presence of an active TaskHandle
+static constexpr uint64_t TASK_ABANDONED   = 1 << 8; // no longer owned by a runtime
 static constexpr uint64_t TASK_REFERENCE   = 1 << 12; // single reference
 
 static constexpr uint64_t TASK_INITIAL_STATE = TASK_SCHEDULED | TASK_REFERENCE | TASK_HANDLE;
@@ -99,14 +100,14 @@ protected:
     template <typename T>
     friend struct TaskHandleBase;
 
-    TaskBase(const TaskVtable* vtable, asp::WeakPtr<Runtime> runtime) noexcept
-        : m_vtable(vtable), m_runtime(std::move(runtime)) {}
+    TaskBase(const TaskVtable* vtable, Runtime* runtime) noexcept
+        : m_vtable(vtable), m_runtime(runtime) {}
 
     TaskBase(const TaskBase&) = delete;
     TaskBase& operator=(const TaskBase&) = delete;
 
     std::atomic<uint64_t> m_state{TASK_INITIAL_STATE};
-    asp::WeakPtr<Runtime> m_runtime;
+    Runtime* m_runtime;
     std::optional<Waker> m_awaiter;
     asp::BoxedString m_name;
     asp::SharedPtr<TaskDebugData> m_debugData;
@@ -210,19 +211,19 @@ protected:
     std::atomic<bool> m_droppedFuture = false;
 
     template <typename F>
-    Task(const TaskVtable* vtable, asp::WeakPtr<Runtime> runtime, F&& fut) requires (!UsesLambda)
-        : TaskTypedBase<typename Fut::Output>(vtable, std::move(runtime)), m_future(std::forward<F>(fut)) {}
+    Task(const TaskVtable* vtable, Runtime* runtime, F&& fut) requires (!UsesLambda)
+        : TaskTypedBase<typename Fut::Output>(vtable, runtime), m_future(std::forward<F>(fut)) {}
 
     template <typename L>
-    Task(const TaskVtable* vtable, asp::WeakPtr<Runtime> runtime, L&& fut) requires (UsesLambda)
-        : TaskTypedBase<typename Fut::Output>(vtable, std::move(runtime)),
+    Task(const TaskVtable* vtable, Runtime* runtime, L&& fut) requires (UsesLambda)
+        : TaskTypedBase<typename Fut::Output>(vtable, runtime),
           m_lambda(std::forward<Lambda>(fut)),
           m_future(std::invoke(m_lambda.get())) {}
 
 public:
     template <typename FutOrLambda>
-    static Task* create(asp::WeakPtr<Runtime> runtime, FutOrLambda&& fut) {
-        auto task = new Task(&Task::vtable, std::move(runtime), std::forward<FutOrLambda>(fut));
+    static Task* create(Runtime* runtime, FutOrLambda&& fut) {
+        auto task = new Task(&Task::vtable, runtime, std::forward<FutOrLambda>(fut));
 #ifdef ARC_DEBUG
         task->ensureDebugData();
 #endif
@@ -255,10 +256,13 @@ public:
     static void vDestroy(void* self) {
         auto task = static_cast<Task*>(self);
         TRACE("[{}] destroying", task->debugName());
-        auto rt = task->m_runtime.upgrade();
-        if (rt) {
-            rt->removeTask(task);
+
+        // remove the task from the runtime if we haven't been abandoned
+        auto state = task->getState();
+        if ((state & TASK_ABANDONED) == 0) {
+            task->m_runtime->removeTask(task);
         }
+
         delete task;
     }
 
@@ -368,9 +372,6 @@ public:
         this->ensureDebugData();
         this->m_debugData->m_polls.fetch_add(1, std::memory_order::relaxed);
 #endif
-
-        // auto rt = this->m_runtime.upgrade();
-        // if (!rt) return false; // might happen if the runtime is shutting down
 
         // update task state
         while (true) {

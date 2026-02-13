@@ -119,8 +119,12 @@ void TaskBase::vAbort(void* ptr, bool force) {
             break;
         }
 
-        // if not scheduled nor running, schedule the task
         auto newState = state | TASK_CLOSED;
+        if (force) {
+            newState |= TASK_ABANDONED;
+        }
+
+        // if not scheduled nor running, schedule the task
         if ((state & (TASK_SCHEDULED | TASK_RUNNING)) == 0) {
             newState |= TASK_SCHEDULED;
             newState += TASK_REFERENCE;
@@ -146,9 +150,13 @@ void TaskBase::vSchedule(void* self) {
     // trace("[Task {}] scheduling", self);
 
     auto task = static_cast<TaskBase*>(self);
-    auto rt = task->m_runtime.upgrade();
-    if (rt && !rt->isShuttingDown()) {
-        rt->enqueueTask(task);
+    auto state = task->getState();
+
+    if ((state & TASK_ABANDONED) == 0) {
+        auto rt = task->m_runtime;
+        if (rt && !rt->isShuttingDown()) {
+            rt->enqueueTask(task);
+        }
     }
 }
 
