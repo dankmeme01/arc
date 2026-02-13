@@ -17,6 +17,8 @@
 
 using enum std::memory_order;
 
+static constexpr size_t MAX_POLL_FDS = 128;
+
 namespace arc {
 
 #ifdef _WIN32
@@ -282,8 +284,8 @@ SockFd IoDriver::vFdForEntry(const IoEntry& rio) {
 }
 
 void IoDriver::doWork() {
-    ARC_POLLFD fds[64];
-    IoEntry* entries[64];
+    ARC_POLLFD fds[MAX_POLL_FDS];
+    IoEntry* entries[MAX_POLL_FDS];
     int count = 0;
 
     auto ios = m_ios.lock();
@@ -308,6 +310,10 @@ void IoDriver::doWork() {
 
         entries[count] = rio.get();
         count++;
+
+        if (count == MAX_POLL_FDS) {
+            break;
+        }
     }
 
     if (count == 0) {
