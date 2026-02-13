@@ -8,6 +8,7 @@
 #include "Context.hpp"
 #include <arc/util/MaybeUninit.hpp>
 #include <arc/util/Config.hpp>
+#include <asp/detail/config.hpp>
 
 namespace arc {
 
@@ -19,27 +20,29 @@ namespace arc {
 
 struct PollableVtable {
     using PollFn = bool(*)(void*, Context&) noexcept;
-    using GetOutputFn = void(*)(void*, Context&, void* output);
+    using GetOutputFn = void(*)(void*, void* output);
 
-    const PollableMetadata* m_metadata = nullptr;
     PollFn m_poll = nullptr;
     GetOutputFn m_getOutput = nullptr;
+    const PollableMetadata* m_metadata = nullptr;
 
     bool poll(void* self, Context& cx) const noexcept {
         return m_poll(self, cx);
     }
 
     template <typename T>
-    T getOutput(void* self, Context& cx) const {
+    T getOutput(void* self) const {
         MaybeUninit<T> output;
-        reinterpret_cast<void(*)(void*, Context&, MaybeUninit<T>*)>(m_getOutput)(self, cx, &output);
+        reinterpret_cast<void(*)(void*, MaybeUninit<T>*)>(m_getOutput)(self, &output);
         return std::move(output.assumeInit());
     }
 };
 
+template <typename T>
+constexpr bool IsNothrowPollable = noexcept(std::declval<T>().poll(std::declval<Context&>()));
+
 struct PollableBase {
     const PollableVtable* m_vtable = nullptr;
-    std::coroutine_handle<> m_parent;
 
     PollableBase() = default;
     PollableBase(PollableVtable* vtable) : m_vtable(vtable) {}
@@ -53,20 +56,45 @@ struct PollableBase {
     bool await_suspend(std::coroutine_handle<> h);
     void await_resume() {
         if (m_vtable->m_getOutput) {
-            m_vtable->m_getOutput(this, *this->contextFromParent(), nullptr);
+            m_vtable->m_getOutput(this, nullptr);
         }
+    }
+
+protected:
+    std::coroutine_handle<> m_parent;
+
+    /// Fast path for await_suspend, does not go through the vtable if the pollable is known at compile time
+    template <typename Derived>
+    bool fastSuspend(this Derived& self, std::coroutine_handle<> h) {
+        constexpr bool IsNothrowPollable = ::arc::IsNothrowPollable<Derived>;
+
+        auto cx = contextFromHandle(h);
+        bool ready = self.template vPoll<IsNothrowPollable>(&self, *cx);
+        if (ready) {
+            // fast path - no need to attach to parent
+            return false;
+        }
+
+        // attach to parent and suspend
+        self.attachToParent(h);
+        return true;
     }
 
     void attachToParent(std::coroutine_handle<> h) noexcept;
     Context* contextFromParent() const noexcept;
+    static Context* contextFromHandle(std::coroutine_handle<> h) noexcept;
 };
 
 template <typename Derived, typename T = void, bool NothrowPoll = false>
 struct Pollable : PollableBase {
     using Output = T;
 
-    T await_resume() noexcept(noexcept(m_vtable->getOutput<T>(this, std::declval<Context&>()))) {
-        return m_vtable->getOutput<T>(this, *this->contextFromParent());
+    bool await_suspend(this auto& self, std::coroutine_handle<> h) noexcept(NothrowPoll) {
+        return self.template fastSuspend<Derived>(h);
+    }
+
+    T await_resume() noexcept(noexcept(m_vtable->getOutput<T>(this))) {
+        return m_vtable->getOutput<T>(this);
     }
 
     inline Pollable() {
@@ -74,6 +102,8 @@ struct Pollable : PollableBase {
     }
 
 protected:
+    friend class PollableBase;
+
     std::optional<Output> m_output;
     ARC_NO_UNIQUE_ADDRESS std::conditional_t<NothrowPoll, std::monostate, std::exception_ptr> m_exception;
 
@@ -95,7 +125,7 @@ protected:
     }
 
     template <bool Nothrow>
-    static void vGetOutput(void* self, Context& cx, void* outp) {
+    static void vGetOutput(void* self, void* outp) {
         auto me = static_cast<Pollable*>(self);
 
         if constexpr (!Nothrow) {
@@ -113,13 +143,13 @@ protected:
 
         // instead of just checking the template argument, check if the actual poll function is noexcept
         // here we can actually do it, unlike in the class scope
-        constexpr bool IsNothrowPollable = noexcept(std::declval<Derived>().poll(std::declval<Context&>()));
+        constexpr bool IsNothrowPollable = NothrowPoll && ::arc::IsNothrowPollable<Derived>;
         static_assert(!NothrowPoll || IsNothrowPollable, "if NoexceptPollable is used, the poll function MUST be noexcept");
 
         return PollableVtable {
-            .m_metadata = meta,
             .m_poll = &vPoll<IsNothrowPollable>,
             .m_getOutput = &vGetOutput<IsNothrowPollable>,
+            .m_metadata = meta,
         };
     }();
 };
@@ -128,11 +158,17 @@ template <typename Derived, bool NothrowPoll>
 struct Pollable<Derived, void, NothrowPoll> : PollableBase {
     using Output = void;
 
+    bool await_suspend(this auto& self, std::coroutine_handle<> h) noexcept(NothrowPoll) {
+        return self.template fastSuspend<Derived>(h);
+    }
+
     inline Pollable() {
         this->m_vtable = &vtable;
     }
 
 protected:
+    friend class PollableBase;
+
     ARC_NO_UNIQUE_ADDRESS std::conditional_t<NothrowPoll, std::monostate, std::exception_ptr> m_exception;
 
     template <bool Nothrow>
@@ -152,7 +188,7 @@ protected:
     }
 
     template <bool Nothrow>
-    static void vGetOutput(void* self, Context& cx, void* outp) {
+    static void vGetOutput(void* self, void* outp) {
         auto me = static_cast<Pollable*>(self);
         if (me->m_exception) {
             std::rethrow_exception(me->m_exception);
@@ -164,20 +200,20 @@ protected:
 
         // instead of checking the template argument, check if the actual poll function is noexcept
         // here we can actually do it, unlike in the class scope
-        constexpr bool IsNothrowPollable = NothrowPoll && noexcept(std::declval<Derived>().poll(std::declval<Context&>()));
+        constexpr bool IsNothrowPollable = NothrowPoll && ::arc::IsNothrowPollable<Derived>;
         static_assert(!NothrowPoll || IsNothrowPollable, "if NoexceptPollable is used, the poll function MUST be noexcept");
 
         if constexpr (IsNothrowPollable) {
             return PollableVtable {
-                .m_metadata = meta,
                 .m_poll = &vPoll<true>,
                 .m_getOutput = nullptr,
+                .m_metadata = meta,
             };
         } else {
             return PollableVtable {
-                .m_metadata = meta,
                 .m_poll = &vPoll<false>,
                 .m_getOutput = &vGetOutput<false>,
+                .m_metadata = meta,
             };
         }
     }();

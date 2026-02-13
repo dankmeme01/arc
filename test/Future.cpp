@@ -75,7 +75,7 @@ TEST(future, ImmediateFuture) {
     }();
 
     EXPECT_TRUE(fut.poll(cx));
-    EXPECT_EQ(fut.getOutput(cx), 123);
+    EXPECT_EQ(fut.getOutput(), 123);
 }
 
 TEST(future, YieldingFuture) {
@@ -89,7 +89,7 @@ TEST(future, YieldingFuture) {
 
     EXPECT_FALSE(fut.poll(cx));
     EXPECT_TRUE(fut.poll(cx));
-    EXPECT_EQ(fut.getOutput(cx), 123);
+    EXPECT_EQ(fut.getOutput(), 123);
 }
 
 TEST(future, Exception) {

@@ -1,14 +1,15 @@
 #pragma once
 #include <utility>
+#include <asp/detail/config.hpp>
 
 namespace arc {
 
 template <typename F>
-auto scopeDtor(F&& func) {
+ASP_FORCE_INLINE auto scopeDtor(F&& func) {
     struct ScopeDtor {
-        ScopeDtor(F&& f) : m_func(std::forward<F>(f)) {}
+        ASP_FORCE_INLINE ScopeDtor(F&& f) : m_func(std::forward<F>(f)) {}
 
-        ~ScopeDtor() {
+        ASP_FORCE_INLINE ~ScopeDtor() {
             if (m_invoke) m_func();
         }
 

@@ -90,7 +90,7 @@ struct ARC_NODISCARD Select : Pollable<Select<Futures...>> {
                 auto promise = co_await Promise<void>::current();
                 auto context = promise->getContext();
 
-                auto output = selectee.future.getOutput(*context);
+                auto output = selectee.future.getOutput();
                 using CbRet = decltype(selectee.callback(output));
                 if constexpr (IsPollable<CbRet>) {
                     co_await selectee.callback(std::move(output));

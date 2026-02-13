@@ -17,10 +17,14 @@ void PollableBase::attachToParent(std::coroutine_handle<> h) noexcept {
 }
 
 Context* PollableBase::contextFromParent() const noexcept {
-    auto p = std::coroutine_handle<Promise<void>>::from_address(m_parent.address());
-    Context* cx = p.promise().getContext();
+    auto cx = contextFromHandle(m_parent);
     ARC_DEBUG_ASSERT(cx, "context is null in parent");
     return cx;
+}
+
+Context* PollableBase::contextFromHandle(std::coroutine_handle<> h) noexcept {
+    auto p = std::coroutine_handle<Promise<void>>::from_address(h.address());
+    return p.promise().getContext();
 }
 
 }

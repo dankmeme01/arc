@@ -70,7 +70,7 @@ struct ARC_NODISCARD JoinAll : Pollable<JoinAll<FRet, Futures...>, std::array<FR
             if (!fut.output) {
                 auto res = fut.future.poll(cx);
                 if (res) {
-                    fut.output = fut.future.getOutput(cx);
+                    fut.output = fut.future.getOutput();
                     trace("[JoinAll] future {} finished!", Is);
                 } else {
                     allDone = false;
@@ -124,7 +124,7 @@ struct ARC_NODISCARD JoinAllDyn : Pollable<JoinAllDyn<FRet, Fut>, std::vector<FR
             if (!fut.output) {
                 auto res = fut.future.poll(cx);
                 if (res) {
-                    fut.output = fut.future.getOutput(cx);
+                    fut.output = fut.future.getOutput();
                     trace("[JoinAll] future {} finished!", i);
                 } else {
                     allDone = false;

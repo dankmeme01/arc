@@ -130,14 +130,7 @@ struct ARC_NODISCARD Future : PollableBase {
 
     T await_resume() {
         TRACE("[{}] await_resume()", this->debugName());
-
-        auto& promise = this->promise();
-        auto cx = promise.getContext();
-        TRACE("[{}] await_resume(): context: {}, exception", this->debugName(), (void*)cx);
-
-        ARC_DEBUG_ASSERT(cx, "context is null in await_resume");
-
-        return this->getOutput(*cx);
+        return this->getOutput();
     }
 
     bool poll(Context& cx) noexcept {
@@ -188,7 +181,7 @@ struct ARC_NODISCARD Future : PollableBase {
         }
     }
 
-    T getOutput(Context& cx) {
+    T getOutput() {
         this->maybeRethrow();
         if constexpr (!std::is_void_v<T>) {
             return this->promise().template getOutput<T>();
@@ -199,24 +192,24 @@ protected:
     handle_type m_handle{};
 
     static constexpr PollableVtable vtableVoid = {
-        .m_metadata = PollableMetadata::create<Future, true>(),
         .m_poll = [](void* self, Context& cx) noexcept {
             return reinterpret_cast<Future*>(self)->poll(cx);
         },
-        .m_getOutput = [](void* self, Context& cx, void* outp) {
-            reinterpret_cast<Future*>(self)->getOutput(cx);
+        .m_getOutput = [](void* self, void* outp) {
+            reinterpret_cast<Future*>(self)->getOutput();
         },
+        .m_metadata = PollableMetadata::create<Future, true>(),
     };
 
     static constexpr PollableVtable vtableNonVoid = {
-        .m_metadata = PollableMetadata::create<Future, true>(),
         .m_poll = [](void* self, Context& cx) noexcept {
             return reinterpret_cast<Future*>(self)->poll(cx);
         },
-        .m_getOutput = [](void* self, Context& cx, void* outp) {
+        .m_getOutput = [](void* self, void* outp) {
             auto out = reinterpret_cast<MaybeUninit<NonVoidOutput>*>(outp);
-            out->init(reinterpret_cast<Future*>(self)->getOutput(cx));
+            out->init(reinterpret_cast<Future*>(self)->getOutput());
         },
+        .m_metadata = PollableMetadata::create<Future, true>(),
     };
 
     void maybeRethrow() {

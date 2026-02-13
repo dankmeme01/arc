@@ -10,7 +10,7 @@
 #include <arc/util/Assert.hpp>
 #include <arc/util/Config.hpp>
 
-#if 1
+#if 0
 # define TRACE trace
 #else
 # define TRACE(...) do {} while(0)
@@ -58,6 +58,7 @@ struct TaskVtable {
     using AbortFn = void(*)(void*, bool);
     using RunFn = bool(*)(void*, Context&);
     using PollFn = std::optional<bool>(*)(void*, Context&);
+    using GetOutputFn = void(*)(void*, void* out);
     using CloneWakerFn = RawWaker(*)(void*);
     using RegisterAwaiterFn = void(*)(void*, Waker&);
     using NotifyAwaiterFn = void(*)(void*, Waker*);
@@ -73,6 +74,7 @@ struct TaskVtable {
     AbortFn abort;
     RunFn run;
     PollFn poll;
+    GetOutputFn getOutput;
     CloneWakerFn cloneWaker;
     RegisterAwaiterFn registerAwaiter;
     NotifyAwaiterFn notifyAwaiter;
@@ -87,12 +89,6 @@ struct TaskBase {
     void abort() noexcept;
     void setName(asp::BoxedString name) noexcept;
     asp::SharedPtr<TaskDebugData> getDebugData() noexcept;
-
-    /// Polls the task. Returns:
-    /// - std::nullopt if the task is pending
-    /// - true if the task is completed
-    /// - false if the task was closed before completion
-    static std::optional<bool> vPoll(void* self, Context& cx);
 
     // Every field past the vtable can be changed without causing an ABI break.
     // Fields must never be directly accessed and should only be used through the vtable.
@@ -139,6 +135,12 @@ protected:
     static void vSetName(void* ptr, asp::BoxedString name) noexcept;
     static asp::BoxedString vGetName(void* ptr) noexcept;
     static asp::SharedPtr<TaskDebugData> vGetDebugData(void* ptr);
+
+    /// Polls the task. Returns:
+    /// - std::nullopt if the task is pending
+    /// - true if the task is completed
+    /// - false if the task was closed before completion
+    static std::optional<bool> vPoll(void* self, Context& cx);
 };
 
 template <typename T>
@@ -316,6 +318,21 @@ public:
         }
     }
 
+    /// Obtains the output of the task, rethrowing any potential exceptions.
+    /// This should only be called after a vPoll returns true, and not more than once.
+    static void vGetOutput(void* ptr, void* out) {
+        auto self = static_cast<Task*>(ptr);
+        if (self->m_exception) {
+            TRACE("[{}] rethrowing exception from task", self->debugName());
+            std::rethrow_exception(self->m_exception);
+        }
+
+        if constexpr (!IsVoid) {
+            auto outp = reinterpret_cast<MaybeUninit<NonVoidOutput>*>(out);
+            outp->init(std::move(self->m_value).value());
+        }
+    }
+
     static constexpr TaskVtable vtable = {
         .schedule = &Task::vSchedule,
         .dropFuture = &Task::vDropFuture,
@@ -324,6 +341,7 @@ public:
         .abort = &Task::vAbort,
         .run = &Task::vRun,
         .poll = &Task::vPoll,
+        .getOutput = &Task::vGetOutput,
         .cloneWaker = &Task::vCloneWaker,
         .registerAwaiter = &Task::vRegisterAwaiter,
         .notifyAwaiter = &Task::vNotifyAwaiter,
@@ -402,10 +420,10 @@ public:
         if (result) {
             try {
                 if constexpr (!IsVoid) {
-                    this->m_value = future->m_vtable->getOutput<NonVoidOutput>(future, cx);
+                    this->m_value = future->m_vtable->getOutput<NonVoidOutput>(future);
                 } else {
                     auto func = future->m_vtable->m_getOutput;
-                    if (func) func(future, cx, nullptr);
+                    if (func) func(future, nullptr);
                 }
             } catch (const std::exception& e) {
                 this->m_exception = std::current_exception();
@@ -517,24 +535,21 @@ struct TaskHandleBase {
     /// If the task is completed or threw, invalidates this handle.
     std::optional<typename TaskTypedBase<T>::NVOutput> pollTask(Context& cx) {
         this->validate();
-        auto res = m_task->vPoll(m_task, cx);
+        auto res = m_task->m_vtable->poll(m_task, cx);
         TRACE("[{}] poll result: {}", this->m_task->debugName(), res);
 
         if (res && *res) {
-            auto exc = m_task->m_exception;
-
             auto _dtor = scopeDtor([this] {
                 this->detach();
             });
 
-            if (exc) {
-                TRACE("[{}] rethrowing exception from task", m_task->debugName());
-                std::rethrow_exception(exc);
-            }
-
             if constexpr (!std::is_void_v<T>) {
-                return std::move(m_task->m_value.value());
+                MaybeUninit<typename TaskTypedBase<T>::NVOutput> out;
+                m_task->m_vtable->getOutput(m_task, &out);
+                return std::move(out.assumeInit());
             } else {
+                // no return value, so just rethrow the exception, if any
+                m_task->m_vtable->getOutput(m_task, nullptr);
                 return std::monostate{};
             }
         } else if (res) {

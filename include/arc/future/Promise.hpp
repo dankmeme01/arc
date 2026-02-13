@@ -12,46 +12,15 @@
 namespace arc {
 
 struct PromiseVtable {
-    using AttachChildFn = void(*)(void*, PollableBase*);
-    using GetChildFn = PollableBase*(*)(void*);
-    using SetContextFn = void(*)(void*, Context*);
-    using GetContextFn = Context*(*)(void*);
     using SetDebugNameFn = void(*)(void*, asp::BoxedString);
     using GetDebugNameFn = asp::BoxedString(*)(void*);
     using GetOutputFn = void(*)(void*, void* out);
     using DeliverOutputFn = void(*)(void*, void* value);
-    using SetExceptionFn = void(*)(void*, std::exception_ptr);
-    using GetExceptionFn = std::exception_ptr(*)(void*);
 
-    AttachChildFn m_attachChild = nullptr;
-    GetChildFn m_getChild = nullptr;
-    SetContextFn m_setContext = nullptr;
-    GetContextFn m_getContext = nullptr;
     SetDebugNameFn m_setDebugName = nullptr;
     GetDebugNameFn m_getDebugName = nullptr;
     GetOutputFn m_getOutput = nullptr;
     DeliverOutputFn m_deliverOutput = nullptr;
-    SetExceptionFn m_setException = nullptr;
-    GetExceptionFn m_getException = nullptr;
-
-    void attachChild(void* self, PollableBase* child) const noexcept {
-        m_attachChild(self, child);
-    }
-
-    PollableBase* getChild(void* self) const noexcept {
-        return m_getChild(self);
-    }
-
-    void setContext(void* self, Context* cx) const noexcept {
-        TRACE("[Promise {}] setContext({})", self, (void*)cx);
-        m_setContext(self, cx);
-    }
-
-    Context* getContext(void* self) const noexcept {
-        auto ctx = m_getContext(self);
-        TRACE("[Promise {}] getContext() -> {}", self, (void*)ctx);
-        return ctx;
-    }
 
     void setDebugName(void* self, asp::BoxedString name) const {
         m_setDebugName(self, std::move(name));
@@ -72,31 +41,23 @@ struct PromiseVtable {
     void deliverOutput(void* self, T* value) const {
         reinterpret_cast<void (*)(void*, T*)>(m_deliverOutput)(self, value);
     }
-
-    void setException(void* self, std::exception_ptr exc) const {
-        m_setException(self, exc);
-    }
-
-    std::exception_ptr getException(void* self) const {
-        return m_getException(self);
-    }
 };
 
 struct PromiseBase {
     void attachChild(PollableBase* child) noexcept {
-        m_vtable->attachChild(this, child);
+        m_child = child;
     }
 
     PollableBase* getChild() noexcept {
-        return m_vtable->getChild(this);
+        return m_child;
     }
 
     void setContext(Context* cx) noexcept {
-        m_vtable->setContext(this, cx);
+        m_context = cx;
     }
 
     Context* getContext() noexcept {
-        return m_vtable->getContext(this);
+        return m_context;
     }
 
     void setDebugName(asp::BoxedString name) {
@@ -118,13 +79,11 @@ struct PromiseBase {
     }
 
     void setException(std::exception_ptr exc) {
-        TRACE("SetException({}, {})", (void*)this, exc ? "yes" : "no");
-        m_vtable->setException(this, exc);
+        m_exception = std::move(exc);
     }
 
     std::exception_ptr getException() {
-        TRACE("GetException({})", (void*)this);
-        return m_vtable->getException(this);
+        return m_exception;
     }
 
     struct CurrentAwaiter {
@@ -145,38 +104,22 @@ struct PromiseBase {
     }
 
 protected:
-    // Every field past the vtable can be changed without causing an ABI break.
-    // Fields must never be directly accessed and should only be used through the vtable.
     const PromiseVtable* m_vtable;
     PollableBase* m_child = nullptr;
     Context* m_context = nullptr;
-    asp::BoxedString m_debugName;
     std::exception_ptr m_exception;
 
-    static void vAttachChild(void* self, PollableBase* child) noexcept {
-        reinterpret_cast<PromiseBase*>(self)->m_child = child;
-    }
-    static PollableBase* vGetChild(void* self) noexcept {
-        return reinterpret_cast<PromiseBase*>(self)->m_child;
-    }
-    static void vSetContext(void* self, Context* cx) noexcept {
-        reinterpret_cast<PromiseBase*>(self)->m_context = cx;
-    }
-    static Context* vGetContext(void* self) noexcept {
-        return reinterpret_cast<PromiseBase*>(self)->m_context;
-    }
+    // Every field past this comment can be changed without causing an ABI break.
+    // Fields must never be directly accessed and should only be used through the vtable.
+    // Fields above must stay stable, they are accessed by offset for performance reasons.
+    asp::BoxedString m_debugName;
+
     static void vSetDebugName(void* self, asp::BoxedString name) {
         reinterpret_cast<PromiseBase*>(self)->m_debugName = std::move(name);
     }
     static asp::BoxedString vGetDebugName(void* self) {
         auto& name = reinterpret_cast<PromiseBase*>(self)->m_debugName;
         return name;
-    }
-    static void vSetException(void* self, std::exception_ptr exc) {
-        reinterpret_cast<PromiseBase*>(self)->m_exception = exc;
-    }
-    static std::exception_ptr vGetException(void* self) {
-        return reinterpret_cast<PromiseBase*>(self)->m_exception;
     }
 };
 
@@ -191,16 +134,10 @@ struct PromiseBaseV : PromiseBase {
 
 protected:
     static constexpr PromiseVtable vtable = {
-        .m_attachChild = &PromiseBase::vAttachChild,
-        .m_getChild = &PromiseBase::vGetChild,
-        .m_setContext = &PromiseBase::vSetContext,
-        .m_getContext = &PromiseBase::vGetContext,
         .m_setDebugName = &PromiseBase::vSetDebugName,
         .m_getDebugName = &PromiseBase::vGetDebugName,
         .m_getOutput = nullptr,
         .m_deliverOutput = nullptr,
-        .m_setException = &PromiseBase::vSetException,
-        .m_getException = &PromiseBase::vGetException,
     };
 };
 
@@ -221,10 +158,6 @@ protected:
     std::optional<R> m_value;
 
     static constexpr PromiseVtable vtable = {
-        .m_attachChild = &PromiseBase::vAttachChild,
-        .m_getChild = &PromiseBase::vGetChild,
-        .m_setContext = &PromiseBase::vSetContext,
-        .m_getContext = &PromiseBase::vGetContext,
         .m_setDebugName = &PromiseBase::vSetDebugName,
         .m_getDebugName = &PromiseBase::vGetDebugName,
         .m_getOutput = [](void* self, void* outp) {
@@ -237,8 +170,6 @@ protected:
             auto value = reinterpret_cast<R*>(valuep);
             me->m_value = std::move(*value);
         },
-        .m_setException = &PromiseBase::vSetException,
-        .m_getException = &PromiseBase::vGetException,
     };
 };
 
