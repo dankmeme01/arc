@@ -160,14 +160,12 @@ void TaskBase::vSchedule(void* self) {
     }
 }
 
-void TaskBase::vDropRef(void* self) {
+void TaskBase::dropRef() {
     // ARC_TRACE("[Task {}] dropping reference", self);
-
-    auto task = static_cast<TaskBase*>(self);
-    auto state = task->decref();
+    auto state = this->decref();
 
     if (shouldDestroy(state)) {
-        task->m_vtable->destroy(self);
+        m_vtable->destroy(this);
     }
 }
 
@@ -239,28 +237,13 @@ std::string TaskBase::debugName() {
     return std::string{n};
 }
 
-void TaskBase::registerAwaiter(Waker& waker) {
-    m_vtable->registerAwaiter(this, waker);
-}
-
-void TaskBase::notifyAwaiter(Waker* current) {
-    m_vtable->notifyAwaiter(this, current);
-}
-
 std::optional<Waker> TaskBase::takeAwaiter(const Waker* current) {
-    return m_vtable->takeAwaiter(this, current);
-}
-
-std::optional<Waker> TaskBase::vTakeAwaiter(void* ptr, const Waker* current) {
-    auto self = static_cast<TaskBase*>(ptr);
-
-    auto state = self->m_state.fetch_or(TASK_NOTIFYING, std::memory_order::acq_rel);
+    auto state = this->m_state.fetch_or(TASK_NOTIFYING, std::memory_order::acq_rel);
 
     std::optional<Waker> out;
     if ((state & (TASK_NOTIFYING | TASK_REGISTERING)) == 0) {
-        out = std::move(self->m_awaiter);
-        self->m_awaiter.reset();
-        self->m_state.fetch_and(~TASK_NOTIFYING & ~TASK_AWAITER, std::memory_order::release);
+        out = std::move(this->m_awaiter);
+        this->m_state.fetch_and(~TASK_NOTIFYING & ~TASK_AWAITER, std::memory_order::release);
 
         if (out) {
             if (current && out->equals(*current)) {
@@ -290,11 +273,9 @@ asp::SharedPtr<TaskDebugData> TaskBase::vGetDebugData(void* ptr) {
     return self->m_debugData;
 }
 
-void TaskBase::vRegisterAwaiter(void* ptr, Waker& waker) {
-    auto self = static_cast<TaskBase*>(ptr);
-
-    auto state = self->m_state.fetch_or(0, std::memory_order::acquire);
-    ARC_TRACE("[{}] registering waker {} (state: {})", self->debugName(), waker.m_data, state);
+void TaskBase::registerAwaiter(Waker& waker) {
+    auto state = this->m_state.fetch_or(0, std::memory_order::acquire);
+    ARC_TRACE("[{}] registering waker {} (state: {})", this->debugName(), waker.m_data, state);
 
     while (true) {
         // if we are notifying, wake and return without registering
@@ -305,22 +286,21 @@ void TaskBase::vRegisterAwaiter(void* ptr, Waker& waker) {
 
         // mark the state to let other threads know we are registering
         auto newState = state | TASK_REGISTERING;
-        if (self->exchangeState(state, newState)) {
+        if (this->exchangeState(state, newState)) {
             state = newState;
             break;
         }
     }
 
     // store the awaiter
-    self->m_awaiter = waker.clone();
+    this->m_awaiter = waker.clone();
 
     std::optional<Waker> w;
 
     while (true) {
         // if there was a notification, take out the awaiter
         if (state & TASK_NOTIFYING) {
-            w = std::move(self->m_awaiter);
-            self->m_awaiter.reset();
+            w = std::move(this->m_awaiter);
         }
 
         // the new state is not being notified nor registering, but there might be an awaiter
@@ -331,7 +311,7 @@ void TaskBase::vRegisterAwaiter(void* ptr, Waker& waker) {
             newState |= TASK_AWAITER;
         }
 
-        if (self->exchangeState(state, newState)) {
+        if (this->exchangeState(state, newState)) {
             break;
         }
     }
@@ -342,11 +322,10 @@ void TaskBase::vRegisterAwaiter(void* ptr, Waker& waker) {
     }
 }
 
-void TaskBase::vNotifyAwaiter(void* ptr, Waker* current) {
-    auto self = static_cast<TaskBase*>(ptr);
-    ARC_TRACE("[{}] notifying waker {} (cur: {})", self->debugName(), self->m_awaiter ? self->m_awaiter->m_data : nullptr, current->m_data);
+void TaskBase::notifyAwaiter(Waker* current) {
+    ARC_TRACE("[{}] notifying waker {} (cur: {})", this->debugName(), this->m_awaiter.valid() ? this->m_awaiter.m_data : nullptr, current->m_data);
 
-    auto w = self->takeAwaiter(current);
+    auto w = this->takeAwaiter(current);
 
     if (w) {
         w->wake();

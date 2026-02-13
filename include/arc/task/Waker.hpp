@@ -13,19 +13,21 @@ struct RawWakerVtable {
 
     WakeFn wake = +[](void*){};
     WakeByRefFn wakeByRef = +[](void*){};
-    CloneFn clone;
+    CloneFn clone = nullptr;
     DestroyFn destroy = +[](void*){};
 };
 
 struct RawWaker {
-    void* m_data;
-    const RawWakerVtable* m_vtable;
+    void* m_data = nullptr;
+    const RawWakerVtable* m_vtable = nullptr;
 
     bool equals(const RawWaker& other) const noexcept;
+    bool valid() const noexcept;
     static RawWaker noop() noexcept;
 };
 
 struct Waker : RawWaker {
+    Waker() noexcept = default;
     Waker(void* data, const RawWakerVtable* vtable) noexcept;
     Waker(RawWaker raw) noexcept;
     Waker(const Waker&) = delete;

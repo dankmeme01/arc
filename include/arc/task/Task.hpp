@@ -55,25 +55,17 @@ struct TaskVtable {
     using PollFn = std::optional<bool>(*)(void*, Context&);
     using GetOutputFn = void(*)(void*, void* out);
     using CloneWakerFn = RawWaker(*)(void*);
-    using RegisterAwaiterFn = void(*)(void*, Waker&);
-    using NotifyAwaiterFn = void(*)(void*, Waker*);
-    using TakeAwaiterFn = std::optional<Waker>(*)(void*, const Waker*);
     using SetNameFn = void(*)(void*, asp::BoxedString);
     using GetNameFn = asp::BoxedString(*)(void*);
     using GetDebugDataFn = asp::SharedPtr<TaskDebugData>(*)(void*);
 
     Fn schedule;
-    Fn dropFuture;
-    Fn dropRef;
     Fn destroy;
     AbortFn abort;
     RunFn run;
     PollFn poll;
     GetOutputFn getOutput;
     CloneWakerFn cloneWaker;
-    RegisterAwaiterFn registerAwaiter;
-    NotifyAwaiterFn notifyAwaiter;
-    TakeAwaiterFn takeAwaiter;
     SetNameFn setName;
     GetNameFn getName;
     GetDebugDataFn getDebugData;
@@ -102,7 +94,7 @@ protected:
 
     std::atomic<uint64_t> m_state{TASK_INITIAL_STATE};
     Runtime* m_runtime;
-    std::optional<Waker> m_awaiter;
+    Waker m_awaiter;
     asp::BoxedString m_name;
     asp::SharedPtr<TaskDebugData> m_debugData;
     std::exception_ptr m_exception;
@@ -120,14 +112,11 @@ protected:
     void registerAwaiter(Waker& waker);
     void notifyAwaiter(Waker* current = nullptr);
     std::optional<Waker> takeAwaiter(const Waker* current = nullptr);
+    void dropRef();
 
     static void vAbort(void* self, bool force);
     static void vSchedule(void* self);
-    static void vDropRef(void* self);
     static void vDropWaker(void* ptr);
-    static void vRegisterAwaiter(void* ptr, Waker& waker);
-    static void vNotifyAwaiter(void* ptr, Waker* current);
-    static std::optional<Waker> vTakeAwaiter(void* ptr, const Waker* current);
     static void vSetName(void* ptr, asp::BoxedString name) noexcept;
     static asp::BoxedString vGetName(void* ptr) noexcept;
     static asp::SharedPtr<TaskDebugData> vGetDebugData(void* ptr);
@@ -231,20 +220,20 @@ public:
         }
 
         if (!m_droppedFuture.load(std::memory_order::acquire)) {
-            this->vDropFuture(this);
+            this->dropFuture();
         }
     }
 
-    static void vDropFuture(void* ptr) {
-        auto self = static_cast<Task*>(ptr);
-        if (self->m_droppedFuture.exchange(true, std::memory_order::acq_rel)) return;
+protected:
+    void dropFuture() {
+        if (this->m_droppedFuture.exchange(true, std::memory_order::acq_rel)) return;
 
-        ARC_TRACE("[{}] dropping future (has lambda: {})", self->debugName(), UsesLambda);
+        ARC_TRACE("[{}] dropping future (has lambda: {})", this->debugName(), UsesLambda);
 
-        self->m_future.drop();
+        this->m_future.drop();
 
         if constexpr (UsesLambda) {
-            self->m_lambda.drop();
+            this->m_lambda.drop();
         }
     }
 
@@ -334,17 +323,12 @@ public:
 
     static constexpr TaskVtable vtable = {
         .schedule = &Task::vSchedule,
-        .dropFuture = &Task::vDropFuture,
-        .dropRef = &Task::vDropRef,
         .destroy = &Task::vDestroy,
         .abort = &Task::vAbort,
         .run = &Task::vRun,
         .poll = &Task::vPoll,
         .getOutput = &Task::vGetOutput,
         .cloneWaker = &Task::vCloneWaker,
-        .registerAwaiter = &Task::vRegisterAwaiter,
-        .notifyAwaiter = &Task::vNotifyAwaiter,
-        .takeAwaiter = &Task::vTakeAwaiter,
         .setName = &Task::vSetName,
         .getName = &Task::vGetName,
         .getDebugData = &Task::vGetDebugData,
@@ -372,7 +356,7 @@ public:
         while (true) {
             if (state & TASK_CLOSED) {
                 // closed, drop the future
-                this->vDropFuture(this);
+                this->dropFuture();
 
                 auto state = this->m_state.fetch_and(~TASK_SCHEDULED, std::memory_order::acq_rel);
 
@@ -381,7 +365,7 @@ public:
                     awaiter = this->takeAwaiter();
                 }
 
-                this->vDropRef(this);
+                this->dropRef();
 
                 if (awaiter) {
                     awaiter->wake();
@@ -428,7 +412,7 @@ public:
                 cx.dumpStack();
             }
 
-            this->vDropFuture(this);
+            this->dropFuture();
 
             // the task is completed, update state
             while (true) {
@@ -449,7 +433,7 @@ public:
                         awaiter = this->takeAwaiter();
                     }
 
-                    this->vDropRef(this);
+                    this->dropRef();
 
                     // notify awaiter
                     if (awaiter) {
@@ -469,7 +453,7 @@ public:
 
                 if (state & TASK_CLOSED) {
                     // in case the future hasn't been dropped yet, do it now
-                    this->vDropFuture(this);
+                    this->dropFuture();
                 }
 
                 if (this->exchangeState(state, newState)) {
@@ -480,7 +464,7 @@ public:
                             awaiter = this->takeAwaiter();
                         }
 
-                        this->vDropRef(this);
+                        this->dropRef();
 
                         if (awaiter) {
                             awaiter->wake();
@@ -491,7 +475,7 @@ public:
                         return true;
                     } else {
                         // drop reference held by the running state
-                        this->vDropRef(this);
+                        this->dropRef();
                     }
                     break;
                 }
@@ -562,7 +546,6 @@ struct TaskHandleBase {
         this->validate();
         CondvarWaker cvw;
         auto waker = cvw.waker();
-        m_task->registerAwaiter(waker);
 
         Context cx { &waker, nullptr };
 
