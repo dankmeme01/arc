@@ -62,14 +62,14 @@ bool Context::shouldCoopYield() noexcept {
 }
 
 void Context::pushFrame(const PollableBase* pollable) {
-    // trace("pushing frame {}", (void*)pollable);
+    // ARC_TRACE("pushing frame {}", (void*)pollable);
     m_stack.push_back(StackEntry { pollable, {} });
     ARC_DEBUG_ASSERT(m_stack.size() < MAX_RECURSION_DEPTH, "maximum future recursion depth exceeded");
 }
 
 void Context::popFrame() noexcept {
     ARC_DEBUG_ASSERT(!m_stack.empty(), "popFrame() called on empty future stack");
-    // trace("popping frame {}", (void*)&m_stack.back());
+    // ARC_TRACE("popping frame {}", (void*)&m_stack.back());
     m_stack.pop_back();
 }
 
@@ -130,7 +130,7 @@ void Context::captureStack() {
         m_capturedStack.push_back(asp::UniqueBoxedString{description});
     }
 
-    trace("Captured {} frames", m_capturedStack.size());
+    ARC_TRACE("Captured {} frames", m_capturedStack.size());
 }
 
 void Context::dumpStack() {

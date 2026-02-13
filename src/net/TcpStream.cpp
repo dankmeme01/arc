@@ -31,7 +31,7 @@ Future<NetResult<TcpStream>> TcpStream::connect(std::string_view address) {
 }
 
 Future<NetResult<TcpStream>> TcpStream::connect(SocketAddress address) {
-    trace("(TCP) Connecting to {}", address.toString());
+    ARC_TRACE("(TCP) Connecting to {}", address.toString());
 
     // create a tcpstream immediately so that raii will unregister the io on error
     ARC_CO_UNWRAP_INTO(auto stream, qsox::TcpStream::connectNonBlocking(address));

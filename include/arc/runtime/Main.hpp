@@ -68,7 +68,7 @@ inline int _mainWrapper(int argc, char** argv, auto mainFut, std::optional<size_
 
     runtime->safeShutdown();
 
-    trace("arc main wrapper exiting with code {}", ret);
+    ARC_TRACE("arc main wrapper exiting with code {}", ret);
 
     return ret;
 }

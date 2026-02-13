@@ -9,12 +9,6 @@
 #include "Pollable.hpp"
 #include "Promise.hpp"
 
-#if 0
-# define TRACE ::arc::trace
-#else
-# define TRACE(...) do {} while(0)
-#endif
-
 namespace arc {
 
 template <typename T>
@@ -84,18 +78,18 @@ struct ARC_NODISCARD Future : PollableBase {
     bool coopYield(Context& cx) {
         if (!cx.shouldCoopYield()) return false;
 
-        trace("[{}] cooperatively yielding", this->debugName());
+        ARC_TRACE("[{}] cooperatively yielding", this->debugName());
         cx.wake();
         return true;
     }
 
     bool await_ready() noexcept {
-        TRACE("[{}] await_ready(), done: {}", this->debugName(), m_handle ? m_handle.done() : true);
+        ARC_TRACE("[{}] await_ready(), done: {}", this->debugName(), m_handle ? m_handle.done() : true);
         return m_handle ? m_handle.done() : true;
     }
 
     bool await_suspend(std::coroutine_handle<> awaiting) {
-        TRACE("[{}] await_suspend({}), child: {}", this->debugName(), awaiting.address(), (void*)this->child());
+        ARC_TRACE("[{}] await_suspend({}), child: {}", this->debugName(), awaiting.address(), (void*)this->child());
 
         this->attachToParent(awaiting);
 
@@ -114,7 +108,7 @@ struct ARC_NODISCARD Future : PollableBase {
 
         // if we don't have a child, wake the current task immediately
         if (!this->child()) {
-            TRACE("[{}] await_suspend(): no child, resuming immediately", this->debugName());
+            ARC_TRACE("[{}] await_suspend(): no child, resuming immediately", this->debugName());
 
             cx->pushFrame(this);
             m_handle.resume();
@@ -129,7 +123,7 @@ struct ARC_NODISCARD Future : PollableBase {
     }
 
     T await_resume() {
-        TRACE("[{}] await_resume()", this->debugName());
+        ARC_TRACE("[{}] await_resume()", this->debugName());
         return this->getOutput();
     }
 
@@ -159,7 +153,7 @@ struct ARC_NODISCARD Future : PollableBase {
             return false;
         };
 
-        TRACE("[{}] poll(), child: {}", this->debugName(), (void*)child);
+        ARC_TRACE("[{}] poll(), child: {}", this->debugName(), (void*)child);
 
         if (child) {
             cx.pushFrame(this);
@@ -167,7 +161,7 @@ struct ARC_NODISCARD Future : PollableBase {
             bool done = child->m_vtable->poll(child, cx);
             cx.popFrame();
 
-            TRACE("[{}] poll() -> child done: {}", this->debugName(), done);
+            ARC_TRACE("[{}] poll() -> child done: {}", this->debugName(), done);
             if (done) {
                 this->promise().attachChild(nullptr);
                 return resume();
@@ -214,7 +208,7 @@ protected:
 
     void maybeRethrow() {
         auto exc = this->promise().getException();
-        trace("[{}] maybeRethrow(), exception: {}", this->debugName(), exc ? "yes" : "no");
+        ARC_TRACE("[{}] maybeRethrow(), exception: {}", this->debugName(), exc ? "yes" : "no");
         if (exc) {
             std::rethrow_exception(exc);
         }

@@ -2,12 +2,7 @@
 
 #include "Future.hpp"
 #include <arc/util/Assert.hpp>
-
-#if 0
-# define TRACE ::arc::trace
-#else
-# define TRACE(...) do {} while(0)
-#endif
+#include <arc/util/Trace.hpp>
 
 namespace arc {
 
@@ -72,12 +67,12 @@ struct ARC_NODISCARD JoinAll : Pollable<JoinAll<FRet, Futures...>, std::array<FR
         (([&]() {
             auto& fut = std::get<Is>(t);
 
-            TRACE("[JoinAll] checking future {}, active: {}", Is, !fut.output.has_value());
+            // ARC_TRACE("[JoinAll] checking future {}, active: {}", Is, !fut.output.has_value());
             if (!fut.output) {
                 auto res = fut.future.poll(cx);
                 if (res) {
                     fut.output = fut.future.getOutput();
-                    TRACE("[JoinAll] future {} finished!", Is);
+                    // ARC_TRACE("[JoinAll] future {} finished!", Is);
                 } else {
                     allDone = false;
                 }
@@ -138,7 +133,7 @@ struct ARC_NODISCARD JoinAllDyn : Pollable<JoinAllDyn<FRet, Fut>, JoinAllDynOutp
         for (size_t i = 0; i < m_futures.size(); i++) {
             auto& fut = m_futures[i];
 
-            TRACE("[JoinAll] checking future {}, active: {}", i, !fut.output.has_value());
+            // ARC_TRACE("[JoinAll] checking future {}, active: {}", i, !fut.output.has_value());
 
             if (!fut.output) {
                 auto res = fut.future.poll(cx);
@@ -146,7 +141,7 @@ struct ARC_NODISCARD JoinAllDyn : Pollable<JoinAllDyn<FRet, Fut>, JoinAllDynOutp
                     if constexpr (!IsVoid) {
                         fut.output = fut.future.getOutput();
                     }
-                    TRACE("[JoinAll] future {} finished!", i);
+                    // ARC_TRACE("[JoinAll] future {} finished!", i);
                 } else {
                     allDone = false;
                 }

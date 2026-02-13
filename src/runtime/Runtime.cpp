@@ -9,13 +9,6 @@ static constexpr size_t MAX_BLOCKING_WORKERS = 128;
 static constexpr size_t MIN_BLOCKING_WORKERS = 2;
 static thread_local arc::Runtime* g_runtime = nullptr;
 static arc::Runtime* g_globalRuntime = nullptr;
-
-#if 0
-# define TRACE ::arc::trace
-#else
-# define TRACE(...) do {} while(0)
-#endif
-
 namespace arc {
 
 asp::SharedPtr<Runtime> Runtime::create(const RuntimeOptions& options) {
@@ -118,7 +111,7 @@ void Runtime::vSetTerminateHandler(Runtime* self, TerminateHandler handler) noex
 }
 
 void Runtime::vEnqueueTask(Runtime* self, TaskBase* task) {
-    TRACE("[Runtime] enqueuing task {}", (void*)task);
+    ARC_TRACE("[Runtime] enqueuing task {}", (void*)task);
     {
         std::lock_guard lock(self->m_mtx);
         self->m_runQueue.push_back(task);
@@ -326,13 +319,13 @@ void Runtime::workerLoop(WorkerData& data, Context& cx) {
             continue;
         }
 
-        TRACE("[Worker {}] driving task {}", data.id, task->debugName());
+        ARC_TRACE("[Worker {}] driving task {}", data.id, task->debugName());
         now = Instant::now();
 
         cx.setup(now + m_taskDeadline);
         task->m_vtable->run(task, cx);
 
-        TRACE("[Worker {}] finished driving task {}", data.id, task->debugName());
+        ARC_TRACE("[Worker {}] finished driving task {}", data.id, task->debugName());
 
 #ifdef ARC_DEBUG
         auto taken = now.elapsed();
@@ -397,16 +390,16 @@ void Runtime::blockingWorkerLoop(size_t id) {
             continue;
         }
 
-        TRACE("[Blocking {}] executing blocking task {}", id, (void*)task);
+        ARC_TRACE("[Blocking {}] executing blocking task {}", id, (void*)task.get());
         m_busyBlockingWorkers.fetch_add(1, ::relaxed);
         task->execute();
         m_busyBlockingWorkers.fetch_sub(1, ::relaxed);
-        TRACE("[Blocking {}] finished blocking task {}", id, (void*)task);
+        ARC_TRACE("[Blocking {}] finished blocking task {}", id, (void*)task.get());
 
         terminateAt = Instant::now() + IDLE_TIMEOUT;
     }
 
-    TRACE("[Blocking {}] exiting due to inactivity", id);
+    ARC_TRACE("[Blocking {}] exiting due to inactivity", id);
 }
 
 void Runtime::ensureBlockingWorker(size_t tasksInQueue) {
@@ -457,7 +450,7 @@ void Runtime::shutdown() {
         return;
     }
 
-    TRACE("[Runtime] shutting down");
+    ARC_TRACE("[Runtime] shutting down");
     m_cv.notify_all();
     m_blockingCv.notify_all();
 

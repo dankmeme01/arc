@@ -53,7 +53,7 @@ std::optional<bool> TaskBase::vPoll(void* ptr, Context& cx) {
     auto self = static_cast<TaskBase*>(ptr);
     auto state = self->getState();
 
-    trace("[{}] polling, cx waker: {}, state: {}", self->debugName(), cx.waker() ? cx.waker()->m_data : nullptr, state);
+    ARC_TRACE("[{}] polling, cx waker: {}, state: {}", self->debugName(), cx.waker() ? cx.waker()->m_data : nullptr, state);
 
     while (true) {
         // if the task was closed, notify awaiter and return
@@ -147,7 +147,7 @@ void TaskBase::vAbort(void* ptr, bool force) {
 }
 
 void TaskBase::vSchedule(void* self) {
-    // trace("[Task {}] scheduling", self);
+    // ARC_TRACE("[Task {}] scheduling", self);
 
     auto task = static_cast<TaskBase*>(self);
     auto state = task->getState();
@@ -161,7 +161,7 @@ void TaskBase::vSchedule(void* self) {
 }
 
 void TaskBase::vDropRef(void* self) {
-    // trace("[Task {}] dropping reference", self);
+    // ARC_TRACE("[Task {}] dropping reference", self);
 
     auto task = static_cast<TaskBase*>(self);
     auto state = task->decref();
@@ -172,7 +172,7 @@ void TaskBase::vDropRef(void* self) {
 }
 
 void TaskBase::vDropWaker(void* ptr) {
-    // trace("[Task {}] dropping waker", ptr);
+    // ARC_TRACE("[Task {}] dropping waker", ptr);
 
     auto self = static_cast<TaskBase*>(ptr);
     auto state = self->decref();
@@ -286,7 +286,7 @@ asp::SharedPtr<TaskDebugData> TaskBase::vGetDebugData(void* ptr) {
 
 void TaskBase::vRegisterAwaiter(void* ptr, Waker& waker) {
     auto self = static_cast<TaskBase*>(ptr);
-    trace("[Task {}] registering waker {}", (void*)self, waker.m_data);
+    ARC_TRACE("[Task {}] registering waker {}", (void*)self, waker.m_data);
 
     auto state = self->m_state.fetch_or(0, std::memory_order::acquire);
 
@@ -338,7 +338,7 @@ void TaskBase::vRegisterAwaiter(void* ptr, Waker& waker) {
 
 void TaskBase::vNotifyAwaiter(void* ptr, Waker* current) {
     auto self = static_cast<TaskBase*>(ptr);
-    trace("[Task {}] notifying waker {} (cur: {})", (void*)self, self->m_awaiter ? self->m_awaiter->m_data : nullptr, current->m_data);
+    ARC_TRACE("[Task {}] notifying waker {} (cur: {})", (void*)self, self->m_awaiter ? self->m_awaiter->m_data : nullptr, current->m_data);
 
     auto w = self->takeAwaiter(current);
 

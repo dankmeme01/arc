@@ -3,12 +3,6 @@
 #include <arc/util/Trace.hpp>
 #include <arc/util/MaybeUninit.hpp>
 
-#if 0
-# define TRACE ::arc::trace
-#else
-# define TRACE(...) do {} while(0)
-#endif
-
 namespace arc {
 
 struct PromiseVtable {
@@ -129,7 +123,7 @@ struct PromiseBaseV : PromiseBase {
     }
 
     void return_void() noexcept {
-        TRACE("[Promise {}] return_void()", (void*)this);
+        ARC_TRACE("[Promise {}] return_void()", (void*)this);
     }
 
 protected:
@@ -149,7 +143,7 @@ struct PromiseBaseNV : PromiseBase {
 
     template <std::convertible_to<R> From>
     void return_value(From&& from) {
-        TRACE("[Promise {}] return_value()", (void*)this);
+        ARC_TRACE("[Promise {}] return_value()", (void*)this);
         R value = static_cast<R>(std::forward<From>(from));
         this->deliverOutput(&value);
     }
@@ -188,7 +182,7 @@ struct Promise : std::conditional_t<
     std::suspend_always initial_suspend() noexcept { return {}; }
 
     void unhandled_exception() {
-        trace("[Promise {}] unhandled_exception()", (void*)this);
+        ARC_TRACE("[Promise {}] unhandled_exception()", (void*)this);
 
         auto exc = std::current_exception();
         this->getContext()->onUnhandledException();
@@ -207,7 +201,7 @@ struct Promise : std::conditional_t<
     };
 
     auto final_suspend() noexcept {
-        TRACE("[Promise {}] final_suspend()", (void*)this);
+        ARC_TRACE("[Promise {}] final_suspend()", (void*)this);
         return FinalAwaiter{};
     }
 };

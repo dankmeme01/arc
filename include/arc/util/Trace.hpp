@@ -7,6 +7,12 @@
 
 #include <utility>
 
+#ifdef ARC_ENABLE_TRACE
+# define ARC_TRACE ::arc::trace
+#else
+# define ARC_TRACE(...) do {} while(0)
+#endif
+
 namespace arc {
 
 static auto epoch = asp::time::Instant::now();
@@ -22,7 +28,7 @@ void setLogFunction(arc::MoveOnlyFunction<void(std::string, LogLevel)> func);
 
 template <class... Args>
 void trace(fmt::format_string<Args...> fmt, Args&&... args) {
-#ifdef ARC_TRACE
+#ifdef ARC_ENABLE_TRACE
     auto elapsed = epoch.elapsed();
     auto message = fmt::format("[TRACE] [{:.4f}] {}", elapsed.seconds<float>(), fmt::format(fmt, std::forward<Args>(args)...));
     doLogMessage(std::move(message), LogLevel::Trace);

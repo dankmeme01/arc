@@ -142,7 +142,7 @@ Registration IoDriver::vRegisterIo(IoDriver* self, SockFd fd, Interest interest)
     auto ios = self->m_ios.lock();
     auto it = ios->find(fd);
     if (it != ios->end()) {
-        trace("IoDriver: returning already registered entry for fd {}", fmtFd(fd));
+        ARC_TRACE("IoDriver: returning already registered entry for fd {}", fmtFd(fd));
         it->second->registrations.fetch_add(1, std::memory_order::relaxed);
         return Registration{it->second, self};
     }
@@ -153,7 +153,7 @@ Registration IoDriver::vRegisterIo(IoDriver* self, SockFd fd, Interest interest)
     ios->emplace(fd, entry);
     ios.unlock();
 
-    trace("IoDriver: registered fd {}", fmtFd(fd));
+    ARC_TRACE("IoDriver: registered fd {}", fmtFd(fd));
 
     return Registration{std::move(entry), self};
 }
@@ -170,10 +170,10 @@ void IoDriver::vDropRegistration(IoDriver* self, const Registration& rio) {
     }
 
     size_t newRegs = it->second->registrations.fetch_sub(1, std::memory_order::relaxed) - 1;
-    trace("IoDriver: dropped registration for fd {}, refcount: {}", fmtFd(rio.fd()), newRegs);
+    ARC_TRACE("IoDriver: dropped registration for fd {}, refcount: {}", fmtFd(rio.fd()), newRegs);
 
     if (newRegs == 0) {
-        trace("IoDriver: erasing entry for fd {}", fmtFd(rio.fd()));
+        ARC_TRACE("IoDriver: erasing entry for fd {}", fmtFd(rio.fd()));
         ios->erase(it);
     }
 }
@@ -181,7 +181,7 @@ void IoDriver::vDropRegistration(IoDriver* self, const Registration& rio) {
 void IoDriver::vClearReadiness(IoDriver* self, IoEntry& rio, Interest interest) {
     ARC_ASSERT(interest != Interest::ReadWrite);
 
-    trace("IoDriver: clearing readiness for fd {}, interest {}", fmtFd(rio.fd), static_cast<uint8_t>(interest));
+    ARC_TRACE("IoDriver: clearing readiness for fd {}, interest {}", fmtFd(rio.fd), static_cast<uint8_t>(interest));
 
     auto curr = rio.readiness.load(acquire);
     uint8_t newReady = curr & ~static_cast<uint8_t>(interest);
@@ -194,7 +194,7 @@ Interest IoDriver::vPollReady(IoDriver* self, IoEntry& rio, Interest interest, C
 
     auto curr = rio.readiness.load(acquire);
 
-    trace("IoDriver: fd {} readiness: {}", fmtFd(rio.fd), curr);
+    ARC_TRACE("IoDriver: fd {} readiness: {}", fmtFd(rio.fd), curr);
 
     uint8_t readiness = (curr & static_cast<uint8_t>(interest));
 
@@ -231,7 +231,7 @@ Interest IoDriver::vPollReady(IoDriver* self, IoEntry& rio, Interest interest, C
     waiters->emplace_back(IoWaiter(cx.cloneWaker(), outId, interest));
     waiters.unlock();
 
-    trace("IoDriver: added waiter for fd {}: interest {}", fmtFd(rio.fd), static_cast<uint8_t>(interest));
+    ARC_TRACE("IoDriver: added waiter for fd {}: interest {}", fmtFd(rio.fd), static_cast<uint8_t>(interest));
 
     if ((interest & Interest::Readable) != 0) {
         rio.anyRead.store(true, release);
@@ -255,7 +255,7 @@ void IoDriver::vUnregisterWaiter(IoDriver* self, IoEntry& rio, uint64_t id) {
         return;
     }
 
-    trace("IoDriver: removed waiter for fd {}, id {}", fmtFd(rio.fd), id);
+    ARC_TRACE("IoDriver: removed waiter for fd {}, id {}", fmtFd(rio.fd), id);
 
     waiters->erase(it);
 
@@ -296,7 +296,7 @@ void IoDriver::doWork() {
         bool read = rio->anyRead.load(std::memory_order::relaxed);
         bool write = rio->anyWrite.load(std::memory_order::relaxed);
 
-        // trace("IoDriver: fd {} - poll read: {}, poll write: {}", fmtFd(rio->fd), read, write);
+        // ARC_TRACE("IoDriver: fd {} - poll read: {}, poll write: {}", fmtFd(rio->fd), read, write);
 
         if (!read && !write) {
             continue;
@@ -346,7 +346,7 @@ void IoDriver::doWork() {
         return;
     }
 
-    trace("IoDriver: poll returned {} fds", ret);
+    ARC_TRACE("IoDriver: poll returned {} fds", ret);
 
     for (int i = 0; i < count; i++) {
         auto rio = entries[i];
@@ -367,12 +367,12 @@ void IoDriver::doWork() {
         }
 
         auto newReadiness = rio->readiness.fetch_or(ready, relaxed) | static_cast<uint8_t>(ready);
-        trace("IoDriver: fd {} - readiness {}", fmtFd(rio->fd), newReadiness);
+        ARC_TRACE("IoDriver: fd {} - readiness {}", fmtFd(rio->fd), newReadiness);
 
         auto waiters = rio->waiters.lock();
         for (auto& waiter : *waiters) {
             if (waiter.satisfiedBy(ready)) {
-                trace("IoDriver: will wake waker id {}", waiter.getId());
+                ARC_TRACE("IoDriver: will wake waker id {}", waiter.getId());
                 waiter.wake();
             }
         }

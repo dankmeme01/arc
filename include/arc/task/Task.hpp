@@ -10,12 +10,6 @@
 #include <arc/util/Assert.hpp>
 #include <arc/util/Config.hpp>
 
-#if 0
-# define TRACE trace
-#else
-# define TRACE(...) do {} while(0)
-#endif
-
 #include <asp/ptr/SharedPtr.hpp>
 #include <asp/sync/SpinLock.hpp>
 #include <utility>
@@ -244,7 +238,7 @@ public:
         auto self = static_cast<Task*>(ptr);
         if (self->m_droppedFuture.exchange(true, std::memory_order::acq_rel)) return;
 
-        TRACE("[{}] dropping future (has lambda: {})", self->debugName(), UsesLambda);
+        ARC_TRACE("[{}] dropping future (has lambda: {})", self->debugName(), UsesLambda);
 
         self->m_future.drop();
 
@@ -255,7 +249,7 @@ public:
 
     static void vDestroy(void* self) {
         auto task = static_cast<Task*>(self);
-        TRACE("[{}] destroying", task->debugName());
+        printWarn("[{}] destroying", task->debugName());
 
         // remove the task from the runtime if we haven't been abandoned
         auto state = task->getState();
@@ -268,7 +262,7 @@ public:
 
     static RawWaker vCloneWaker(void* self) {
         auto task = static_cast<Task*>(self);
-        TRACE("[{}] cloning waker", task->debugName());
+        ARC_TRACE("[{}] cloning waker", task->debugName());
         auto state = task->incref();
 
         if (state > (uint64_t)(std::numeric_limits<int64_t>::max())) {
@@ -286,7 +280,7 @@ public:
     template <bool Consume>
     static void vWake(void* ptr) {
         auto self = static_cast<Task*>(ptr);
-        TRACE("[{}] waking", self->debugName());
+        ARC_TRACE("[{}] waking", self->debugName());
         auto state = self->getState();
 
         while (true) {
@@ -327,7 +321,7 @@ public:
     static void vGetOutput(void* ptr, void* out) {
         auto self = static_cast<Task*>(ptr);
         if (self->m_exception) {
-            TRACE("[{}] rethrowing exception from task", self->debugName());
+            ARC_TRACE("[{}] rethrowing exception from task", self->debugName());
             std::rethrow_exception(self->m_exception);
         }
 
@@ -366,7 +360,7 @@ public:
         ManuallyDrop<Waker> waker{this, &WakerVtable};
         auto state = this->getState();
 
-        TRACE("[{}] polled, state: {}", this->debugName(), state);
+        ARC_TRACE("[{}] polled, state: {}", this->debugName(), state);
 
 #ifdef ARC_DEBUG
         this->ensureDebugData();
@@ -416,7 +410,7 @@ public:
         this->m_debugData->m_runtimeNs.fetch_add(taken, std::memory_order::relaxed);
 #endif
 
-        TRACE("[{}] future completion: {}", this->debugName(), result);
+        ARC_TRACE("[{}] future completion: {}", this->debugName(), result);
 
         if (result) {
             try {
@@ -537,7 +531,7 @@ struct TaskHandleBase {
     std::optional<typename TaskTypedBase<T>::NVOutput> pollTask(Context& cx) {
         this->validate();
         auto res = m_task->m_vtable->poll(m_task, cx);
-        TRACE("[{}] poll result: {}", this->m_task->debugName(), res);
+        ARC_TRACE("[{}] poll result: {}", this->m_task->debugName(), res);
 
         if (res && *res) {
             auto _dtor = scopeDtor([this] {
@@ -573,7 +567,7 @@ struct TaskHandleBase {
 
         while (true) {
             auto result = this->pollTask(cx);
-            TRACE("[{}] poll result: {}", (void*)this->m_task, (bool)result);
+            ARC_TRACE("[{}] poll result: {}", (void*)this->m_task, (bool)result);
 
             if (result) {
                 if constexpr (!std::is_void_v<T>) {

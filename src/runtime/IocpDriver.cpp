@@ -57,7 +57,7 @@ void IocpDriver::doWork() {
             }
         }
 
-        trace("[IocpDriver] completed IO {}, {} bytes, overlapped at {}", ctx->handle(), bytes, (void*)ov);
+        ARC_TRACE("[IocpDriver] completed IO {}, {} bytes, overlapped at {}", ctx->handle(), bytes, (void*)ov);
         ctx->notifySuccess(bytes);
     }
 }
@@ -68,7 +68,7 @@ Result<> IocpDriver::vRegisterIo(IocpDriver* self, WinHandle handle, IocpHandleC
     }
 
     auto result = CreateIoCompletionPort(handle, self->m_iocp, (ULONG_PTR)ctx, 0);
-    trace("[IocpDriver] Registered handle {}", handle);
+    ARC_TRACE("[IocpDriver] Registered handle {}", handle);
 
     if (result != self->m_iocp) {
         return Err(fmt::format("failed to associate handle with IOCP: {}", lastWinError()));
