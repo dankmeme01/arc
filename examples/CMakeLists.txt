@@ -9,7 +9,7 @@ foreach(example_src ${ARC_EXAMPLE_SOURCES})
     target_link_libraries(arc_${example_name} PRIVATE arc asp fmt std23::nontype_functional)
     set_target_properties(arc_${example_name} PROPERTIES FOLDER "examples")
 
-    if (NOT WIN32)
+    if (ARC_ENABLE_ASAN)
         target_compile_options(arc_${example_name} PRIVATE -fsanitize=address -fsanitize=leak -fno-omit-frame-pointer -g)
         target_link_options(arc_${example_name} PRIVATE -fsanitize=address -fsanitize=leak)
     endif()

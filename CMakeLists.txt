@@ -7,6 +7,7 @@ project(arc VERSION 1.0.0)
 include(cmake/Features.cmake)
 option(ARC_BUILD_TESTS "Build tests" OFF)
 option(ARC_BUILD_EXAMPLES "Build examples" OFF)
+option(ARC_ENABLE_ASAN "Enable ASan" OFF)
 
 file(GLOB BASE_SOURCES CONFIGURE_DEPENDS
     "src/future/*.cpp"
@@ -33,13 +34,18 @@ if (NOT COMMAND CPMAddPackage)
 endif()
 
 if (NOT TARGET asp)
-    CPMAddPackage("gh:dankmeme01/asp2#2e6d1e3")
+    CPMAddPackage("gh:dankmeme01/asp2#cc70624")
 endif()
 if (NOT TARGET std23::nontype_functional)
     CPMAddPackage("gh:zhihaoy/nontype_functional#bdb0987")
 endif()
 
 target_link_libraries(arc PUBLIC asp std23::nontype_functional)
+
+if (ARC_ENABLE_ASAN)
+    target_compile_options(arc PRIVATE -fsanitize=address -fsanitize=leak -fno-omit-frame-pointer -g)
+    target_link_options(arc PRIVATE -fsanitize=address -fsanitize=leak)
+endif()
 
 # Add qsox if networking is enabled
 if (ARC_FEATURE_NET)
@@ -76,7 +82,7 @@ if (ARC_BUILD_TESTS)
     )
     target_link_libraries(arc_tests PRIVATE arc gtest_main GeodeResult)
 
-    if (NOT WIN32)
+    if (ARC_ENABLE_ASAN)
         target_compile_options(arc_tests PRIVATE -fsanitize=address -fsanitize=leak -fno-omit-frame-pointer -g)
         target_link_options(arc_tests PRIVATE -fsanitize=address -fsanitize=leak)
     endif()
