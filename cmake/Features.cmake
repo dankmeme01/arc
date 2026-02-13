@@ -22,6 +22,7 @@ arc_define_feature(IOCP ON OFF "Enable IOCP driver (windows only)")
 
 arc_define_feature(DEBUG OFF OFF "Enable debug assertions")
 arc_define_feature(TRACE OFF OFF "Enable debug tracing")
+arc_define_feature(ASAN OFF OFF "Enable AddressSanitizer")
 
 if (ARC_ENABLED_FEATURES)
     list(JOIN ARC_ENABLED_FEATURES ", " ARC_ENABLED_FEATURES)

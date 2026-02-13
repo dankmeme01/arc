@@ -76,7 +76,7 @@ struct ARC_NODISCARD Timeout : Pollable<Timeout<Fut>, Output> {
             if constexpr (IsVoid) {
                 return Ok(std::monostate{});
             } else {
-                return Ok(std::move(m_future.m_vtable->template getOutput<FutOut>(&m_future, cx)));
+                return Ok(std::move(m_future.m_vtable->template getOutput<FutOut>(&m_future)));
             }
         }
 

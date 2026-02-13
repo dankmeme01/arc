@@ -7,7 +7,6 @@ project(arc VERSION 1.0.0)
 include(cmake/Features.cmake)
 option(ARC_BUILD_TESTS "Build tests" OFF)
 option(ARC_BUILD_EXAMPLES "Build examples" OFF)
-option(ARC_ENABLE_ASAN "Enable ASan" OFF)
 
 file(GLOB BASE_SOURCES CONFIGURE_DEPENDS
     "src/future/*.cpp"
@@ -42,7 +41,7 @@ endif()
 
 target_link_libraries(arc PUBLIC asp std23::nontype_functional)
 
-if (ARC_ENABLE_ASAN)
+if (ARC_FEATURE_ASAN)
     target_compile_options(arc PRIVATE -fsanitize=address -fsanitize=leak -fno-omit-frame-pointer -g)
     target_link_options(arc PRIVATE -fsanitize=address -fsanitize=leak)
 endif()
@@ -79,10 +78,11 @@ if (ARC_BUILD_TESTS)
         test/Runtime.cpp
         test/Semaphore.cpp
         test/Task.cpp
+        test/time.cpp
     )
     target_link_libraries(arc_tests PRIVATE arc gtest_main GeodeResult)
 
-    if (ARC_ENABLE_ASAN)
+    if (ARC_FEATURE_ASAN)
         target_compile_options(arc_tests PRIVATE -fsanitize=address -fsanitize=leak -fno-omit-frame-pointer -g)
         target_link_options(arc_tests PRIVATE -fsanitize=address -fsanitize=leak)
     endif()
