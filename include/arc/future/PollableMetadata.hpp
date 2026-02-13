@@ -11,7 +11,7 @@ constexpr std::pair<const char*, size_t> getTypename() {
     // Example outputs of compilers' output with T = std::string
     // Clang 21: std::pair<const char *, size_t> arc::getTypename() [T = std::basic_string<char>]
     // Msvc:     struct std::pair<char const *,unsigned __int64> __cdecl arc::getTypename<class std::basic_string<char,struct std::char_traits<char>,class std::allocator<char> >>(void)
-#ifdef __clang__
+#if defined __clang__ || defined __GNUC__
     constexpr auto function = __PRETTY_FUNCTION__;
     constexpr auto funclen = sizeof(__PRETTY_FUNCTION__) - 1;
     constexpr char pfx[] = "std::pair<const char *, size_t> arc::getTypename() [T = ";

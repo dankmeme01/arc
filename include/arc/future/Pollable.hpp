@@ -71,59 +71,58 @@ struct Pollable : PollableBase {
     }
 
     inline Pollable() {
-        this->m_vtable = &vtable<>;
+        this->m_vtable = &vtable;
     }
 
 protected:
     std::optional<Output> m_output;
     ARC_NO_UNIQUE_ADDRESS std::conditional_t<IsNothrowPollable, std::monostate, std::exception_ptr> m_exception;
 
-    template <bool Nothrow = IsNothrowPollable>
-    static constexpr PollableVtable vtable;
+    inline static constexpr PollableVtable vtable = [] {
+        PollableVtable v{};
 
-    // Poll function that throws - we must temporarily swallow the exception and propagate it in getOutput
-    template <>
-    constexpr PollableVtable vtable<false> = {
-        .m_metadata = PollableMetadata::create<Derived>(),
+        // Poll function that is noexcept - this simplifies our job.
+        if constexpr (IsNothrowPollable) {
+            v.m_metadata = PollableMetadata::create<Derived>();
 
-        .m_poll = [](void* self, Context& cx) noexcept {
-            auto me = static_cast<Pollable*>(self);
-            try {
+            v.m_poll = [](void* self, Context& cx) noexcept {
+                auto me = static_cast<Pollable*>(self);
                 me->m_output = static_cast<Derived*>(me)->poll(cx);
-            } catch (...) {
-                me->m_exception = std::current_exception();
-            }
-            return me->m_output.has_value() || !!me->m_exception;
-        },
+                return me->m_output.has_value();
+            };
 
-        .m_getOutput = [](void* self, Context& cx, void* outp) {
-            auto me = static_cast<Pollable*>(self);
-            if (me->m_exception) {
-                std::rethrow_exception(me->m_exception);
-            }
+            v.m_getOutput = [](void* self, Context& cx, void* outp) {
+                auto me = static_cast<Pollable*>(self);
+                auto out = reinterpret_cast<MaybeUninit<T>*>(outp);
+                out->init(std::move(*me->m_output));
+            };
+        } else {
+            // Poll function that throws - we must temporarily swallow the exception and propagate it in getOutput
 
-            auto out = reinterpret_cast<MaybeUninit<T>*>(outp);
-            out->init(std::move(*me->m_output));
-        },
-    };
+            v.m_metadata = PollableMetadata::create<Derived>();
 
-    // Poll function that is noexcept - this simplifies our job.
-    template <>
-    constexpr PollableVtable vtable<true> = {
-        .m_metadata = PollableMetadata::create<Derived>(),
+            v.m_poll = [](void* self, Context& cx) noexcept {
+                auto me = static_cast<Pollable*>(self);
+                try {
+                    me->m_output = static_cast<Derived*>(me)->poll(cx);
+                } catch (...) {
+                    me->m_exception = std::current_exception();
+                }
+                return me->m_output.has_value() || !!me->m_exception;
+            };
 
-        .m_poll = [](void* self, Context& cx) noexcept {
-            auto me = static_cast<Pollable*>(self);
-            me->m_output = static_cast<Derived*>(me)->poll(cx);
-            return me->m_output.has_value();
-        },
+            v.m_getOutput = [](void* self, Context& cx, void* outp) {
+                auto me = static_cast<Pollable*>(self);
+                if (me->m_exception) {
+                    std::rethrow_exception(me->m_exception);
+                }
 
-        .m_getOutput = [](void* self, Context& cx, void* outp) {
-            auto me = static_cast<Pollable*>(self);
-            auto out = reinterpret_cast<MaybeUninit<T>*>(outp);
-            out->init(std::move(*me->m_output));
-        },
-    };
+                auto out = reinterpret_cast<MaybeUninit<T>*>(outp);
+                out->init(std::move(*me->m_output));
+            };
+        }
+        return v;
+    }();
 };
 
 template <typename Derived, bool NothrowPoll>
@@ -132,45 +131,43 @@ struct Pollable<Derived, void, NothrowPoll> : PollableBase {
     static constexpr bool IsNothrowPollable = NothrowPoll;
 
     inline Pollable() {
-        this->m_vtable = &vtable<>;
+        this->m_vtable = &vtable;
     }
 
 protected:
     ARC_NO_UNIQUE_ADDRESS std::conditional_t<IsNothrowPollable, std::monostate, std::exception_ptr> m_exception;
 
-    template <bool Nothrow = IsNothrowPollable>
-    static constexpr PollableVtable vtable;
+    inline static constexpr PollableVtable vtable = [] {
+        PollableVtable v{};
 
-    // Poll function that throws, handle the exception
-    template <>
-    constexpr PollableVtable vtable<false> = {
-        .m_metadata = PollableMetadata::create<Derived>(),
-        .m_poll = [](void* self, Context& cx) noexcept {
-            auto me = static_cast<Pollable*>(self);
-            try {
-                return static_cast<Derived*>(me)->poll(cx);
-            } catch (...) {
-                me->m_exception = std::current_exception();
-                return true;
-            }
-        },
-        .m_getOutput = [](void* self, Context& cx, void* outp) {
-            auto me = static_cast<Pollable*>(self);
-            if (me->m_exception) {
-                std::rethrow_exception(me->m_exception);
-            }
-        },
-    };
+        // Noexcept poll function, simple case. getOutput is not needed at all.
+        if constexpr (IsNothrowPollable) {
+            v.m_metadata = PollableMetadata::create<Derived>();
+            v.m_poll = [](void* self, Context& cx) noexcept {
+                return static_cast<Derived*>(self)->poll(cx);
+            };
+        } else {
+            // Poll function that throws, handle the exception
+            v.m_metadata = PollableMetadata::create<Derived>();
+            v.m_poll = [](void* self, Context& cx) noexcept {
+                auto me = static_cast<Pollable*>(self);
+                try {
+                    return static_cast<Derived*>(me)->poll(cx);
+                } catch (...) {
+                    me->m_exception = std::current_exception();
+                    return true;
+                }
+            };
+            v.m_getOutput = [](void* self, Context& cx, void* outp) {
+                auto me = static_cast<Pollable*>(self);
+                if (me->m_exception) {
+                    std::rethrow_exception(me->m_exception);
+                }
+            };
+        }
 
-    // Noexcept poll function, simple case. getOutput is not needed at all.
-    template <>
-    constexpr PollableVtable vtable<true> = {
-        .m_metadata = PollableMetadata::create<Derived>(),
-        .m_poll = [](void* self, Context& cx) noexcept {
-            return static_cast<Derived*>(self)->poll(cx);
-        },
-        .m_getOutput = nullptr
-    };
+        return v;
+    }();
 };
 
 template <typename Derived, typename T = void>
