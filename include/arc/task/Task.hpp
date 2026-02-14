@@ -252,7 +252,7 @@ protected:
 
     static void vDestroy(void* self) {
         auto task = static_cast<Task*>(self);
-        printWarn("[{}] destroying", task->debugName());
+        ARC_TRACE("[{}] destroying", task->debugName());
 
         // remove the task from the runtime if we haven't been abandoned
         auto state = task->getState();
