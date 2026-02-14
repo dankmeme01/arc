@@ -38,6 +38,11 @@ struct PollableVtable {
     }
 };
 
+template <>
+inline void PollableVtable::getOutput<void>(void* self) const {
+    if (m_getOutput) m_getOutput(self, nullptr);
+}
+
 template <typename T>
 constexpr bool IsNothrowPollable = noexcept(std::declval<T>().poll(std::declval<Context&>()));
 
@@ -55,9 +60,7 @@ struct PollableBase {
     bool await_ready() const noexcept { return false; }
     bool await_suspend(std::coroutine_handle<> h);
     void await_resume() {
-        if (m_vtable->m_getOutput) {
-            m_vtable->m_getOutput(this, nullptr);
-        }
+        m_vtable->getOutput<void>(this);
     }
 
 protected:

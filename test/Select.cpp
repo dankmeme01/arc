@@ -64,7 +64,7 @@ TEST(Select, TwoReady) {
     EXPECT_FALSE(called2);
 }
 
-arc::Future<> throws() {
+static arc::Future<> throws() {
     throw std::runtime_error("failed");
     co_return;
 }

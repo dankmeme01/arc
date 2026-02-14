@@ -67,16 +67,19 @@ struct ARC_NODISCARD Timeout : Pollable<Timeout<Fut>, Output> {
         }
 
         // poll the future, if completed cancel timer and return ready
-        if (m_future.m_vtable->m_poll(&m_future, cx)) {
+        auto vt = m_future.m_vtable;
+        if (vt->m_poll(&m_future, cx)) {
             if (m_id != 0) {
                 td.removeEntry(m_expiry, m_id);
                 m_id = 0;
             }
 
             if constexpr (IsVoid) {
+                // propagate exceptions
+                vt->template getOutput<void>(&m_future);
                 return Ok(std::monostate{});
             } else {
-                return Ok(std::move(m_future.m_vtable->template getOutput<FutOut>(&m_future)));
+                return Ok(std::move(vt->template getOutput<FutOut>(&m_future)));
             }
         }
 
@@ -96,12 +99,12 @@ private:
     uint64_t m_id = 0;
 };
 
-auto timeoutAt(asp::time::Instant expiry, Awaitable auto fut) noexcept {
+auto timeoutAt(asp::Instant expiry, IsPollable auto fut) noexcept {
     return Timeout{std::move(fut), expiry};
 }
 
-auto timeout(asp::time::Duration dur, Awaitable auto fut) noexcept {
-    return timeoutAt(asp::Instant::now() + dur, std::move(fut));
+auto timeout(asp::time::Duration dur, IsPollable auto fut) noexcept {
+    return timeoutAt(asp::Instant::now().saturatingAdd(dur), std::move(fut));
 }
 
 }

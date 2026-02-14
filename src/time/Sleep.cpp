@@ -54,7 +54,7 @@ Sleep sleep(asp::time::Duration duration) noexcept {
 }
 
 Sleep sleepFor(asp::time::Duration duration) noexcept {
-    return Sleep(Instant::now() + duration);
+    return Sleep(Instant::now().saturatingAdd(duration));
 }
 
 Sleep sleepUntil(asp::time::Instant expiry) noexcept {
