@@ -100,8 +100,6 @@ struct ARC_NODISCARD Future : PollableBase {
 
         bool doSuspend = true;
 
-        // TODO: maybe remove these in favor of poll doing everything?
-
         // if we don't have a child, wake the current task immediately
         if (!this->child()) {
             // ARC_TRACE("[{}] await_suspend(): no child, resuming immediately", this->debugName());
@@ -180,12 +178,12 @@ struct ARC_NODISCARD Future : PollableBase {
 
 protected:
     handle_type m_handle{};
-    
+
     static bool vPoll(void* self, Context& cx) noexcept {
         auto me = static_cast<Future*>(self);
         return me->poll(cx);
     }
-    
+
     template <bool Void>
     static void vGetOutput(void* self, void* outp) {
         auto me = static_cast<Future*>(self);

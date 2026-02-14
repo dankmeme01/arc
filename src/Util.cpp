@@ -27,8 +27,12 @@ std::array<uint64_t, 3> _getRandomSeed() {
 }
 
 [[noreturn]] void _assertionFail(std::string_view what, std::string_view why, std::string_view file, int line) {
-    std::fprintf(stderr, "%s\n", fmt::format("Assertion failed ({}) at {}:{}: {}", what, file, line, why).c_str());
+    auto msg = fmt::format("Assertion failed ({}) at {}:{}: {}", what, file, line, why);
+
+    std::fprintf(stderr, "Arc FATAL ERROR: %s\n", msg.c_str());
     std::fflush(stderr);
+
+    printError("{}", msg);
     std::abort();
 }
 
