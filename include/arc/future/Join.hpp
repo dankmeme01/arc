@@ -140,6 +140,9 @@ struct ARC_NODISCARD JoinAllDyn : Pollable<JoinAllDyn<FRet, Fut>, JoinAllDynOutp
                 if (res) {
                     if constexpr (!IsVoid) {
                         fut.output = fut.future.getOutput();
+                    } else {
+                        fut.future.getOutput();
+                        fut.output = std::monostate{};
                     }
                     // ARC_TRACE("[JoinAll] future {} finished!", i);
                 } else {

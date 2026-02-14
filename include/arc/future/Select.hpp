@@ -80,6 +80,8 @@ struct ARC_NODISCARD Select : Pollable<Select<Futures...>> {
             if (m_winner != Is) co_return;
 
             if constexpr (Sel::IsVoid) {
+                selectee.future.getOutput(); // rethrow exceptions
+
                 using CbRet = decltype(selectee.callback());
                 if constexpr (IsPollable<CbRet>) {
                     co_await selectee.callback();
@@ -87,10 +89,8 @@ struct ARC_NODISCARD Select : Pollable<Select<Futures...>> {
                     selectee.callback();
                 }
             } else {
-                auto promise = co_await Promise<void>::current();
-                auto context = promise->getContext();
-
                 auto output = selectee.future.getOutput();
+
                 using CbRet = decltype(selectee.callback(output));
                 if constexpr (IsPollable<CbRet>) {
                     co_await selectee.callback(std::move(output));

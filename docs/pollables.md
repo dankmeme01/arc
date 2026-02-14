@@ -26,7 +26,7 @@ int value = co_await arc::pollFunc([] -> std::optional<int> {
 });
 ```
 
-The future would be polled once, claim that it's pending (by returning `std::nullopt`) and then never polled again. Obviously you want the future to complete eventually, so let's say you want it to return after a certain global flag gets set. Initially, you may try this:
+The pollable would be polled once, claim that it's pending (by returning `std::nullopt`) and then never polled again. Obviously you want it to complete eventually, so let's say you want it to return after a certain global flag gets set. Initially, you may try this:
 
 ```cpp
 std::atomic<bool> g_flag{false};
@@ -39,7 +39,7 @@ int value = co_await arc::pollFunc([] -> std::optional<int> {
 });
 ```
 
-But you will notice that even after setting the flag (from another thread), the future is still stuck, and never completes. This is completely by design, and it's because the future won't be polled again until it's task is **woken up**. When you return `std::nullopt` from the future, you promise to the caller (and eventually to the runtime) that you have scheduled a wakeup, and one will happen as soon as your future is ready to be polled again. To schedule a wakeup, you need to obtain the waker from the current task context:
+But you will notice that even after setting the flag (from another thread), the pollable is still stuck, and never completes. This is completely by design, and it's because it won't be polled again until its task is **woken up**. When you return `std::nullopt` from the `poll` method, you promise to the caller (and eventually to the runtime) that you have scheduled a wakeup, and one will happen as soon as your pollable is ready to be polled again. To schedule a wakeup, you need to obtain the waker from the current task context:
 
 ```cpp
 std::atomic<bool> g_flag{false};
@@ -66,7 +66,7 @@ void wake() {
 }
 ```
 
-All futures and awaitables must run in the context of a `arc::Task`, and an `arc::Waker` is a simple handle to the task where it's running. Once a future that is pending is polled, the entire task is *suspended*, and will never be woken up "automatically" in any way by the runtime. The only way to wake the task and poll it again is to use the waker. This is the core principle of **cooperative multithreading**.
+All futures and pollables must run in the context of a `arc::Task`, and an `arc::Waker` is a simple handle to the task where it's running. Once a pollable that is pending is polled, the entire task is *suspended*, and will never be woken up "automatically" in any way by the runtime. The only way to wake the task and poll it again is to use the waker. This is the core principle of **cooperative multithreading**.
 
 Ignoring the fact that it's not thread safe, the example above is roughly how most synchronization primitives are built in Arc. For example `arc::Mutex` clones the waker and inserts it into the waitlist if the task failed to acquire the lock, and then the task that holds the lock will wake the first waiter when unlocking. Here's an example of how you could reimplement `arc::yield()` yourself:
 
@@ -143,19 +143,19 @@ This is the final and lowest level of pollables - structs that inherit `arc::Pol
 
 ```cpp
 struct PollableVtable {
-    using PollFn = bool(*)(void*, arc::Context&);
-    using GetOutputFn = void(*)(void*, arc::Context&, void* output);
+    using PollFn = bool(*)(void*, Context&) noexcept;
+    using GetOutputFn = void(*)(void*, void* output);
 
-    const PollableMetadata* m_metadata = nullptr;
-    PollFn m_poll = nullptr;
-    GetOutputFn m_getOutput = nullptr;
+    PollFn m_poll;
+    GetOutputFn m_getOutput;
+    const PollableMetadata* m_metadata;
 };
 ```
 
 Here, you may fill in these entries:
-* Metadata - Optional, can be kept as null but for debugging it's recommended to set it via `PollableMetadata::create<MyPollable>()`
 * Poll function - Advance the state, return whether the future is ready now (note that this has to always return a bool due to how C++ coroutines work). This function must not throw.
 * Output function - This is how the pollable rethrows potential exceptions and actually returns the result, it must cast `output` to `arc::MaybeUninit<T>*` and initialize it on success. It can be null for void pollables.
+* Metadata - Optional, can be kept as null but for debugging it's recommended to set it via `PollableMetadata::create<MyPollable>()`
 
 Some important rules and things to keep in mind:
 * The poll function may be called an undefined amount of times between the pollable being created and destroyed. It may be once, twice, zero times or a million. It may get called again without you ever registering a waker. You **must not** assume that `poll` being called means work is complete (e.g. mutex acquired or socket data received), instead you should always re-check.
