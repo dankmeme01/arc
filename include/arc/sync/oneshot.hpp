@@ -58,7 +58,7 @@ struct Shared {
             return Ok(std::move(*value));
         }
 
-        return Err(TryRecvOutcome::Empty);
+        return Err(this->isClosed() ? TryRecvOutcome::Closed : TryRecvOutcome::Empty);
     }
 
     Result<T, TryRecvOutcome> tryRecvOrRegister(RecvAwaiter<T>* awaiter, Context& cx) const noexcept(Storage<T>::NoexceptMovable) {
@@ -67,6 +67,10 @@ struct Shared {
 
         if (value) {
             return Ok(std::move(*value));
+        }
+
+        if (this->isClosed()) {
+            return Err(TryRecvOutcome::Closed);
         }
 
         // register the awaiter
@@ -170,6 +174,10 @@ struct ARC_NODISCARD RecvAwaiter : Pollable<RecvAwaiter<T>, RecvResult<T>, Stora
 
             auto outcome = res.unwrapErr();
             switch (outcome) {
+                case TryRecvOutcome::Closed: {
+                    return Err(ClosedError{});
+                } break;
+
                 case TryRecvOutcome::Empty: {
                     return std::nullopt; // waiting ..
                 } break;

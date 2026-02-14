@@ -50,7 +50,7 @@ TEST(oneshot, RecvAfterClosure) {
     arc::drop(std::move(tx));
     auto recvres = rx.tryRecv();
     EXPECT_FALSE(recvres.isOk());
-    EXPECT_TRUE(recvres.unwrapErr() == chan::TryRecvOutcome::Empty);
+    EXPECT_TRUE(recvres.unwrapErr() == chan::TryRecvOutcome::Closed);
 
     auto recvfut = rx.recv();
     auto pres = recvfut.poll(cx);
