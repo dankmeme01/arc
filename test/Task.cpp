@@ -125,3 +125,40 @@ TEST(task, Detach) {
     handle.detach();
     EXPECT_FALSE(handle.isValid());
 }
+
+TEST(task, ThrowingTaskBlockOn) {
+    auto runtime = arc::Runtime::create(1);
+    auto handle = runtime->spawn([] -> arc::Future<int> {
+        co_await arc::yield();
+        throw std::runtime_error("test error");
+        co_return 42;
+    });
+
+    EXPECT_THROW(handle.blockOn(), std::runtime_error);
+}
+
+TEST(task, ThrowingTaskIgnore) {
+    auto runtime = arc::Runtime::create(1);
+
+    bool terminated = false;
+    runtime->setTerminateHandler([&](auto) {
+        terminated = true;
+    });
+
+    arc::Semaphore sema{0};
+
+    auto handle = runtime->spawn([&] -> arc::Future<int> {
+        auto _dtor = arc::scopeDtor([&] {
+            sema.release();
+        });
+
+        co_await arc::yield();
+        throw std::runtime_error("test error");
+        co_return 42;
+    });
+
+    sema.acquireBlocking();
+
+    // this is just to assert that there is no crash or anything, since exception should just be logged non fatally
+    EXPECT_FALSE(terminated);
+}
