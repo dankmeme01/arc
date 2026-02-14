@@ -53,6 +53,7 @@ int value = co_await arc::pollFunc([](arc::Context& cx) -> std::optional<int> {
 
     // register our waker
     g_waker = cx.cloneWaker();
+    return std::nullopt;
 });
 
 // This can be called by another thread to wake our task
@@ -70,11 +71,9 @@ All futures and awaitables must run in the context of a `arc::Task`, and an `arc
 Ignoring the fact that it's not thread safe, the example above is roughly how most synchronization primitives are built in Arc. For example `arc::Mutex` clones the waker and inserts it into the waitlist if the task failed to acquire the lock, and then the task that holds the lock will wake the first waiter when unlocking. Here's an example of how you could reimplement `arc::yield()` yourself:
 
 ```cpp
-bool yielded = false;
-
 // Note: if your pollable has no output value,
 // std::optional can be replaced with a simple bool representing readiness.
-co_await arc::pollFunc([&yielded](arc::Context& cx) -> bool {
+co_await arc::pollFunc([yielded = false](arc::Context& cx) mutable -> bool {
     if (!yielded) {
         yielded = true;
         cx.wake();
@@ -84,16 +83,16 @@ co_await arc::pollFunc([&yielded](arc::Context& cx) -> bool {
 });
 ```
 
-The first poll (which happens immediately when `co_await`ing) will set `yielded` to `true`, and schedule the task to be woken up again. Because the future is pending, this causes the task to initially suspend, but the `wake()` call causes it to be put at the back of the executor's queue, and thus likely immediately unsuspended after. This leads to a second poll, which would simply return `true` and complete the `co_await` expression.
+The first poll (which happens immediately when `co_await`ing) will set `yielded` to `true`, and schedule the task to be woken up again. Because the future is pending, this causes the task to initially suspend, but the `wake()` call (shorthand for `waker()->wake()`) causes it to be put at the back of the executor's queue, and thus likely immediately unsuspended after. This leads to a second poll, which would simply return `true` and complete the `co_await` expression.
 
 ## Pollable struct
 
-When writing custom pollables, you often need to store certain state (they are state machines after all :p). For example, the yield example above needs to store a single bool, and thus cannot be easily implemented via a `arc::pollFunc` without making the caller store the variable for us. To create a custom pollable struct, simply inherit `Pollable` and provide the output type:
+When writing custom pollables, you often need to store certain state (they are state machines after all :p). For example, the yield example above needs to store a single bool, which means you have to shove it into the lambda captures and make the lambda mutable, which will definitely get annoying if you have more state. To create a custom pollable struct, simply inherit `Pollable` and provide the output type:
 
 ```cpp
-// The ARC_NODISCARD here is optional, but nice since pollables do nothing if discarded
+// The ARC_NODISCARD here is optional, but it's great to catch mistakes
 struct ARC_NODISCARD Yield : arc::Pollable<Yield, void> {
-    bool poll(arc::Context& cx) noexcept {
+    bool poll(arc::Context& cx) {
         if (!yielded) {
             yielded = true;
             cx.wake();
@@ -113,9 +112,28 @@ co_await Yield{};
 A couple of quick notes:
 * `arc::Pollable` accepts two template arguments - the concrete pollable type (this is [CRTP](https://en.wikipedia.org/wiki/Curiously_recurring_template_pattern)) and the actual output type (if the poll function returns `std::optional<int>`, you want simply `int` there)
 * `void` can be omitted for void pollables, `arc::Pollable<Yield>` is valid
-* If your pollable cannot throw, you should always mark the `poll` method as `noexcept` and inherit `arc::NoexceptPollable<Derived, T>` instead - this lets Arc eliminate all exception handling code for your pollable, thus reducing its size and binary bloat.
 
 The main advantage of pollable structs over `pollFunc` is that they're reusable and easier to manage (e.g. you can add helper methods or fields). Under the hood, `pollFunc` simply creates an anonymous pollable struct for you, so there's little difference between them.
+
+If your pollable cannot throw, you should always mark the `poll` method as `noexcept` and inherit `arc::NoexceptPollable<Derived, T>` instead - this lets Arc eliminate all exception handling code for your pollable, thus reducing its size and binary bloat. Since `wake()` is `noexcept`, our pollable above cannot throw, so we should rewrite it like this:
+
+```cpp
+struct ARC_NODISCARD Yield : arc::NoexceptPollable<Yield> {
+    bool poll(arc::Context& cx) noexcept {
+        if (!yielded) {
+            yielded = true;
+            cx.wake();
+            return false;
+        }
+        return true;
+    }
+
+private:
+    bool yielded = false;
+};
+```
+
+Now, this definition is identical to the real `arc::Yield` :) (minus the added namespaces)
 
 # PollableBase
 
