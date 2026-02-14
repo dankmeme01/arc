@@ -112,7 +112,7 @@ protected:
 
     void registerAwaiter(Waker& waker);
     void notifyAwaiter(Waker* current = nullptr);
-    std::optional<Waker> takeAwaiter(const Waker* current = nullptr);
+    Waker takeAwaiter(const Waker* current = nullptr);
     void dropRef();
     void schedule();
 
@@ -374,7 +374,7 @@ protected:
 
                 auto state = this->m_state.fetch_and(~TASK_SCHEDULED, std::memory_order::acq_rel);
 
-                std::optional<Waker> awaiter;
+                Waker awaiter;
                 if (state & TASK_AWAITER) {
                     awaiter = this->takeAwaiter();
                 }
@@ -382,7 +382,7 @@ protected:
                 this->dropRef();
 
                 if (awaiter) {
-                    awaiter->wake();
+                    awaiter.wake();
                 }
 
                 return false;
@@ -442,7 +442,7 @@ protected:
                     }
 
                     // take out the awaiter
-                    std::optional<Waker> awaiter;
+                    Waker awaiter;
                     if (state & TASK_AWAITER) {
                         awaiter = this->takeAwaiter();
                     }
@@ -451,7 +451,7 @@ protected:
 
                     // notify awaiter
                     if (awaiter) {
-                        awaiter->wake();
+                        awaiter.wake();
                     }
                     break;
                 }
@@ -473,7 +473,7 @@ protected:
                 if (this->exchangeState(state, newState)) {
                     // if the task was closed while running, notify the awaiter
                     if (state & TASK_CLOSED) {
-                        std::optional<Waker> awaiter;
+                        Waker awaiter;
                         if (state & TASK_AWAITER) {
                             awaiter = this->takeAwaiter();
                         }
@@ -481,7 +481,7 @@ protected:
                         this->dropRef();
 
                         if (awaiter) {
-                            awaiter->wake();
+                            awaiter.wake();
                         }
                     } else if (state & TASK_SCHEDULED) {
                         // if the task was woken up while running, reschedule it

@@ -45,6 +45,10 @@ Waker& Waker::operator=(Waker&& other) noexcept {
     return *this;
 }
 
+Waker::operator bool() const noexcept {
+    return this->valid();
+}
+
 Waker::~Waker() {
     this->destroy();
 }

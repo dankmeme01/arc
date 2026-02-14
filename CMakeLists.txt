@@ -75,6 +75,7 @@ if (ARC_BUILD_TESTS)
         test/Join.cpp
         test/mpsc.cpp
         test/Notify.cpp
+        test/oneshot.cpp
         test/Runtime.cpp
         test/Semaphore.cpp
         test/Task.cpp

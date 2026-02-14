@@ -37,6 +37,8 @@ struct Waker : RawWaker {
 
     ~Waker();
 
+    operator bool() const noexcept;
+
     void reset() noexcept;
     void destroy();
 

@@ -80,7 +80,7 @@ struct IoWaiter {
 private:
     friend class IoDriver;
 
-    std::optional<Waker> waker;
+    Waker waker;
     uint64_t id;
     Interest interest;
 };

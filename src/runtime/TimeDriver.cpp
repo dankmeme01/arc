@@ -17,7 +17,7 @@ TimeDriver::TimeDriver(asp::WeakPtr<Runtime> runtime) : m_runtime(std::move(runt
 TimeDriver::~TimeDriver() {}
 
 void TimeDriver::doWork() {
-    std::array<std::optional<Waker>, 64> readyHandles;
+    std::array<Waker, 64> readyHandles;
     size_t count = 0;
 
     auto now = Instant::now();
@@ -36,7 +36,7 @@ void TimeDriver::doWork() {
     timers.unlock();
 
     for (size_t i = 0; i < count; i++) {
-        readyHandles[i]->wake();
+        readyHandles[i].wake();
     }
 }
 

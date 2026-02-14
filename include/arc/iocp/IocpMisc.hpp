@@ -52,7 +52,7 @@ private:
     IocpHandleContext* m_context;
     void* m_buffer;
     size_t m_length;
-    std::optional<Waker> m_waker;
+    Waker m_waker;
     std::optional<Result<size_t>> m_result;
 };
 
@@ -65,7 +65,7 @@ private:
     IocpHandleContext* m_context;
     const void* m_buffer;
     size_t m_length;
-    std::optional<Waker> m_waker;
+    Waker m_waker;
     std::optional<Result<size_t>> m_result;
 };
 
@@ -80,7 +80,7 @@ struct IocpOpenAwaiter : Pollable<IocpOpenAwaiter, Result<>> {
 private:
     IocpHandleContext* m_context;
     OpenFn m_openFn;
-    std::optional<Waker> m_waker;
+    Waker m_waker;
     std::optional<Result<>> m_result;
 };
 

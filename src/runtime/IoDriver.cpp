@@ -40,7 +40,7 @@ IoWaiter::IoWaiter(Waker waker, uint64_t id, Interest interest)
     : waker(std::move(waker)), id(id), interest(interest) {}
 
 bool IoWaiter::willWake(const Waker& other) const {
-    return waker && waker->equals(other);
+    return waker.equals(other);
 }
 
 bool IoWaiter::satisfiedBy(Interest ready) const {
@@ -49,9 +49,8 @@ bool IoWaiter::satisfiedBy(Interest ready) const {
 
 void IoWaiter::wake() {
     if (waker) {
-        // wake consumes the waker, so set it back to null
-        waker->wake();
-        waker.reset();
+        // this invalidates the waker if it was valid
+        waker.wake();
     }
 }
 
@@ -220,8 +219,8 @@ Interest IoDriver::vPollReady(IoDriver* self, IoEntry& rio, Interest interest, C
         });
 
         ARC_ASSERT(it != waiters->end(), "IoDriver: pollReady called with invalid registration id");
-        if (!it->waker) {
-            it->waker = cx.waker() ? std::make_optional(cx.cloneWaker()) : std::nullopt;
+        if (!it->waker && cx.waker()) {
+            it->waker = cx.cloneWaker();
         }
 
         return 0;

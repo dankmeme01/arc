@@ -64,8 +64,7 @@ IocpReadAwaiter::IocpReadAwaiter(IocpHandleContext* context, void* buffer, size_
         }
 
         if (self->m_waker) {
-            self->m_waker->wake();
-            self->m_waker.reset();
+            self->m_waker.wake();
         }
     });
 }
@@ -112,8 +111,7 @@ IocpWriteAwaiter::IocpWriteAwaiter(IocpHandleContext* context, const void* buffe
         }
 
         if (self->m_waker) {
-            self->m_waker->wake();
-            self->m_waker.reset();
+            self->m_waker.wake();
         }
     });
 }
@@ -162,8 +160,7 @@ IocpOpenAwaiter::IocpOpenAwaiter(IocpHandleContext* context, OpenFn fn) : m_cont
         }
 
         if (self->m_waker) {
-            self->m_waker->wake();
-            self->m_waker.reset();
+            self->m_waker.wake();
         }
     });
 }

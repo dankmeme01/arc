@@ -46,7 +46,7 @@ struct BlockingTask : BlockingTaskBase {
             return out;
         } else {
             auto myWaker = cx.waker();
-            if (myWaker && (!data->m_awaiter || !data->m_awaiter->equals(*myWaker))) {
+            if (myWaker && (!data->m_awaiter || !data->m_awaiter.equals(*myWaker))) {
                 data->m_awaiter = myWaker->clone();
             }
 
@@ -57,7 +57,7 @@ struct BlockingTask : BlockingTaskBase {
 private:
     struct Data {
         std::optional<T> m_result;
-        std::optional<Waker> m_awaiter;
+        Waker m_awaiter;
     };
 
     arc::MoveOnlyFunction<T()> m_func;
@@ -71,8 +71,7 @@ private:
         data->m_result = std::move(result);
 
         if (data->m_awaiter) {
-            data->m_awaiter->wake();
-            data->m_awaiter.reset();
+            data->m_awaiter.wake();
         }
     }
 
@@ -98,7 +97,7 @@ struct BlockingTask<void> : BlockingTaskBase {
             return true;
         } else {
             auto myWaker = cx.waker();
-            if (myWaker && (!data->m_awaiter || !data->m_awaiter->equals(*myWaker))) {
+            if (myWaker && (!data->m_awaiter || !data->m_awaiter.equals(*myWaker))) {
                 data->m_awaiter = myWaker->clone();
             }
 
@@ -109,7 +108,7 @@ struct BlockingTask<void> : BlockingTaskBase {
 private:
     struct Data {
         bool m_completed = false;
-        std::optional<Waker> m_awaiter;
+        Waker m_awaiter;
     };
 
     arc::MoveOnlyFunction<void()> m_func;
@@ -123,8 +122,7 @@ private:
         data->m_completed = true;
 
         if (data->m_awaiter) {
-            data->m_awaiter->wake();
-            data->m_awaiter.reset();
+            data->m_awaiter.wake();
         }
     }
 

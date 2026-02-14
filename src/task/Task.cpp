@@ -237,18 +237,16 @@ std::string TaskBase::debugName() {
     return std::string{n};
 }
 
-std::optional<Waker> TaskBase::takeAwaiter(const Waker* current) {
+Waker TaskBase::takeAwaiter(const Waker* current) {
     auto state = this->m_state.fetch_or(TASK_NOTIFYING, std::memory_order::acq_rel);
 
-    std::optional<Waker> out;
+    Waker out;
     if ((state & (TASK_NOTIFYING | TASK_REGISTERING)) == 0) {
         out = std::move(this->m_awaiter);
         this->m_state.fetch_and(~TASK_NOTIFYING & ~TASK_AWAITER, std::memory_order::release);
 
-        if (out) {
-            if (current && out->equals(*current)) {
-                out.reset();
-            }
+        if (current && out.equals(*current)) {
+            out.reset();
         }
     }
 
@@ -295,7 +293,7 @@ void TaskBase::registerAwaiter(Waker& waker) {
     // store the awaiter
     this->m_awaiter = waker.clone();
 
-    std::optional<Waker> w;
+    Waker w;
 
     while (true) {
         // if there was a notification, take out the awaiter
@@ -318,17 +316,17 @@ void TaskBase::registerAwaiter(Waker& waker) {
 
     // if there was a notification while registering, wake the awaiter
     if (w) {
-        w->wake();
+        w.wake();
     }
 }
 
 void TaskBase::notifyAwaiter(Waker* current) {
-    ARC_TRACE("[{}] notifying waker {} (cur: {})", this->debugName(), this->m_awaiter.valid() ? this->m_awaiter.m_data : nullptr, current->m_data);
+    ARC_TRACE("[{}] notifying waker {} (cur: {})", this->debugName(), this->m_awaiter ? this->m_awaiter.m_data : nullptr, current->m_data);
 
     auto w = this->takeAwaiter(current);
 
     if (w) {
-        w->wake();
+        w.wake();
     }
 }
 

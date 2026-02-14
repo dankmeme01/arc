@@ -24,11 +24,11 @@ struct ChannelData : Storage<T> {
 
     void wakeAll() {
         if (this->recvWaiter) {
-            this->recvWaiter->m_waker->wake();
+            this->recvWaiter->m_waker.wake();
         }
 
         for (auto& waiter : this->sendWaiters) {
-            waiter->m_waker->wake();
+            waiter->m_waker.wake();
         }
 
         this->recvWaiter = nullptr;
@@ -236,7 +236,7 @@ private:
     friend struct MpscStorage<T, SendAwaiter<T>, RecvAwaiter<T>>;
     friend struct Shared<T>;
     std::shared_ptr<Shared<T>> m_data;
-    std::optional<Waker> m_waker;
+    Waker m_waker;
     std::optional<T> m_value;
     asp::SpinLock<> m_lock;
 
@@ -249,7 +249,7 @@ private:
 
         T value = std::move(*m_value);
         m_value.reset();
-        m_waker->wake();
+        m_waker.wake();
         return value;
     }
 };
@@ -391,7 +391,7 @@ private:
     friend struct MpscStorage<T, SendAwaiter<T>, RecvAwaiter<T>>;
     friend struct Shared<T>;
     std::shared_ptr<Shared<T>> m_data;
-    std::optional<Waker> m_waker;
+    Waker m_waker;
     std::optional<T> m_value;
     asp::SpinLock<> m_lock;
 
@@ -403,7 +403,7 @@ private:
         }
 
         m_value = std::move(value);
-        m_waker->wake();
+        m_waker.wake();
         return true;
     }
 };
