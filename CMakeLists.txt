@@ -77,6 +77,7 @@ if (ARC_BUILD_TESTS)
         test/Notify.cpp
         test/oneshot.cpp
         test/Runtime.cpp
+        test/Select.cpp
         test/Semaphore.cpp
         test/Task.cpp
         test/time.cpp

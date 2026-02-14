@@ -62,7 +62,6 @@ TEST(join, JoinDyn) {
     }
 }
 
-
 TEST(join, JoinDynVoid) {
     Waker waker = Waker::noop();
     Context cx { &waker };
@@ -84,3 +83,68 @@ TEST(join, JoinDynVoid) {
     auto pollRes = joined.poll(cx);
     EXPECT_TRUE(pollRes);
 }
+
+TEST(join, JoinAllExceptionFirst) {
+    Waker waker = Waker::noop();
+    Context cx { &waker };
+
+    auto fut1 = arc::pollFunc([] -> bool {
+        throw std::runtime_error("failed");
+    });
+    auto fut2 = arc::pollFunc([] -> bool {
+        return true;
+    });
+
+    auto ja = arc::joinAll(std::move(fut1), std::move(fut2));
+    EXPECT_THROW(ja.poll(cx), std::runtime_error);
+}
+
+TEST(join, JoinAllExceptionSecond) {
+    Waker waker = Waker::noop();
+    Context cx { &waker };
+
+    auto fut1 = arc::pollFunc([] -> bool {
+        return true;
+    });
+    auto fut2 = arc::pollFunc([] -> bool {
+        throw std::runtime_error("failed");
+    });
+
+    auto ja = arc::joinAll(std::move(fut1), std::move(fut2));
+    EXPECT_THROW(ja.poll(cx), std::runtime_error);
+}
+
+TEST(join, JoinAllDynExceptionFirst) {
+    Waker waker = Waker::noop();
+    Context cx { &waker };
+
+    std::vector<Future<>> futs;
+    futs.push_back([] -> Future<> {
+        throw std::runtime_error("failed");
+        co_return;
+    }());
+    futs.push_back([] -> Future<> {
+        co_return;
+    }());
+
+    auto ja = arc::joinAll(std::move(futs));
+    EXPECT_THROW(ja.poll(cx), std::runtime_error);
+}
+
+TEST(join, JoinAllDynExceptionSecond) {
+    Waker waker = Waker::noop();
+    Context cx { &waker };
+
+    std::vector<Future<>> futs;
+    futs.push_back([] -> Future<> {
+        throw std::runtime_error("failed");
+        co_return;
+    }());
+    futs.push_back([] -> Future<> {
+        co_return;
+    }());
+
+    auto ja = arc::joinAll(std::move(futs));
+    EXPECT_THROW(ja.poll(cx), std::runtime_error);
+}
+
