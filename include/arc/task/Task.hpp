@@ -52,6 +52,7 @@ struct TaskVtable {
     using Fn = void(*)(void*);
     using AbortFn = void(*)(void*, bool);
     using RunFn = bool(*)(void*, Context&);
+    using DetachFn = bool(*)(void*, void* out);
     using PollFn = std::optional<bool>(*)(void*, Context&);
     using GetOutputFn = void(*)(void*, void* out);
     using CloneWakerFn = RawWaker(*)(void*);
@@ -63,6 +64,7 @@ struct TaskVtable {
     Fn destroy;
     AbortFn abort;
     RunFn run;
+    DetachFn detach;
     PollFn poll;
     GetOutputFn getOutput;
     CloneWakerFn cloneWaker;
@@ -72,7 +74,6 @@ struct TaskVtable {
 };
 
 struct TaskBase {
-    void schedule();
     void abort() noexcept;
     void setName(asp::BoxedString name) noexcept;
     asp::SharedPtr<TaskDebugData> getDebugData() noexcept;
@@ -113,6 +114,7 @@ protected:
     void notifyAwaiter(Waker* current = nullptr);
     std::optional<Waker> takeAwaiter(const Waker* current = nullptr);
     void dropRef();
+    void schedule();
 
     static void vAbort(void* self, bool force);
     static void vSchedule(void* self);
@@ -135,26 +137,37 @@ struct TaskTypedBase : TaskBase {
     using NVOutput = std::conditional_t<IsVoid, std::monostate, Output>;
     using TaskBase::TaskBase;
 
+    std::optional<NVOutput> detach() {
+        MaybeUninit<NVOutput> out;
+        bool grabbed = m_vtable->detach(this, &out);
+        return grabbed ? std::optional{std::move(out).assumeInit()} : std::nullopt;
+    }
+
+protected:
     std::optional<NVOutput> m_value;
 
-    std::optional<NVOutput> detach() {
-        std::optional<NVOutput> out;
+    static bool vDetach(void* ptr, void* outp) {
+        auto self = static_cast<TaskTypedBase*>(ptr);
+        auto out = static_cast<MaybeUninit<NVOutput>*>(outp);
 
-        auto state = this->getState();
+        auto state = self->getState();
 
         // commonly, the task is being detached right after being created, assume this may be the case
         auto expected = TASK_INITIAL_STATE;
-        if (this->exchangeState(expected, TASK_SCHEDULED | TASK_REFERENCE)) {
-            return out;
+        if (self->exchangeState(expected, TASK_SCHEDULED | TASK_REFERENCE)) {
+            return false;
         }
+
+        bool grabbedOutput = false;
 
         // didn't guess, will have to loop
         while (true) {
             if (state & TASK_COMPLETED && (state & TASK_CLOSED) == 0) {
                 // mark as closed, grab the output
-                if (this->exchangeState(state, state | TASK_CLOSED)) {
-                    out = std::move(m_value);
+                if (self->exchangeState(state, state | TASK_CLOSED)) {
+                    if (out && self->m_value) out->init(std::move(*self->m_value));
                     state |= TASK_CLOSED;
+                    grabbedOutput = true;
                 }
             } else {
                 // if this is the last reference and the task isn't closed, close and schedule again
@@ -163,13 +176,13 @@ struct TaskTypedBase : TaskBase {
                     newState = TASK_SCHEDULED | TASK_CLOSED | TASK_REFERENCE;
                 }
 
-                if (this->exchangeState(state, newState)) {
+                if (self->exchangeState(state, newState)) {
                     // if this is the last reference, either schedule or destroy
                     if ((state & ~(TASK_REFERENCE - 1)) == 0) {
                         if (state & TASK_CLOSED) {
-                            this->m_vtable->destroy(this);
+                            self->m_vtable->destroy(self);
                         } else {
-                            this->schedule();
+                            self->schedule();
                         }
                     }
 
@@ -178,7 +191,7 @@ struct TaskTypedBase : TaskBase {
             }
         }
 
-        return out;
+        return grabbedOutput;
     }
 };
 
@@ -326,6 +339,7 @@ protected:
         .destroy = &Task::vDestroy,
         .abort = &Task::vAbort,
         .run = &Task::vRun,
+        .detach = &Task::vDetach,
         .poll = &Task::vPoll,
         .getOutput = &Task::vGetOutput,
         .cloneWaker = &Task::vCloneWaker,

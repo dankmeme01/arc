@@ -17,12 +17,16 @@ struct MaybeUninit {
         value.~T();
     }
 
-    T& assumeInit() noexcept {
+    T& assumeInit() & noexcept {
         return value;
     }
 
-    const T& assumeInit() const noexcept {
+    const T& assumeInit() const& noexcept {
         return value;
+    }
+
+    T assumeInit() && noexcept {
+        return std::move(value);
     }
 
     T* ptr() noexcept {
