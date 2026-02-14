@@ -20,7 +20,7 @@ struct JoinAllFuture {
     JoinAllFuture& operator=(const JoinAllFuture&) = delete;
 
 private:
-    template <typename FRet, typename... F>
+    template <typename FRet, typename VRet, typename... F>
     friend struct JoinAll;
     template <typename FRet, typename Fut>
     friend struct JoinAllDyn;
@@ -29,11 +29,12 @@ private:
     std::optional<StoredOutput> output;
 };
 
-template <typename FRet, typename... Futures>
-struct ARC_NODISCARD JoinAll : Pollable<JoinAll<FRet, Futures...>, std::array<FRet, sizeof...(Futures)>> {
+template <typename FRet, typename VRet, typename... Futures>
+struct ARC_NODISCARD JoinAll : Pollable<JoinAll<FRet, VRet, Futures...>, std::array<FRet, sizeof...(Futures)>> {
     using JoinAllOutput = std::array<FRet, sizeof...(Futures)>;
     using JoinAllTempOutput = std::array<std::optional<FRet>, sizeof...(Futures)>;
-    explicit JoinAll(std::tuple<Futures...>&& futs, FRet*) : m_futures(std::move(futs)) {}
+    static constexpr bool IsVoid = std::is_void_v<VRet>;
+    explicit JoinAll(std::tuple<Futures...>&& futs, VRet*, FRet*) : m_futures(std::move(futs)) {}
 
     // helper to convert from array<optional<T>, N> to array<T, N>
     static auto convertTempOutput(JoinAllTempOutput&& tempOut) {
@@ -71,7 +72,12 @@ struct ARC_NODISCARD JoinAll : Pollable<JoinAll<FRet, Futures...>, std::array<FR
             if (!fut.output) {
                 auto res = fut.future.poll(cx);
                 if (res) {
-                    fut.output = fut.future.getOutput();
+                    if constexpr (!IsVoid) {
+                        fut.output = fut.future.getOutput();
+                    } else {
+                        fut.future.getOutput();
+                        fut.output = std::monostate{};
+                    }
                     // ARC_TRACE("[JoinAll] future {} finished!", Is);
                 } else {
                     allDone = false;
@@ -188,7 +194,7 @@ auto joinAll(Futures... futs) {
     using NVOutput = typename JoinAllFuture::StoredOutput;
 
     auto fs = std::make_tuple(JoinAllFuture{std::move(futs)}...);
-    return JoinAll{std::move(fs), static_cast<NVOutput*>(nullptr)};
+    return JoinAll{std::move(fs), static_cast<Output*>(nullptr), static_cast<NVOutput*>(nullptr)};
 }
 
 template <typename Fut>
