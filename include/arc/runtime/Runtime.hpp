@@ -136,7 +136,7 @@ public:
         return TaskHandle{task};
     }
 
-    template <typename T>
+    template <typename T = void>
     BlockingTaskHandle<T> spawnBlocking(arc::MoveOnlyFunction<T()> func) {
         BlockingTaskHandle<T> handle{ BlockingTask<T>::create(weakFromThis(), std::move(func)) };
         m_vtable->m_insertBlocking(this, handle.m_task);
@@ -264,7 +264,7 @@ auto spawn(F&& t) requires Spawnable<std::decay_t<F>> {
 /// Spawns a blocking function onto a thread pool.
 /// Use this when you need to run expensive synchronous code inside an async context.
 /// The returned handle can be awaited to get the result of the function.
-template <typename T>
+template <typename T = void>
 auto spawnBlocking(arc::MoveOnlyFunction<T()> f) {
     if (auto rt = Runtime::current()) {
         return rt->spawnBlocking<T>(std::move(f));
