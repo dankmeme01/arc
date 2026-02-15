@@ -210,9 +210,9 @@ TEST(mpsc, LargeVolumeSmallChannel) {
     auto [outTx, outRx] = mpsc::channel<uint64_t>(1);
 
 
-    auto [a, b] = rt->blockOn([&](this auto self) -> arc::Future<std::pair<uint64_t, uint64_t>> {
+    auto [a, b] = rt->blockOn([&] -> arc::Future<std::pair<uint64_t, uint64_t>> {
         // spawn consumer thread
-        arc::spawn([outTx, rx = std::move(rx)](this auto self) -> arc::Future<> {
+        arc::spawn([outTx, rx = std::move(rx)] -> arc::Future<> {
             uint64_t sum = 0;
 
             while (true) {
@@ -223,7 +223,7 @@ TEST(mpsc, LargeVolumeSmallChannel) {
             }
 
             EXPECT_TRUE((co_await outTx.send(sum)).isOk());
-        }());
+        });
 
         // produce a large amount of data
         uint64_t actualSum = 0;
@@ -237,7 +237,7 @@ TEST(mpsc, LargeVolumeSmallChannel) {
         auto taskSum = co_await outRx.recv();
         EXPECT_TRUE(taskSum.isOk());
         co_return std::make_pair(actualSum, *taskSum);
-    }());
+    });
 
     EXPECT_EQ(a, b);
 }
@@ -249,7 +249,7 @@ TEST(mpsc, LargeVolumeLargeChannel) {
     auto [outTx, outRx] = mpsc::channel<uint64_t>(1);
 
     // produce a large amount of data
-    auto [a, b] = rt->blockOn([&](this auto self) -> arc::Future<std::pair<uint64_t, uint64_t>> {
+    auto [a, b] = rt->blockOn([] -> arc::Future<std::pair<uint64_t, uint64_t>> {
         // spawn consumer thread
         arc::spawn([outTx, rx = std::move(rx)](this auto self) -> arc::Future<> {
             uint64_t sum = 0;
@@ -263,7 +263,7 @@ TEST(mpsc, LargeVolumeLargeChannel) {
             trace("consumer done");
 
             EXPECT_TRUE((co_await outTx.send(sum)).isOk());
-        }());
+        });
 
         uint64_t actualSum = 0;
         for (int i = 0; i < 4096; i++) {
@@ -276,7 +276,7 @@ TEST(mpsc, LargeVolumeLargeChannel) {
         auto taskSum = co_await outRx.recv();
         EXPECT_TRUE(taskSum.isOk());
         co_return std::make_pair(actualSum, *taskSum);
-    }());
+    });
 
     EXPECT_EQ(a, b);
 }
