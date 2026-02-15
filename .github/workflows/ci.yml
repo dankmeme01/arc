@@ -26,15 +26,15 @@ jobs:
             name: "Linux (Clang, Release)"
             generator: Ninja
             build_type: Release
-            c-compiler: "clang"
-            cxx-compiler: "clang++"
+            c-compiler: "cc"
+            cxx-compiler: "c++"
 
           - os: ubuntu-latest
             name: "Linux (Clang, Debug)"
             generator: Ninja
             build_type: Debug
-            c-compiler: "clang"
-            cxx-compiler: "clang++"
+            c-compiler: "cc"
+            cxx-compiler: "c++"
             debug: ON
             asan: ON
 
