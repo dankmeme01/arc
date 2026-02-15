@@ -16,31 +16,36 @@ jobs:
       matrix:
         include:
           - os: windows-latest
+            name: "Windows (VS 2022, Release)"
             generator: "Visual Studio 17 2022"
             build_type: Release
             c-compiler: "cl"
-            cpp-compiler: "cl"
+            cxx-compiler: "cl"
 
           - os: ubuntu-latest
+            name: "Linux (Clang, Release)"
             generator: Ninja
             build_type: Release
             c-compiler: "clang"
-            cpp-compiler: "clang++"
+            cxx-compiler: "clang++"
 
           - os: ubuntu-latest
+            name: "Linux (Clang, Debug)"
             generator: Ninja
             build_type: Debug
             c-compiler: "clang"
-            cpp-compiler: "clang++"
+            cxx-compiler: "clang++"
             debug: ON
             asan: ON
 
           - os: macos-latest
+            name: "macOS (Clang, Release)"
             generator: Ninja
             build_type: Release
             c-compiler: "clang"
-            cpp-compiler: "clang++"
+            cxx-compiler: "clang++"
 
+    name: ${{ matrix.name }}
     runs-on: ${{ matrix.os }}
 
     steps:
@@ -61,7 +66,7 @@ jobs:
         with:
           generator: ${{ matrix.generator }}
           c-compiler: ${{ matrix.c-compiler }}
-          cpp-compiler: ${{ matrix.cpp-compiler }}
+          cxx-compiler: ${{ matrix.cxx-compiler }}
           options: |
             CMAKE_BUILD_TYPE=${{ matrix.build_type }}
             ARC_BUILD_TESTS=ON
