@@ -141,7 +141,7 @@ protected:
         out->init(std::move(*me->m_output));
     }
 
-    inline static constexpr PollableVtable vtable = [] {
+    inline static constinit const PollableVtable vtable = [] {
         constexpr auto meta = PollableMetadata::create<Derived>();
 
         // instead of just checking the template argument, check if the actual poll function is noexcept
@@ -203,7 +203,7 @@ protected:
         }
     }
 
-    inline static constexpr PollableVtable vtable = [] {
+    inline static constinit const PollableVtable vtable = [] {
         constexpr auto meta = PollableMetadata::create<Derived>();
 
         // instead of checking the template argument, check if the actual poll function is noexcept
