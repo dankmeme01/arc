@@ -203,7 +203,11 @@ struct Task : TaskTypedBase<typename Fut::Output> {
     static constexpr bool IsVoid = std::is_void_v<Output>;
 
 protected:
-    ARC_NO_UNIQUE_ADDRESS std::conditional_t<UsesLambda, ManuallyDrop<Lambda>, std::monostate> m_lambda;
+#if defined(__clang__) || defined(__GNUC__)
+    [[no_unique_address]]
+#endif
+    std::conditional_t<UsesLambda, ManuallyDrop<Lambda>, std::monostate> m_lambda;
+
     ManuallyDrop<Fut> m_future;
     std::atomic<bool> m_droppedFuture = false;
 
@@ -214,7 +218,7 @@ protected:
     template <typename L>
     Task(const TaskVtable* vtable, Runtime* runtime, L&& fut) requires (UsesLambda)
         : TaskTypedBase<typename Fut::Output>(vtable, runtime),
-          m_lambda(std::forward<Lambda>(fut)),
+          m_lambda(std::forward<L>(fut)),
           m_future(std::invoke(m_lambda.get())) {}
 
 public:
