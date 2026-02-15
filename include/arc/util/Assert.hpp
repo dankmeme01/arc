@@ -5,8 +5,8 @@
 namespace arc {
 
 // Assert macro
-#define ARC__GET_MACRO(_0, _1, _2, name, ...) name
-#define ARC_ASSERT(...) ARC__GET_MACRO(_0, ##__VA_ARGS__, ARC__ASSERT2, ARC__ASSERT1, ARC__ASSERT0)(__VA_ARGS__)
+#define ARC_ASSERT(condition, ...) \
+    ARC__ASSERT2(condition, "" __VA_ARGS__)
 
 #define ARC__ASSERT2(condition, msg) \
     do { \
@@ -14,7 +14,6 @@ namespace arc {
             ::arc::_assertionFail(#condition, msg, __FILE__, __LINE__); \
         } \
     } while (false)
-#define ARC__ASSERT1(condition) ARC__ASSERT2(condition, "")
 
 #if defined ARC_DEBUG
 # define ARC_DEBUG_ASSERT ARC_ASSERT
