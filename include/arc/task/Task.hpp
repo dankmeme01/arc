@@ -204,7 +204,7 @@ struct Task : TaskTypedBase<typename Fut::Output> {
 
 protected:
 #if defined(__clang__) || defined(__GNUC__)
-    [[no_unique_address]]
+    ARC_NO_UNIQUE_ADDRESS
 #endif
     std::conditional_t<UsesLambda, ManuallyDrop<Lambda>, std::monostate> m_lambda;
 
