@@ -319,18 +319,23 @@ void Runtime::workerLoop(WorkerData& data, Context& cx) {
             continue;
         }
 
-        ARC_TRACE("[Worker {}] driving task {}", data.id, task->debugName());
+#if defined ARC_DEBUG || defined ARC_ENABLE_TRACE
+        // we must store this in a variable, because task might get destroyed after run() finishes
+        auto taskName = task->debugName();
+#endif
+
+        ARC_TRACE("[Worker {}] driving task {}", data.id, taskName);
         now = Instant::now();
 
         cx.setup(now + m_taskDeadline);
         task->m_vtable->run(task, cx);
 
-        ARC_TRACE("[Worker {}] finished driving task {}", data.id, task->debugName());
+        ARC_TRACE("[Worker {}] finished driving task {}", data.id, taskName);
 
 #ifdef ARC_DEBUG
         auto taken = now.elapsed();
         if (taken > Duration::fromMillis(100)) {
-            printWarn("[Worker {}] task {} took {} to yield", data.id, task->debugName(), taken.toString());
+            printWarn("[Worker {}] task {} took {} to yield", data.id, taskName, taken.toString());
         }
 #endif
     }
