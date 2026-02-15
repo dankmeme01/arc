@@ -21,7 +21,7 @@ using TimeoutResult = Result<T, TimedOut>;
 
 template <
     IsPollable Fut,
-    typename FutOut = FutureTraits<std::decay_t<Fut>>::Output,
+    typename FutOut = typename FutureTraits<std::decay_t<Fut>>::Output,
     bool IsVoid = std::is_void_v<FutOut>,
     typename Output = TimeoutResult<std::conditional_t<IsVoid, std::monostate, FutOut>>
 >

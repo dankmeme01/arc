@@ -5,7 +5,7 @@ Future<Result<>> clientHandler(arc::TcpStream stream, qsox::SocketAddress addr) 
 
     char buf[1024];
     while (true) {
-        auto read = ARC_CO_MAP_UNWRAP(co_await stream.receive(buf, sizeof(buf)));
+        ARC_CO_MAP_UNWRAP_INTO(auto read, co_await stream.receive(buf, sizeof(buf)));
 
         fmt::println("Read {} bytes from {}: {}", read, addr.toString(), std::string_view(buf, read));
 

@@ -10,7 +10,7 @@ Future<Result<>> asyncMain(int argc, const char** argv) {
     }
 
     auto address = args[0];
-    auto addr = ARC_CO_MAP_UNWRAP(qsox::SocketAddress::parse(address));
+    ARC_CO_MAP_UNWRAP_INTO(auto addr, qsox::SocketAddress::parse(address));
 
     auto res = co_await TcpStream::connect(addr);
     if (!res) {
@@ -35,7 +35,7 @@ Future<Result<>> asyncMain(int argc, const char** argv) {
         ARC_CO_MAP_UNWRAP(co_await stream.sendAll(line.data(), line.size()));
 
         char buf[1024];
-        size_t read = ARC_CO_MAP_UNWRAP(co_await stream.receive(buf, sizeof(buf)));
+        ARC_CO_MAP_UNWRAP_INTO(size_t read, co_await stream.receive(buf, sizeof(buf)));
 
         fmt::println("Received {} bytes: {}", read, std::string_view(buf, read));
     }

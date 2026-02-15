@@ -21,7 +21,7 @@ arc::Future<Result<>> pipeServer() {
         );
 
         trace("Listening for pipes ({})", pipe);
-        auto p = ARC_CO_UNWRAP(co_await IocpPipe::listen(pipe));
+        ARC_CO_UNWRAP_INTO(auto p, co_await IocpPipe::listen(pipe));
 
         char buf[256];
         ARC_CO_UNWRAP_INTO(auto read, co_await p.read(buf, sizeof(buf)));
@@ -61,7 +61,7 @@ Future<Result<>> asyncMain() {
         char buf[256];
 
         trace("Reading into {}", (void*)buf);
-        size_t readB = ARC_CO_UNWRAP(co_await pipe.read(buf, 256));
+        ARC_CO_UNWRAP_INTO(size_t readB, co_await pipe.read(buf, 256));
 
         fmt::println("Client received {} bytes: {}", readB, std::string_view{buf, readB});
     }
