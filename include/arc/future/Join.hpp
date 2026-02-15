@@ -1,18 +1,21 @@
 #pragma once
 
-#include "Future.hpp"
+#include "UtilPollables.hpp"
 #include <arc/util/Assert.hpp>
 #include <arc/util/Trace.hpp>
+#include <asp/collections/SmallVec.hpp>
+#include <ranges>
 
 namespace arc {
 
-template <typename Output>
+template <IsPollable Fut>
 struct JoinAllFuture {
+    using Output = typename FutureTraits<Fut>::Output;
     static constexpr bool IsVoid = std::is_void_v<Output>;
     using StoredOutput = std::conditional_t<IsVoid, std::monostate, Output>;
 
     template <typename F>
-    JoinAllFuture(F fut) : future(toPlainFuture(std::move(fut))) {}
+    JoinAllFuture(F&& fut) : m_future(std::forward<F>(fut)) {}
 
     JoinAllFuture(JoinAllFuture&&) = default;
     JoinAllFuture& operator=(JoinAllFuture&&) = default;
@@ -22,39 +25,30 @@ struct JoinAllFuture {
 private:
     template <typename FRet, typename VRet, typename... F>
     friend struct JoinAll;
-    template <typename FRet, typename Fut>
+    template <typename FRet, typename F>
     friend struct JoinAllDyn;
 
-    Future<Output> future;
-    std::optional<StoredOutput> output;
+    Fut m_future;
+    bool m_completed = false;
 };
 
-template <typename FRet, typename VRet, typename... Futures>
-struct ARC_NODISCARD JoinAll : Pollable<JoinAll<FRet, VRet, Futures...>, std::array<FRet, sizeof...(Futures)>> {
-    using JoinAllOutput = std::array<FRet, sizeof...(Futures)>;
-    using JoinAllTempOutput = std::array<std::optional<FRet>, sizeof...(Futures)>;
-    static constexpr bool IsVoid = std::is_void_v<VRet>;
-    explicit JoinAll(std::tuple<Futures...>&& futs, VRet*, FRet*) : m_futures(std::move(futs)) {}
+template <typename FOutput, typename NVOutput, typename... Futures>
+struct ARC_NODISCARD JoinAll : Pollable<JoinAll<FOutput, NVOutput, Futures...>, std::array<NVOutput, sizeof...(Futures)>> {
+    using JoinAllOutput = std::array<NVOutput, sizeof...(Futures)>;
+    static constexpr bool IsVoid = std::is_void_v<FOutput>;
 
-    // helper to convert from array<optional<T>, N> to array<T, N>
-    static auto convertTempOutput(JoinAllTempOutput&& tempOut) {
-        return std::apply([](auto&&... opts) {
-            return JoinAllOutput{std::move(*opts)...};
-        }, std::move(tempOut));
-    }
+    // other 2 arguments simply for inference
+    explicit JoinAll(std::tuple<Futures...>&& futs, FOutput*, NVOutput*) : m_futures(std::move(futs)) {}
 
     std::optional<JoinAllOutput> poll(Context& cx) {
         bool allDone = true;
-        this->checkForEach(*m_futures, allDone, cx);
+        this->checkForEach(m_futures, allDone, cx);
 
         if (!allDone) {
             return std::nullopt;
         }
 
-        JoinAllTempOutput out;
-        this->extractForEach(*m_futures, out);
-
-        return std::make_optional<JoinAllOutput>(convertTempOutput(std::move(out)));
+        return std::make_optional<JoinAllOutput>(this->extractForEach(m_futures));
     }
 
     template <typename Tuple>
@@ -66,51 +60,52 @@ struct ARC_NODISCARD JoinAll : Pollable<JoinAll<FRet, VRet, Futures...>, std::ar
     template <size_t... Is, typename Tuple>
     void checkForEachImpl(Tuple&& t, std::index_sequence<Is...>, bool& allDone, Context& cx) {
         (([&]() {
-            auto& fut = std::get<Is>(t);
+            auto& jafut = std::get<Is>(t);
+            if (jafut.m_completed) return;
 
-            // ARC_TRACE("[JoinAll] checking future {}, active: {}", Is, !fut.output.has_value());
-            if (!fut.output) {
-                auto res = fut.future.poll(cx);
-                if (res) {
-                    if constexpr (!IsVoid) {
-                        fut.output = fut.future.getOutput();
-                    } else {
-                        fut.future.getOutput();
-                        fut.output = std::monostate{};
-                    }
-                    // ARC_TRACE("[JoinAll] future {} finished!", Is);
-                } else {
-                    allDone = false;
-                }
+            auto& fut = jafut.m_future;
+            bool ready = fut.m_vtable->poll(&fut, cx);
+
+            if (ready) {
+                jafut.m_completed = true;
+            } else {
+                allDone = false;
             }
         }()), ...);
     }
 
     template <typename Tuple>
-    void extractForEach(Tuple&& t, JoinAllTempOutput& out) {
+    JoinAllOutput extractForEach(Tuple&& t) {
         constexpr auto size = std::tuple_size_v<std::decay_t<Tuple>>;
-        extractForEachImpl(std::forward<Tuple>(t), std::make_index_sequence<size>{}, out);
+        return extractForEachImpl(std::forward<Tuple>(t), std::make_index_sequence<size>{});
     }
 
     template <size_t... Is, typename Tuple>
-    void extractForEachImpl(Tuple&& t, std::index_sequence<Is...>, JoinAllTempOutput& out) {
-        (([&]() {
-            auto& fut = std::get<Is>(t);
-            using Fut = std::decay_t<decltype(fut)>;
+    JoinAllOutput extractForEachImpl(Tuple&& t, std::index_sequence<Is...>) {
+        return JoinAllOutput{([&]() {
+            auto& jafut = std::get<Is>(t);
+            auto& fut = jafut.m_future;
 
-            if constexpr (!Fut::IsVoid) {
-                out[Is] = std::move(*fut.output);
+            if constexpr (IsVoid) {
+                // propagate exceptions, return monostate
+                fut.m_vtable->template getOutput<void>(&fut);
+                return NVOutput{};
+            } else {
+                return fut.m_vtable->template getOutput<FOutput>(&fut);
             }
-        }()), ...);
+        }())...};
     }
 
 private:
-    std::optional<std::tuple<Futures...>> m_futures;
+    std::tuple<Futures...> m_futures;
 };
 
 template <typename Out>
 struct JoinAllDynOutputType_ {
-    using type = std::vector<Out>;
+    static constexpr size_t SmallVecSize = 256;
+    static constexpr size_t SmallCap = SmallVecSize / sizeof(Out);
+
+    using type = asp::SmallVec<Out, SmallCap>;
 };
 template <>
 struct JoinAllDynOutputType_<void> {
@@ -121,12 +116,17 @@ using JoinAllDynOutputType = typename JoinAllDynOutputType_<FRet>::type;
 
 template <typename FRet, typename Fut>
 struct ARC_NODISCARD JoinAllDyn : Pollable<JoinAllDyn<FRet, Fut>, JoinAllDynOutputType<FRet>> {
+    using TransformedFut = JoinAllFuture<Fut>;
     using JoinAllOutput = JoinAllDynOutputType<FRet>;
     using PollOutput = std::conditional_t<std::is_void_v<JoinAllOutput>, bool, std::optional<JoinAllOutput>>;
-    using TransformedFut = JoinAllFuture<FRet>;
-    static constexpr bool IsVoid = std::is_void_v<JoinAllOutput>;
 
-    explicit JoinAllDyn(std::vector<Fut>&& futs, FRet*) {
+    static constexpr bool IsVoid = std::is_void_v<FRet>;
+    static constexpr size_t SmallVecSize = 256;
+    static constexpr size_t SmallCap = SmallVecSize / sizeof(JoinAllFuture<Fut>);
+
+    template <typename Cont>
+    explicit JoinAllDyn(Cont&& futs) {
+        m_futures.reserve(std::ranges::distance(futs));
         for (auto& fut : futs) {
             m_futures.emplace_back(TransformedFut{std::move(fut)});
         }
@@ -137,73 +137,103 @@ struct ARC_NODISCARD JoinAllDyn : Pollable<JoinAllDyn<FRet, Fut>, JoinAllDynOutp
         bool allDone = true;
 
         for (size_t i = 0; i < m_futures.size(); i++) {
-            auto& fut = m_futures[i];
+            auto& jafut = m_futures[i];
+            auto& fut = jafut.m_future;
 
-            // ARC_TRACE("[JoinAll] checking future {}, active: {}", i, !fut.output.has_value());
+            if (jafut.m_completed) continue;
 
-            if (!fut.output) {
-                auto res = fut.future.poll(cx);
-                if (res) {
-                    if constexpr (!IsVoid) {
-                        fut.output = fut.future.getOutput();
-                    } else {
-                        fut.future.getOutput();
-                        fut.output = std::monostate{};
-                    }
-                    // ARC_TRACE("[JoinAll] future {} finished!", i);
-                } else {
-                    allDone = false;
-                }
+            bool ready = fut.m_vtable->poll(&fut, cx);
+            if (ready) {
+                jafut.m_completed = true;
+            } else {
+                allDone = false;
             }
         }
 
-        if constexpr (IsVoid) {
-            return allDone;
-        } else {
-            if (!allDone) {
+        if (!allDone) {
+            if constexpr (IsVoid) {
+                return false;
+            } else {
                 return std::nullopt;
             }
-
-            JoinAllOutput out;
-            out.reserve(m_futures.size());
-
-            for (auto& fut : m_futures) {
-                if constexpr (!TransformedFut::IsVoid) {
-                    out.emplace_back(std::move(*fut.output));
-                }
-            }
-
-            return std::make_optional<JoinAllOutput>(std::move(out));
         }
+
+        return this->extractOutputs<>();
     }
 
 private:
-    std::vector<TransformedFut> m_futures;
+    asp::SmallVec<TransformedFut, SmallCap> m_futures;
+
+    template <bool Void_ = IsVoid>
+    auto extractOutputs();
+
+    template <>
+    auto extractOutputs<true>() {
+        // propagate exceptions
+        for (auto& jafut : m_futures) {
+            auto& fut = jafut.m_future;
+            fut.m_vtable->template getOutput<void>(&fut);
+        }
+        return true;
+    }
+
+    template <>
+    auto extractOutputs<false>() {
+        JoinAllOutput out;
+        out.reserve(m_futures.size());
+
+        for (auto& jafut : m_futures) {
+            auto& fut = jafut.m_future;
+            out.emplace_back(
+                fut.m_vtable->template getOutput<FRet>(&fut)
+            );
+        }
+
+        return std::make_optional<JoinAllOutput>(std::move(out));
+    }
 };
 
 template <typename F, typename... Rest>
 struct MultiFutureExtractRet {
-    using type = typename FutureTraits<std::decay_t<F>>::Output;
+    using Output = typename FutureTraits<std::decay_t<F>>::Output;
+    using NVOutput = std::conditional_t<std::is_void_v<Output>, std::monostate, Output>;
 };
 
-template <typename... Futures>
-auto joinAll(Futures... futs) {
-    // Extract output type, expect it to be the same for all futures
-    using Output = typename MultiFutureExtractRet<Futures...>::type;
-    using JoinAllFuture = JoinAllFuture<Output>;
-    using NVOutput = typename JoinAllFuture::StoredOutput;
+template <typename Expected, typename F, typename... Rest>
+constexpr void _validateJoinAllOutputType() {
+    using FOut = typename FutureTraits<std::decay_t<F>>::Output;
+    static_assert(std::is_same_v<FOut, Expected>, "All futures passed to joinAll must have the same output type");
 
-    auto fs = std::make_tuple(JoinAllFuture{std::move(futs)}...);
+    if constexpr (sizeof...(Rest) > 0) {
+        _validateJoinAllOutputType<Expected, Rest...>();
+    }
+}
+
+template <typename... Fx>
+auto joinAll(Fx&&... futs) {
+    // Extract output type, expect it to be the same for all futures
+    using Output = typename MultiFutureExtractRet<Fx...>::Output;
+    using NVOutput = typename MultiFutureExtractRet<Fx...>::NVOutput;
+    _validateJoinAllOutputType<Output, Fx...>();
+
+    auto fs = std::make_tuple(JoinAllFuture<std::decay_t<Fx>>{std::forward<Fx>(futs)}...);
+
     return JoinAll{std::move(fs), static_cast<Output*>(nullptr), static_cast<NVOutput*>(nullptr)};
 }
 
-template <typename Fut>
-auto joinAll(std::vector<Fut> futs) {
-    using Output = typename FutureTraits<std::decay_t<Fut>>::Output;
-    using JoinAllFuture = JoinAllFuture<Output>;
-    using NVOutput = typename JoinAllFuture::StoredOutput;
+template <>
+inline auto joinAll() {
+    return arc::ready(std::array<std::monostate, 0>{});
+}
 
-    return JoinAllDyn{std::move(futs), static_cast<Output*>(nullptr)};
+template <typename Cont> requires std::ranges::input_range<Cont> && IsPollable<std::ranges::range_value_t<Cont>>
+auto joinAll(Cont&& futs) {
+    using Fut = std::ranges::range_value_t<Cont>;
+    using Output = typename FutureTraits<Fut>::Output;
+    using JAFut = JoinAllFuture<Fut>;
+    using NVOutput = typename JAFut::StoredOutput;
+
+    return JoinAllDyn<Output, Fut>{std::forward<Cont>(futs)};
 }
 
 }
