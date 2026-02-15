@@ -1,0 +1,73 @@
+name: Build and test Arc
+
+on:
+  workflow_dispatch:
+  push:
+    paths-ignore:
+      - 'docs/*.md'
+      - 'examples/**'
+      - 'README.md'
+  pull_request:
+
+jobs:
+  build-and-test:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            generator: "Visual Studio 17 2022"
+            build_type: Release
+            c-compiler: "cl"
+            cpp-compiler: "cl"
+
+          - os: ubuntu-latest
+            generator: Ninja
+            build_type: Release
+            c-compiler: "clang"
+            cpp-compiler: "clang++"
+
+          - os: ubuntu-latest
+            generator: Ninja
+            build_type: Debug
+            c-compiler: "clang"
+            cpp-compiler: "clang++"
+            debug: ON
+            asan: ON
+
+          - os: macos-latest
+            generator: Ninja
+            build_type: Release
+            c-compiler: "clang"
+            cpp-compiler: "clang++"
+
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Ninja
+        if: matrix.generator == 'Ninja'
+        run: |
+          if [[ "$RUNNER_OS" == "Linux" ]]; then
+            sudo apt-get update
+            sudo apt-get install -y ninja-build clang
+          elif [[ "$RUNNER_OS" == "macOS" ]]; then
+            brew install ninja
+          fi
+
+      - name: Configure & Build
+        uses: threeal/cmake-action@v2.1.0
+        with:
+          generator: ${{ matrix.generator }}
+          c-compiler: ${{ matrix.c-compiler }}
+          cpp-compiler: ${{ matrix.cpp-compiler }}
+          options: |
+            CMAKE_BUILD_TYPE=${{ matrix.build_type }}
+            ARC_BUILD_TESTS=ON
+            ARC_FEATURE_DEBUG=${{ matrix.debug || 'OFF' }}
+            ARC_FEATURE_ASAN=${{ matrix.asan || 'OFF' }}
+          build-args: --config ${{ matrix.build_type }} --parallel
+
+      - name: Run tests
+        run: ctest --test-dir build --output-on-failure -C ${{ matrix.build_type }}
