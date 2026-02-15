@@ -210,7 +210,7 @@ TEST(mpsc, LargeVolumeSmallChannel) {
     auto [outTx, outRx] = mpsc::channel<uint64_t>(1);
 
 
-    auto [a, b] = rt->blockOn([&] -> arc::Future<std::pair<uint64_t, uint64_t>> mutable {
+    auto [a, b] = rt->blockOn([&] mutable -> arc::Future<std::pair<uint64_t, uint64_t>> {
         // spawn consumer thread
         arc::spawn([outTx, rx = std::move(rx)] -> arc::Future<> {
             uint64_t sum = 0;
@@ -249,7 +249,7 @@ TEST(mpsc, LargeVolumeLargeChannel) {
     auto [outTx, outRx] = mpsc::channel<uint64_t>(1);
 
     // produce a large amount of data
-    auto [a, b] = rt->blockOn([&] -> arc::Future<std::pair<uint64_t, uint64_t>> mutable {
+    auto [a, b] = rt->blockOn([&] mutable -> arc::Future<std::pair<uint64_t, uint64_t>> {
         // spawn consumer thread
         arc::spawn([outTx, rx = std::move(rx)](this auto self) -> arc::Future<> {
             uint64_t sum = 0;
