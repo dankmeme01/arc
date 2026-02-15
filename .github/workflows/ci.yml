@@ -61,6 +61,13 @@ jobs:
             brew install ninja
           fi
 
+      - name: Install latest Clang
+        if: matrix.os == 'ubuntu-latest'
+        uses: egor-tensin/setup-clang@v2.1
+        with:
+          version: latest
+          platform: x64
+
       - name: Configure & Build
         uses: threeal/cmake-action@v2.1.0
         with:
