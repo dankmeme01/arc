@@ -76,6 +76,7 @@ TEST(task, TaskStats) {
     }());
     handle.setName("hi test");
 
+#ifdef ARC_DEBUG
     auto data = handle.getDebugData();
     EXPECT_TRUE((bool) data);
 
@@ -87,6 +88,7 @@ TEST(task, TaskStats) {
 
     EXPECT_EQ(data->name(), "hi test");
     EXPECT_EQ(data->totalPolls(), 2); // polled once to yield, second to complete
+#endif
 }
 
 TEST(task, LambdaUseAfterFree) {

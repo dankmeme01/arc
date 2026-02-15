@@ -1,8 +1,4 @@
-#include <arc/future/Join.hpp>
-#include <arc/sync/Notify.hpp>
-#include <arc/sync/Semaphore.hpp>
-#include <arc/sync/mpsc.hpp>
-#include <arc/util/ManuallyDrop.hpp>
+#include <arc/prelude.hpp>
 #include <gtest/gtest.h>
 
 using enum std::memory_order;
@@ -32,6 +28,24 @@ TEST(join, MpscMultiTxJoin) {
     for (int i = 0; i < 2; i++) {
         EXPECT_TRUE(output[i].isOk());
     }
+}
+
+TEST(join, HeterogenousJoin) {
+    Waker waker = Waker::noop();
+    Context cx { &waker };
+
+    auto fut1 = [] -> arc::Future<int> {
+        co_return 42;
+    }();
+    auto fut2 = arc::ready(42);
+
+    auto joined = arc::joinAll(std::move(fut1), std::move(fut2));
+    auto res = joined.poll(cx);
+    EXPECT_TRUE(res.has_value());
+
+    auto vec = std::move(res).value();
+    EXPECT_EQ(vec[0], 42);
+    EXPECT_EQ(vec[1], 42);
 }
 
 TEST(join, JoinDyn) {

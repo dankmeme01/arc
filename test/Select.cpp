@@ -64,6 +64,79 @@ TEST(Select, TwoReady) {
     EXPECT_FALSE(called2);
 }
 
+TEST(Select, OneBranch) {
+    auto rt = Runtime::create(1);
+
+    int val;
+    rt->blockOn(
+        arc::select(
+            arc::selectee(arc::ready(42), [&] (int out) { val = out; })
+        )
+    );
+
+    EXPECT_EQ(val, 42);
+}
+
+TEST(Select, AsyncCallback) {
+    auto rt = Runtime::create(1);
+
+    int val;
+    rt->blockOn(
+        arc::select(
+            arc::selectee(arc::never()),
+
+            arc::selectee(
+                arc::ready(42),
+                [&](int out) -> arc::Future<> {
+                    val = out;
+                    co_return;
+                }
+            )
+        )
+    );
+
+    EXPECT_EQ(val, 42);
+}
+
+TEST(Select, AsyncCallbackVoid) {
+    auto rt = Runtime::create(1);
+
+    bool invoked = false;
+    rt->blockOn(
+        arc::select(
+            arc::selectee(arc::never()),
+            
+            arc::selectee(
+                arc::ready(),
+                [&] -> arc::Future<> {
+                    invoked = true;
+                    co_return;
+                }
+            )
+        )
+    );
+
+    EXPECT_TRUE(invoked);
+}
+
+TEST(Select, AsyncCallbackPollable) {
+    auto rt = Runtime::create(1);
+
+    arc::Semaphore sema{1};
+    rt->blockOn(
+        arc::select(
+            arc::selectee(arc::never()),
+            
+            arc::selectee(
+                arc::ready(),
+                [&] {
+                    return sema.acquire();
+                }
+            )
+        )
+    );
+}
+
 static arc::Future<> throws() {
     throw std::runtime_error("failed");
     co_return;
