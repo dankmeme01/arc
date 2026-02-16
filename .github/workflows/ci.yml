@@ -26,17 +26,17 @@ jobs:
             name: "Linux (Clang, Release)"
             generator: Ninja
             build_type: Release
-            c-compiler: "cc"
-            cxx-compiler: "c++"
+            c-compiler: "clang-21"
+            cxx-compiler: "clang++-21"
 
           - os: ubuntu-latest
             name: "Linux (Clang, Debug)"
             generator: Ninja
             build_type: Debug
-            c-compiler: "cc"
-            cxx-compiler: "c++"
+            c-compiler: "clang-21"
+            cxx-compiler: "clang++-21"
             debug: ON
-            # asan: ON
+            asan: ON
 
           - os: macos-latest
             name: "macOS (Clang, Release)"
@@ -51,22 +51,15 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Ninja
-        if: matrix.generator == 'Ninja'
-        run: |
-          if [[ "$RUNNER_OS" == "Linux" ]]; then
-            sudo apt-get update
-            sudo apt-get install -y ninja-build clang
-          elif [[ "$RUNNER_OS" == "macOS" ]]; then
-            brew install ninja
-          fi
-
-      - name: Install latest Clang
+      - name: Install Ninja + Clang 21
         if: matrix.os == 'ubuntu-latest'
-        uses: egor-tensin/setup-clang@v2.1
-        with:
-          version: 21
-          platform: x64
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build wget lsb-release software-properties-common gnupg
+
+          wget https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh 21 all
 
       - name: Configure & Build
         uses: threeal/cmake-action@v2.1.0
