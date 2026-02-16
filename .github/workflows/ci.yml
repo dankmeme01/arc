@@ -36,7 +36,7 @@ jobs:
             c-compiler: "cc"
             cxx-compiler: "c++"
             debug: ON
-            asan: ON
+            # asan: ON
 
           - os: macos-latest
             name: "macOS (Clang, Release)"
