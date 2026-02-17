@@ -8,7 +8,7 @@ using enum std::memory_order;
 
 using namespace arc;
 
-TEST(oneshot, VeryBasic) {
+TEST(Oneshot, VeryBasic) {
     auto [tx, rx] = oneshot::channel<int>();
     EXPECT_TRUE(tx.send(42).isOk());
 
@@ -17,7 +17,7 @@ TEST(oneshot, VeryBasic) {
     EXPECT_EQ(r1.unwrap(), 42);
 }
 
-TEST(oneshot, VeryBasicAsync) {
+TEST(Oneshot, VeryBasicAsync) {
     Waker waker = Waker::noop();
     Context cx { &waker };
 
@@ -31,7 +31,7 @@ TEST(oneshot, VeryBasicAsync) {
     EXPECT_EQ(val->unwrap(), 42);
 }
 
-TEST(oneshot, SendAfterClosure) {
+TEST(Oneshot, SendAfterClosure) {
     Waker waker = Waker::noop();
     Context cx { &waker };
 
@@ -42,7 +42,7 @@ TEST(oneshot, SendAfterClosure) {
     EXPECT_EQ(sendres.unwrapErr(), 42);
 }
 
-TEST(oneshot, RecvAfterClosure) {
+TEST(Oneshot, RecvAfterClosure) {
     Waker waker = Waker::noop();
     Context cx { &waker };
 

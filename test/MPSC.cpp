@@ -8,7 +8,7 @@ using enum std::memory_order;
 
 using namespace arc;
 
-TEST(mpsc, VeryBasicSync) {
+TEST(MPSC, VeryBasicSync) {
     Waker waker = Waker::noop();
     Context cx { &waker };
 
@@ -44,7 +44,7 @@ TEST(mpsc, VeryBasicSync) {
     trace("10");
 }
 
-TEST(mpsc, Basic) {
+TEST(MPSC, Basic) {
     Waker waker = Waker::noop();
     Context cx { &waker };
 
@@ -91,7 +91,7 @@ TEST(mpsc, Basic) {
     EXPECT_FALSE(rx.tryRecv().isOk());
 }
 
-TEST(mpsc, ClosedBySender) {
+TEST(MPSC, ClosedBySender) {
     Waker waker = Waker::noop();
     Context cx { &waker };
 
@@ -112,7 +112,7 @@ TEST(mpsc, ClosedBySender) {
 }
 
 
-TEST(mpsc, ClosedByReceiver) {
+TEST(MPSC, ClosedByReceiver) {
     Waker waker = Waker::noop();
     Context cx { &waker };
 
@@ -145,7 +145,7 @@ TEST(mpsc, ClosedByReceiver) {
     EXPECT_EQ(tr.unwrapErr(), 5);
 }
 
-TEST(mpsc, Unbounded) {
+TEST(MPSC, Unbounded) {
     Waker waker = Waker::noop();
     Context cx { &waker };
 
@@ -162,7 +162,7 @@ TEST(mpsc, Unbounded) {
     }
 }
 
-TEST(mpsc, Rendezvous) {
+TEST(MPSC, Rendezvous) {
     Waker waker = Waker::noop();
     Context cx { &waker };
 
@@ -194,7 +194,7 @@ void moveFutureHelper(auto& cx, auto txfut, auto rxfut) {
     EXPECT_TRUE(txfut.poll(cx).has_value());
 }
 
-TEST(mpsc, MoveFuture) {
+TEST(MPSC, MoveFuture) {
     Waker waker = Waker::noop();
     Context cx { &waker };
 
@@ -204,7 +204,7 @@ TEST(mpsc, MoveFuture) {
     moveFutureHelper(cx, std::move(futsend), std::move(futrecv));
 }
 
-TEST(mpsc, LargeVolumeSmallChannel) {
+TEST(MPSC, LargeVolumeSmallChannel) {
     auto rt = arc::Runtime::create(4);
     auto [tx, rx] = mpsc::channel<int>(8);
     auto [outTx, outRx] = mpsc::channel<uint64_t>(1);
@@ -243,7 +243,7 @@ TEST(mpsc, LargeVolumeSmallChannel) {
 }
 
 
-TEST(mpsc, LargeVolumeLargeChannel) {
+TEST(MPSC, LargeVolumeLargeChannel) {
     auto rt = arc::Runtime::create(4);
     auto [tx, rx] = mpsc::channel<int>(8192);
     auto [outTx, outRx] = mpsc::channel<uint64_t>(1);

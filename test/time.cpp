@@ -66,5 +66,3 @@ TEST(Time, InfiniteDuration) {
     EXPECT_TRUE(ret.isOk());
     EXPECT_EQ(ret.unwrap(), 42);
 }
-
-

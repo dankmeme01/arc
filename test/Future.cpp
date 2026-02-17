@@ -7,66 +7,7 @@
 using enum std::memory_order;
 using namespace arc;
 
-TEST(future, Never) {
-    Waker waker = Waker::noop();
-    Context cx { &waker };
-
-    auto neverFut = arc::never();
-
-    // never will always return false on poll
-    EXPECT_FALSE(neverFut.poll(cx));
-    EXPECT_FALSE(neverFut.poll(cx));
-    EXPECT_FALSE(neverFut.poll(cx));
-
-    // never can use various types
-    auto lambda = [] -> arc::Future<int> {
-        if (true) {
-            co_return co_await arc::never<int>();
-        } else {
-            co_return 1;
-        }
-    };
-
-    auto fut = lambda();
-    EXPECT_FALSE(fut.poll(cx));
-}
-
-TEST(future, Yield) {
-    Waker waker = Waker::noop();
-    Context cx { &waker };
-
-    auto yieldFut = arc::yield();
-
-    // first poll should return false
-    EXPECT_FALSE(yieldFut.poll(cx));
-    // second poll should return true
-    EXPECT_TRUE(yieldFut.poll(cx));
-    // subsequent polls should return true
-    EXPECT_TRUE(yieldFut.poll(cx));
-    EXPECT_TRUE(yieldFut.poll(cx));
-}
-
-TEST(future, PollFunc) {
-    Waker waker = Waker::noop();
-    Context cx { &waker };
-
-    int counter = 0;
-    auto fut = arc::pollFunc([&] {
-        counter++;
-        return counter % 2 == 0;
-    });
-
-    EXPECT_FALSE(fut.poll(cx));
-    EXPECT_EQ(counter, 1);
-    EXPECT_TRUE(fut.poll(cx));
-    EXPECT_EQ(counter, 2);
-    EXPECT_FALSE(fut.poll(cx));
-    EXPECT_EQ(counter, 3);
-    EXPECT_TRUE(fut.poll(cx));
-    EXPECT_EQ(counter, 4);
-}
-
-TEST(future, ImmediateFuture) {
+TEST(Future, ImmediateReturn) {
     Waker waker = Waker::noop();
     Context cx { &waker };
 
@@ -78,7 +19,7 @@ TEST(future, ImmediateFuture) {
     EXPECT_EQ(fut.getOutput(), 123);
 }
 
-TEST(future, YieldingFuture) {
+TEST(Future, YieldAndReturn) {
     Waker waker = Waker::noop();
     Context cx { &waker };
 
@@ -92,7 +33,7 @@ TEST(future, YieldingFuture) {
     EXPECT_EQ(fut.getOutput(), 123);
 }
 
-TEST(future, Exception) {
+TEST(Future, Exception) {
     auto rt = Runtime::create(1);
 
     auto fut = [] -> Future<> {
@@ -103,7 +44,7 @@ TEST(future, Exception) {
     EXPECT_THROW(rt->blockOn(fut()), std::runtime_error);
 }
 
-TEST(future, ExceptionNested) {
+TEST(Future, ExceptionNested) {
     auto rt = Runtime::create(1);
 
     auto fut = [] -> Future<> {
@@ -119,7 +60,7 @@ TEST(future, ExceptionNested) {
     EXPECT_THROW(rt->blockOn(fut()), std::runtime_error);
 }
 
-TEST(future, ExceptionNestedCatch) {
+TEST(Future, ExceptionNestedCatch) {
     auto rt = Runtime::create(1);
 
     auto fut = [] -> Future<> {

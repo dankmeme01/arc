@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.21)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-project(arc VERSION 1.0.0)
+project(arc VERSION 1.5.4)
 
 include(cmake/Features.cmake)
 option(ARC_BUILD_TESTS "Build tests" OFF)
@@ -49,7 +49,7 @@ endif()
 # Add qsox if networking is enabled
 if (ARC_FEATURE_NET)
     if (NOT TARGET qsox)
-        CPMAddPackage("gh:dankmeme01/qsox#41682e5")
+        CPMAddPackage("gh:dankmeme01/qsox#1cd9dd7")
     endif()
     target_link_libraries(arc PUBLIC qsox)
 endif()
@@ -69,19 +69,8 @@ if (ARC_BUILD_TESTS)
 
     CPMAddPackage("gh:google/googletest@1.16.0")
 
-    add_executable(
-        arc_tests
-        test/Future.cpp
-        test/Join.cpp
-        test/mpsc.cpp
-        test/Notify.cpp
-        test/oneshot.cpp
-        test/Runtime.cpp
-        test/Select.cpp
-        test/Semaphore.cpp
-        test/Task.cpp
-        test/time.cpp
-    )
+    file(GLOB TEST_SOURCES CONFIGURE_DEPENDS "test/*.cpp")
+    add_executable(arc_tests ${TEST_SOURCES})
     target_link_libraries(arc_tests PRIVATE arc gtest_main GeodeResult)
 
     if (ARC_FEATURE_ASAN)

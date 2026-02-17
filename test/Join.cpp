@@ -5,7 +5,7 @@ using enum std::memory_order;
 
 using namespace arc;
 
-TEST(join, MpscMultiTxJoin) {
+TEST(Join, MpscMultipleSenders) {
     Waker waker = Waker::noop();
     Context cx { &waker };
 
@@ -30,7 +30,7 @@ TEST(join, MpscMultiTxJoin) {
     }
 }
 
-TEST(join, HeterogenousJoin) {
+TEST(Join, Heterogenous) {
     Waker waker = Waker::noop();
     Context cx { &waker };
 
@@ -48,7 +48,51 @@ TEST(join, HeterogenousJoin) {
     EXPECT_EQ(vec[1], 42);
 }
 
-TEST(join, JoinDyn) {
+TEST(Join, ExceptionFirst) {
+    Waker waker = Waker::noop();
+    Context cx { &waker };
+
+    auto fut1 = arc::pollFunc([] -> bool {
+        throw std::runtime_error("failed");
+    });
+    auto fut2 = arc::pollFunc([] -> bool {
+        return true;
+    });
+
+    auto ja = arc::joinAll(std::move(fut1), std::move(fut2));
+    EXPECT_THROW(ja.poll(cx), std::runtime_error);
+}
+
+TEST(Join, ExceptionSecond) {
+    Waker waker = Waker::noop();
+    Context cx { &waker };
+
+    auto fut1 = arc::pollFunc([] -> bool {
+        return true;
+    });
+    auto fut2 = arc::pollFunc([] -> bool {
+        throw std::runtime_error("failed");
+    });
+
+    auto ja = arc::joinAll(std::move(fut1), std::move(fut2));
+    EXPECT_THROW(ja.poll(cx), std::runtime_error);
+}
+
+TEST(Join, EmptyVoid) {
+    Waker waker = Waker::noop();
+    Context cx { &waker };
+
+    auto joined = arc::joinAll();
+    auto res = joined.poll(cx);
+    EXPECT_TRUE(res.has_value());
+    auto val = std::move(res).value();
+    static_assert(std::is_same_v<decltype(val), std::array<std::monostate, 0>>);
+    EXPECT_EQ(val.size(), 0);
+}
+
+// Dynamic join (arc::joinAll(container<F>))
+
+TEST(JoinDyn, FiveFutures) {
     Waker waker = Waker::noop();
     Context cx { &waker };
 
@@ -76,7 +120,7 @@ TEST(join, JoinDyn) {
     }
 }
 
-TEST(join, JoinDynVoid) {
+TEST(JoinDyn, FiveVoidFutures) {
     Waker waker = Waker::noop();
     Context cx { &waker };
 
@@ -98,37 +142,7 @@ TEST(join, JoinDynVoid) {
     EXPECT_TRUE(pollRes);
 }
 
-TEST(join, JoinAllExceptionFirst) {
-    Waker waker = Waker::noop();
-    Context cx { &waker };
-
-    auto fut1 = arc::pollFunc([] -> bool {
-        throw std::runtime_error("failed");
-    });
-    auto fut2 = arc::pollFunc([] -> bool {
-        return true;
-    });
-
-    auto ja = arc::joinAll(std::move(fut1), std::move(fut2));
-    EXPECT_THROW(ja.poll(cx), std::runtime_error);
-}
-
-TEST(join, JoinAllExceptionSecond) {
-    Waker waker = Waker::noop();
-    Context cx { &waker };
-
-    auto fut1 = arc::pollFunc([] -> bool {
-        return true;
-    });
-    auto fut2 = arc::pollFunc([] -> bool {
-        throw std::runtime_error("failed");
-    });
-
-    auto ja = arc::joinAll(std::move(fut1), std::move(fut2));
-    EXPECT_THROW(ja.poll(cx), std::runtime_error);
-}
-
-TEST(join, JoinAllDynExceptionFirst) {
+TEST(JoinDyn, ExceptionFirst) {
     Waker waker = Waker::noop();
     Context cx { &waker };
 
@@ -145,7 +159,7 @@ TEST(join, JoinAllDynExceptionFirst) {
     EXPECT_THROW(ja.poll(cx), std::runtime_error);
 }
 
-TEST(join, JoinAllDynExceptionSecond) {
+TEST(JoinDyn, ExceptionSecond) {
     Waker waker = Waker::noop();
     Context cx { &waker };
 
@@ -162,3 +176,26 @@ TEST(join, JoinAllDynExceptionSecond) {
     EXPECT_THROW(ja.poll(cx), std::runtime_error);
 }
 
+TEST(JoinDyn, EmptyVoid) {
+    Waker waker = Waker::noop();
+    Context cx { &waker };
+
+    std::vector<Future<>> futs;
+
+    auto joined = arc::joinAll(std::move(futs));
+    auto res = joined.poll(cx);
+    EXPECT_TRUE(res);
+}
+
+TEST(JoinDyn, EmptyNonVoid) {
+    Waker waker = Waker::noop();
+    Context cx { &waker };
+
+    std::vector<Future<int>> futs;
+
+    auto joined = arc::joinAll(std::move(futs));
+    auto res = joined.poll(cx);
+    EXPECT_TRUE(res.has_value());
+    auto vec = std::move(res).value();
+    EXPECT_TRUE(vec.empty());
+}

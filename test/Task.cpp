@@ -1,7 +1,7 @@
 #include <arc/prelude.hpp>
 #include <gtest/gtest.h>
 
-TEST(task, SpawnAwaitResult) {
+TEST(Task, SpawnAwaitResult) {
     auto runtime = arc::Runtime::create(1);
 
     int result = runtime->blockOn([] -> arc::Future<int> {
@@ -15,7 +15,7 @@ TEST(task, SpawnAwaitResult) {
     EXPECT_EQ(result, 42);
 }
 
-TEST(task, SpawnBlockingResult) {
+TEST(Task, SpawnBlockingResult) {
     auto runtime = arc::Runtime::create(1);
 
     int result = runtime->blockOn([] -> arc::Future<int> {
@@ -29,7 +29,7 @@ TEST(task, SpawnBlockingResult) {
     EXPECT_EQ(result, 42);
 }
 
-TEST(task, BlockingBlockOn) {
+TEST(Task, BlockingBlockOn) {
     auto runtime = arc::Runtime::create(1);
 
     auto handle = runtime->spawnBlocking<int>([] {
@@ -40,7 +40,7 @@ TEST(task, BlockingBlockOn) {
     EXPECT_EQ(result, 42);
 }
 
-TEST(task, LambdaTask) {
+TEST(Task, LambdaTask) {
     auto runtime = arc::Runtime::create(1);
 
     runtime->spawn([] -> arc::Future<> {
@@ -51,7 +51,7 @@ TEST(task, LambdaTask) {
     });
 }
 
-TEST(task, DanglingTask) {
+TEST(Task, DanglingTask) {
     std::optional<arc::TaskHandle<void>> h;
     {
         auto runtime = arc::Runtime::create(1);
@@ -67,7 +67,7 @@ TEST(task, DanglingTask) {
 }
 
 
-TEST(task, TaskStats) {
+TEST(Task, TaskStats) {
     auto rt = arc::Runtime::create(1);
 
     auto handle = rt->spawn([] -> arc::Future<> {
@@ -91,7 +91,7 @@ TEST(task, TaskStats) {
 #endif
 }
 
-TEST(task, LambdaUseAfterFree) {
+TEST(Task, LambdaUseAfterFree) {
     auto rt = arc::Runtime::create(1);
 
     auto sptr = asp::make_shared<int>(0);
@@ -109,14 +109,14 @@ TEST(task, LambdaUseAfterFree) {
     EXPECT_EQ(sptr.strongCount(), 1);
 }
 
-TEST(task, NullHandle) {
+TEST(Task, NullHandle) {
     arc::TaskHandle<int> handle;
     EXPECT_FALSE(handle);
     EXPECT_FALSE(handle.isValid());
     EXPECT_THROW(handle.blockOn(), std::runtime_error);
 }
 
-TEST(task, Detach) {
+TEST(Task, Detach) {
     auto runtime = arc::Runtime::create(1);
     arc::TaskHandle<int> handle = runtime->spawn([] -> arc::Future<int> {
         co_await arc::never();
@@ -128,7 +128,7 @@ TEST(task, Detach) {
     EXPECT_FALSE(handle.isValid());
 }
 
-TEST(task, ThrowingTaskBlockOn) {
+TEST(Task, ThrowingTaskBlockOn) {
     auto runtime = arc::Runtime::create(1);
     auto handle = runtime->spawn([] -> arc::Future<int> {
         co_await arc::yield();
@@ -139,7 +139,7 @@ TEST(task, ThrowingTaskBlockOn) {
     EXPECT_THROW(handle.blockOn(), std::runtime_error);
 }
 
-TEST(task, ThrowingTaskIgnore) {
+TEST(Task, ThrowingTaskIgnore) {
     auto runtime = arc::Runtime::create(1);
 
     bool terminated = false;
