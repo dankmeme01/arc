@@ -1,9 +1,16 @@
 #include "common.hpp"
 
 Future<> throws() {
-    ARC_FRAME();
     throw std::runtime_error("This is an exception");
     co_return;
+}
+
+Future<std::optional<std::string>> nestedThrow(int level = 10) {
+    ARC_FRAME();
+    if (level == 0) {
+        co_await throws();
+    }
+    co_return co_await nestedThrow(level - 1);
 }
 
 Future<> asyncMain() {
@@ -24,6 +31,10 @@ Future<> asyncMain() {
     } catch (...) {
         fmt::println("Caught unknown exception");
     }
+
+    arc::spawn(nestedThrow());
+
+    co_await arc::sleep(asp::Duration::fromMillis(1));
 }
 
 ARC_DEFINE_MAIN_NT(asyncMain, 1);

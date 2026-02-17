@@ -52,6 +52,10 @@ struct ARC_NODISCARD Future : PollableBase {
         }
     }
 
+    handle_type handle() const noexcept {
+        return m_handle;
+    }
+
     promise_type& promise() noexcept {
         return m_handle.promise();
     }

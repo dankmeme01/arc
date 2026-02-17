@@ -2,6 +2,10 @@
 #include <arc/task/Task.hpp>
 #include <arc/util/Assert.hpp>
 
+#ifdef _WIN32
+#include <Windows.h>
+#endif
+
 constexpr size_t MAX_RECURSION_DEPTH = 512;
 
 using namespace asp::time;
@@ -100,6 +104,8 @@ void Context::onUnhandledException() {
     }
 }
 
+static std::string dllFromPollable(const PollableBase* pollable);
+
 void Context::captureStack() {
     m_capturedStack.clear();
 
@@ -109,23 +115,44 @@ void Context::captureStack() {
         auto meta = pollable->m_vtable->m_metadata;
 
         std::string description{marker.view()};
-        if (description.empty() && meta) {
-            description = meta->typeName;
-        }
-
-        if (meta && meta->isFuture) {
-            struct DummyFuture : Future<> {
-                handle_type handle() const { return m_handle; }
-            };
-
-            auto handle = reinterpret_cast<const DummyFuture*>(pollable)->handle();
-            description += fmt::format(" (handle: {})", (void*)handle.address());
-        }
-
         if (description.empty()) {
-            // no metadata available
-            description = fmt::format("<unknown pollable @ {}>", (void*)pollable);
+            auto dll = dllFromPollable(pollable);
+
+            if (meta) {
+                description = meta->typeName;
+            } else {
+                // no metadata available
+                description = fmt::format("<unknown coro @ {}>", (void*)pollable);
+            }
+
+            if (!dll.empty()) {
+                // keep only the last path segment
+                std::string_view dllv = dll;
+                size_t lastSlash = std::string::npos;
+
+                for (size_t i = 0; i < dllv.size(); i++) {
+                    size_t idx = dllv.size() - 1 - i;
+                    char c = dllv[idx];
+                    if (c == '/' || c == '\\') {
+                        lastSlash = idx;
+                        break;
+                    }
+                }
+
+                if (lastSlash != std::string::npos) {
+                    dllv = dllv.substr(lastSlash + 1);
+                }
+
+                description += fmt::format(" ({})", dllv);
+            }
         }
+
+#ifdef ARC_DEBUG
+        if (meta && meta->isFuture) {
+            auto handle = reinterpret_cast<const Future<>*>(pollable)->handle();
+            description += fmt::format(" [{}]", (void*)handle.address());
+        }
+#endif
 
         m_capturedStack.push_back(asp::UniqueBoxedString{description});
     }
@@ -135,9 +162,11 @@ void Context::captureStack() {
 
 void Context::dumpStack() {
     printError("=== Future stack trace (most recent call first) ===");
+    size_t i = 0;
+
     if (!m_capturedStack.empty()) {
         for (const auto& line : m_capturedStack) {
-            printError(" - {}", line);
+            printError("#{}  {}", i++, line);
         }
         return;
     }
@@ -147,13 +176,38 @@ void Context::dumpStack() {
         auto& marker = it->name;
 
         if (marker.empty()) {
-            printError(" - <unknown pollable @ {}>", (void*)pollable);
+            printError("#{}  <unknown pollable @ {}>", i++, (void*)pollable);
         } else {
-            printError(" - {} (@ {})", marker, (void*)pollable);
+            printError("#{}  {} (@ {})", i++, marker, (void*)pollable);
         }
     }
 
     printError("NOTE: captured stack trace was unavailable.");
 }
+
+#ifdef _WIN32
+
+static std::string dllFromPollable(const PollableBase* pollable) {
+    // this is mostly useful for things like geode, where multiple dlls are loaded that use arc
+    // the vtable will be in the same module that created this pollable, so use the vtable ptr
+    HMODULE module;
+
+    if (GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, (LPCSTR)pollable->m_vtable, &module)) {
+        char path[MAX_PATH];
+        if (GetModuleFileNameA(module, path, MAX_PATH)) {
+            return path;
+        }
+    }
+
+    return "";
+}
+
+#else
+
+static std::string dllFromPollable(const PollableBase* pollable) {
+    return "";
+}
+
+#endif
 
 }
