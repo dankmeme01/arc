@@ -128,16 +128,7 @@ void Context::captureStack() {
             if (!dll.empty()) {
                 // keep only the last path segment
                 std::string_view dllv = dll;
-                size_t lastSlash = std::string::npos;
-
-                for (size_t i = 0; i < dllv.size(); i++) {
-                    size_t idx = dllv.size() - 1 - i;
-                    char c = dllv[idx];
-                    if (c == '/' || c == '\\') {
-                        lastSlash = idx;
-                        break;
-                    }
-                }
+                size_t lastSlash = dllv.find_last_of("/\\");
 
                 if (lastSlash != std::string::npos) {
                     dllv = dllv.substr(lastSlash + 1);
