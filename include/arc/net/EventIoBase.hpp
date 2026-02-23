@@ -42,7 +42,8 @@ public:
     Future<NetResult<void>> pollReady(Interest interest) {
         uint64_t id = 0;
         Interest ready = co_await pollFunc([&](auto& cx) {
-            return m_io.pollReady(interest, cx, id);
+            auto ready = m_io.pollReady(interest, cx, id);
+            return ready == 0 ? std::nullopt : std::optional{ready};
         });
         if (id != 0) {
             m_io.unregister(id);

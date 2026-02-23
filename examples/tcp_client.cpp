@@ -12,11 +12,19 @@ Future<Result<>> asyncMain(int argc, const char** argv) {
     auto address = args[0];
     ARC_CO_MAP_UNWRAP_INTO(auto addr, qsox::SocketAddress::parse(address));
 
-    auto res = co_await TcpStream::connect(addr);
+    auto tres = co_await arc::timeout(asp::Duration::fromSecs(5), TcpStream::connect(addr));
+    if (!tres) {
+        fmt::println("Connection timed out!");
+        co_return Ok();
+    }
+
+    auto res = std::move(tres).unwrap();
     if (!res) {
         fmt::println("Failed to connect: {}", res.unwrapErr());
         co_return Ok();
     }
+
+    fmt::println("Connected to {}!", addr.toString());
 
     auto& stream = res.unwrap();
 
