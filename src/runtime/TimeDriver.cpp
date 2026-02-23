@@ -11,7 +11,7 @@ asp::SmallVec<TimerEntry, 32> TimerQueue::drain() {
     asp::SmallVec<TimerEntry, 32> out;
     auto now = Instant::now();
 
-    TimerEntry dummy { now, {}, 0 };
+    TimerEntry dummy { now, {}, UINT64_MAX };
 
     auto it = std::lower_bound(m_entries.begin(), m_entries.end(), dummy, std::greater<TimerEntry>{});
     // 'it' and all elements after it are either in the past or equal to 'now'
