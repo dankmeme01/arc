@@ -66,3 +66,86 @@ TEST(Time, InfiniteDuration) {
     EXPECT_TRUE(ret.isOk());
     EXPECT_EQ(ret.unwrap(), 42);
 }
+
+TEST(TimerQueue, DrainEmpty) {
+    TimerQueue tq;
+    auto vec = tq.drain();
+    EXPECT_TRUE(vec.empty());
+}
+
+TEST(TimerQueue, InsertDrainOne) {
+    TimerQueue tq;
+    tq.insert(TimerEntry {
+        .expiry = asp::Instant::now(),
+        .waker = Waker::noop(),
+        .id = 123,
+    });
+    auto vec = tq.drain();
+    EXPECT_EQ(vec.size(), 1);
+    EXPECT_EQ(vec[0].id, 123);
+}
+
+TEST(TimerQueue, InsertDrainOneFuture) {
+    TimerQueue tq;
+    tq.insert(TimerEntry {
+        .expiry = asp::Instant::now() + asp::Duration::fromSecs(1),
+        .waker = Waker::noop(),
+        .id = 123,
+    });
+    auto vec = tq.drain();
+    EXPECT_TRUE(vec.empty());
+}
+
+TEST(TimerQueue, InsertDrainMany) {
+    size_t past = 5;
+    size_t now = 5;
+    size_t future = 5;
+    size_t id = 0;
+    TimerQueue tq;
+
+    for (size_t i = 0; i < past; i++) {
+        tq.insert(TimerEntry {
+            .expiry = asp::Instant::now() - asp::Duration::fromSecs(1),
+            .waker = Waker::noop(),
+            .id = id++,
+        });
+    }
+
+    for (size_t i = 0; i < now; i++) {
+        tq.insert(TimerEntry {
+            .expiry = asp::Instant::now(),
+            .waker = Waker::noop(),
+            .id = id++,
+        });
+    }
+
+    for (size_t i = 0; i < future; i++) {
+        tq.insert(TimerEntry {
+            .expiry = asp::Instant::now() + asp::Duration::fromSecs(1),
+            .waker = Waker::noop(),
+            .id = id++,
+        });
+    }
+}
+
+TEST(TimerQueue, InsertErase) {
+    TimerQueue tq;
+    auto exp = asp::Instant::now() + asp::Duration::fromSecs(1);
+    tq.insert(TimerEntry {
+        .expiry = exp,
+        .waker = Waker::noop(),
+        .id = 123,
+    });
+    tq.erase(exp, 123);
+
+    EXPECT_EQ(tq.drain().size(), 0);
+}
+
+TEST(TimerQueue, InsertEraseInvalid) {
+    TimerQueue tq;
+    auto exp = asp::Instant::now() + asp::Duration::fromSecs(1);
+    EXPECT_NO_THROW(tq.erase(exp, 123));
+
+    EXPECT_EQ(tq.drain().size(), 0);
+}
+

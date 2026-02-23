@@ -8,7 +8,8 @@ ARC_FATAL_NO_FEATURE(time)
 #include <arc/task/Task.hpp>
 #include <asp/time/Instant.hpp>
 #include <asp/sync/SpinLock.hpp>
-#include <map>
+#include <asp/collections/SmallVec.hpp>
+#include <vector>
 
 namespace arc {
 
@@ -23,6 +24,26 @@ struct TimeDriverVtable {
     RemoveEntryFn m_removeEntry;
 };
 
+struct TimerEntry {
+    asp::Instant expiry;
+    Waker waker;
+    uint64_t id;
+
+    bool operator>(const TimerEntry& other) const {
+        if (expiry == other.expiry) return id > other.id;
+        return expiry > other.expiry;
+    }
+};
+
+struct TimerQueue {
+    asp::SmallVec<TimerEntry, 32> drain();
+    void insert(TimerEntry&&);
+    void erase(const asp::Instant& expiry, uint64_t id);
+
+private:
+    std::vector<TimerEntry> m_entries;
+};
+
 class TimeDriver {
 public:
     TimeDriver(asp::WeakPtr<Runtime> runtime);
@@ -35,17 +56,6 @@ public:
 
 private:
     friend class Runtime;
-
-    struct TimerEntryKey {
-        asp::time::Instant expiry;
-        uint64_t id;
-
-        bool operator<(const TimerEntryKey& other) const {
-            return expiry < other.expiry;
-        }
-    };
-
-    using TimerQueue = std::map<TimerEntryKey, Waker, std::less<TimerEntryKey>>;
 
     const TimeDriverVtable* m_vtable;
     std::atomic<uint64_t> m_nextTimerId{1};
