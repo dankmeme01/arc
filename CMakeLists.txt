@@ -36,7 +36,7 @@ if (NOT TARGET asp)
     CPMAddPackage("gh:dankmeme01/asp2#7ba2827")
 endif()
 if (NOT TARGET std23::nontype_functional)
-    CPMAddPackage("gh:zhihaoy/nontype_functional#bdb0987")
+    CPMAddPackage("gh:geode-sdk/nontype_functional#6d1d08c")
 endif()
 
 target_link_libraries(arc PUBLIC asp std23::nontype_functional)
