@@ -8,6 +8,7 @@
 #include "Context.hpp"
 #include "Pollable.hpp"
 #include "Promise.hpp"
+#include "UtilPollables.hpp" // Not needed here, but it's small so included for convenience
 
 namespace arc {
 
