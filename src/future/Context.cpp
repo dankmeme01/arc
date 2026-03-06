@@ -104,6 +104,16 @@ void Context::onUnhandledException() {
     }
 }
 
+void* Context::getRawTLSEntry(uint64_t key) noexcept {
+    auto task = this->currentTask();
+    return task->getTLSEntry(key);
+}
+
+void Context::createRawTLSEntry(uint64_t key, void* data, void(*dtor)(void*)) noexcept {
+    auto task = this->currentTask();
+    task->createTLSEntry(key, data, dtor);
+}
+
 static std::string dllFromPollable(const PollableBase* pollable);
 
 void Context::captureStack() {

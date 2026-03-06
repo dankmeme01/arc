@@ -37,6 +37,22 @@ public:
     void dumpStack();
     void onUnhandledException();
 
+    template <typename T>
+    T& getTLSEntry(uint64_t key) {
+        auto dtor = [](void* ptr) {
+            auto entry = static_cast<T*>(ptr);
+            delete entry;
+        };
+
+        auto ptr = reinterpret_cast<T*>(this->getRawTLSEntry(key));
+        if (!ptr) {
+            ptr = new T();
+            this->createRawTLSEntry(key, ptr, dtor);
+        }
+
+        return *ptr;
+    }
+
 private:
     friend class Runtime;
 
@@ -58,6 +74,8 @@ private:
     // -- all fields above are expected to be stable and not change --
 
     void captureStack();
+    void* getRawTLSEntry(uint64_t key) noexcept;
+    void createRawTLSEntry(uint64_t key, void* data, void(*dtor)(void*)) noexcept;
 };
 
 /// Sets a debugging name for the current Future.
