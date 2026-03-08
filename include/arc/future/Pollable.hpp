@@ -175,7 +175,7 @@ struct Pollable<Derived, void, NothrowPoll> : PollableBase {
     }
 
 protected:
-    friend class PollableBase;
+    friend struct PollableBase;
 
     ARC_NO_UNIQUE_ADDRESS std::conditional_t<NothrowPoll, std::monostate, std::exception_ptr> m_exception;
 
