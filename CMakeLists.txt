@@ -42,9 +42,12 @@ endif()
 target_link_libraries(arc PUBLIC asp std23::nontype_functional)
 
 if (ARC_FEATURE_ASAN)
-    target_compile_options(arc PRIVATE -fsanitize=address -fsanitize=leak -fno-omit-frame-pointer -g)
-    target_link_options(arc PRIVATE -fsanitize=address -fsanitize=leak)
+    set(ARC_ASAN_COMPILE_OPTIONS "-fsanitize=address -fsanitize=undefined -fsanitize=memory -fsanitize=leak -fno-omit-frame-pointer -g")
+    set(ARC_ASAN_LINK_OPTIONS "-fsanitize=address -fsanitize=undefined -fsanitize=memory -fsanitize=leak")
 endif()
+
+target_compile_options(arc PRIVATE ${ARC_ASAN_COMPILE_OPTIONS})
+target_link_options(arc PRIVATE ${ARC_ASAN_LINK_OPTIONS})
 
 # Add qsox if networking is enabled
 if (ARC_FEATURE_NET)
@@ -74,8 +77,8 @@ if (ARC_BUILD_TESTS)
     target_link_libraries(arc_tests PRIVATE arc gtest_main GeodeResult)
 
     if (ARC_FEATURE_ASAN)
-        target_compile_options(arc_tests PRIVATE -fsanitize=address -fsanitize=leak -fno-omit-frame-pointer -g)
-        target_link_options(arc_tests PRIVATE -fsanitize=address -fsanitize=leak)
+        target_compile_options(arc_tests PRIVATE ${ARC_ASAN_COMPILE_OPTIONS})
+        target_link_options(arc_tests PRIVATE ${ARC_ASAN_LINK_OPTIONS})
     endif()
 
     include(GoogleTest)

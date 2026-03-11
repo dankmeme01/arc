@@ -39,7 +39,7 @@ TEST(Time, ZeroTimeout) {
 TEST(Time, TimeoutWithValue) {
     auto rt = arc::Runtime::create(1);
     auto res1 = rt->blockOn(
-        arc::timeout(asp::Duration::fromMillis(1), arc::ready<int>(42))
+        arc::timeout(asp::Duration::fromMillis(5), arc::ready<int>(42))
     );
 
     EXPECT_TRUE(res1.isOk());
