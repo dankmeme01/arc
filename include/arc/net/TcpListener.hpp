@@ -39,7 +39,7 @@ public:
         return m_listener;
     }
 
-private:
+protected:
     qsox::TcpListener m_listener;
 
     TcpListener(qsox::TcpListener listener, Registration io) : EventIoBase(std::move(io)), m_listener(std::move(listener)) {}
