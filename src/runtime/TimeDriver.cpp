@@ -1,6 +1,5 @@
 #include <arc/runtime/TimeDriver.hpp>
 #include <arc/runtime/Runtime.hpp>
-#include <array>
 
 using namespace asp::time;
 
