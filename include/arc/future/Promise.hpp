@@ -27,13 +27,13 @@ struct PromiseVtable {
     template <typename T>
     T getOutput(void* self) const {
         MaybeUninit<T> output;
-        reinterpret_cast<void (*)(void*, MaybeUninit<T>*)>(m_getOutput)(self, &output);
+        reinterpret_cast<void (*)(void*, void*)>(m_getOutput)(self, &output);
         return std::move(output.assumeInit());
     }
 
     template <typename T>
     void deliverOutput(void* self, T* value) const {
-        reinterpret_cast<void (*)(void*, T*)>(m_deliverOutput)(self, value);
+        reinterpret_cast<void (*)(void*, void*)>(m_deliverOutput)(self, value);
     }
 };
 
@@ -156,7 +156,7 @@ protected:
         auto out = reinterpret_cast<MaybeUninit<R>*>(outp);
         out->init(std::move(*me->m_value));
     }
-    
+
     static void vDeliverOutput(void* self, void* valuep) {
         auto me = reinterpret_cast<PromiseBaseNV*>(self);
         auto value = reinterpret_cast<R*>(valuep);
