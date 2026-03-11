@@ -33,7 +33,7 @@ struct PollableVtable {
     template <typename T>
     T getOutput(void* self) const {
         MaybeUninit<T> output;
-        reinterpret_cast<void(*)(void*, MaybeUninit<T>*)>(m_getOutput)(self, &output);
+        reinterpret_cast<void(*)(void*, void*)>(m_getOutput)(self, &output);
         return std::move(output.assumeInit());
     }
 };
