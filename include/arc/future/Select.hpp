@@ -90,7 +90,7 @@ struct ARC_NODISCARD Select : Pollable<Select<Branches...>> {
 private:
     std::tuple<Branches...> m_selectees;
     size_t m_winner = static_cast<size_t>(-1);
-    
+
     bool hasWinner() const noexcept {
         return m_winner != static_cast<size_t>(-1);
     }
@@ -116,13 +116,13 @@ private:
             }
         }()), ...);
     }
-    
+
     template <typename Tuple>
     bool pollCallbackForEach(Tuple&& t, Context& cx) {
         constexpr auto size = std::tuple_size_v<std::decay_t<Tuple>>;
         return pollCallbackForEachImpl(std::forward<Tuple>(t), std::make_index_sequence<size>{}, cx);
     }
-    
+
     template <size_t... Is, typename Tuple>
     bool pollCallbackForEachImpl(Tuple&& t, std::index_sequence<Is...>, Context& cx) {
         bool result;
@@ -131,7 +131,7 @@ private:
             auto& selectee = std::get<Is>(t);
             using Sel = std::decay_t<decltype(selectee)>;
             if (m_winner != Is) return;
-            
+
             result = selectee.pollCallback(cx);
         }()), ...);
 

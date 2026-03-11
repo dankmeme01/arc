@@ -28,8 +28,8 @@ struct MutexGuard {
     MutexGuard(Mtx* mtx) : m_mtx(mtx) {}
     MutexGuard(const MutexGuard&) = delete;
     MutexGuard& operator=(const MutexGuard&) = delete;
-    MutexGuard(MutexGuard&& other) : m_mtx(std::exchange(other.m_mtx, nullptr)) {}
-    MutexGuard& operator=(MutexGuard&& other) {
+    MutexGuard(MutexGuard&& other) noexcept : m_mtx(std::exchange(other.m_mtx, nullptr)) {}
+    MutexGuard& operator=(MutexGuard&& other) noexcept {
         if (this != &other) {
             m_mtx = std::exchange(other.m_mtx, nullptr);
         }

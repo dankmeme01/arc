@@ -15,6 +15,7 @@ struct JoinAllFuture {
     using StoredOutput = std::conditional_t<IsVoid, std::monostate, Output>;
 
     template <typename F>
+    requires (!std::is_same_v<std::decay_t<F>, JoinAllFuture>)
     JoinAllFuture(F&& fut) : m_future(std::forward<F>(fut)) {}
 
     JoinAllFuture(JoinAllFuture&&) = default;
@@ -125,6 +126,7 @@ struct ARC_NODISCARD JoinAllDyn : Pollable<JoinAllDyn<FRet, Fut>, JoinAllDynOutp
     static constexpr size_t SmallCap = SmallVecSize / sizeof(JoinAllFuture<Fut>);
 
     template <typename Cont>
+    requires (!std::is_same_v<std::decay_t<Cont>, JoinAllDyn>)
     explicit JoinAllDyn(Cont&& futs) {
         m_futures.reserve(std::ranges::distance(futs));
         for (auto& fut : futs) {
