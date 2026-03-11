@@ -42,8 +42,8 @@ endif()
 target_link_libraries(arc PUBLIC asp std23::nontype_functional)
 
 if (ARC_FEATURE_ASAN)
-    set(ARC_ASAN_COMPILE_OPTIONS "-fsanitize=address -fsanitize=undefined -fsanitize=memory -fsanitize=leak -fno-omit-frame-pointer -g")
-    set(ARC_ASAN_LINK_OPTIONS "-fsanitize=address -fsanitize=undefined -fsanitize=memory -fsanitize=leak")
+    set(ARC_ASAN_COMPILE_OPTIONS -fsanitize=address -fsanitize=undefined -fsanitize=memory -fsanitize=leak -fno-omit-frame-pointer -g)
+    set(ARC_ASAN_LINK_OPTIONS -fsanitize=address -fsanitize=undefined -fsanitize=memory -fsanitize=leak)
 endif()
 
 target_compile_options(arc PRIVATE ${ARC_ASAN_COMPILE_OPTIONS})
