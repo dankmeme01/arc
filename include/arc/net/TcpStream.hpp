@@ -55,7 +55,7 @@ public:
         return m_stream;
     }
 
-private:
+protected:
     friend class TcpListener;
 
     qsox::TcpStream m_stream;

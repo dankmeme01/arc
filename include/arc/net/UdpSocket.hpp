@@ -59,7 +59,7 @@ public:
         return m_socket;
     }
 
-private:
+protected:
     qsox::UdpSocket m_socket;
 
     UdpSocket(qsox::UdpSocket socket, Registration io) : EventIoBase(std::move(io)), m_socket(std::move(socket)) {}
