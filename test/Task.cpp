@@ -40,6 +40,26 @@ TEST(Task, BlockingBlockOn) {
     EXPECT_EQ(result, 42);
 }
 
+TEST(Task, BlockingRunaway) {
+    auto runtime = arc::Runtime::create(1);
+    bool finished = false;
+
+    std::binary_semaphore sem{0};
+
+    auto handle = runtime->spawnBlocking<int>([&] {
+        sem.release();
+        std::this_thread::sleep_for(std::chrono::milliseconds{50});
+        finished = true;
+        return 42;
+    });
+
+    // give some time to ensure the task actually runs
+    sem.acquire();
+
+    runtime->safeShutdown();
+    EXPECT_TRUE(finished);
+}
+
 TEST(Task, LambdaTask) {
     auto runtime = arc::Runtime::create(1);
 

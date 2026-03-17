@@ -193,9 +193,15 @@ private:
     std::condition_variable m_cv;
     asp::time::Duration m_taskDeadline;
 
+
     std::mutex m_blockingMtx;
-    std::deque<asp::SharedPtr<BlockingTaskBase>> m_blockingTasks; // protected by m_blockingMtx
+    // protected by m_blockingMtx
+    std::deque<asp::SharedPtr<BlockingTaskBase>> m_blockingTasks;
+    std::vector<std::thread> m_blockingThreads;
+
     std::condition_variable m_blockingCv;
+    std::condition_variable m_blockingExitedCv;
+    std::atomic<bool> m_blockingAllExited{false};
     std::atomic<size_t> m_blockingWorkers{0};
     std::atomic<size_t> m_busyBlockingWorkers{0};
     std::atomic<size_t> m_nextBlockingWorkerId{0};

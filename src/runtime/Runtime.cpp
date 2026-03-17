@@ -429,11 +429,29 @@ void Runtime::spawnBlockingWorker() {
 
     size_t workerId = m_nextBlockingWorkerId.fetch_add(1, ::relaxed);
 
-    std::thread th([this, workerId] {
+    // this always happens under a lock so this access is safe
+    m_blockingThreads.emplace_back([this, workerId] {
         asp::_setThreadName(fmt::format("arc-blocking-{}", workerId));
         this->blockingWorkerLoop(workerId);
+
+        // remove self from the list
+        std::unique_lock _lock(m_blockingMtx);
+        auto myId = std::this_thread::get_id();
+
+        auto it = std::ranges::find(m_blockingThreads, myId, [](std::thread& thr) {
+            return thr.get_id();
+        });
+        if (it != m_blockingThreads.end()) {
+            it->detach();
+            m_blockingThreads.erase(it);
+        }
+
+        // notify somebody if this is the last thread to exit
+        if (m_stopFlag.load(std::memory_order::acquire) && m_blockingThreads.empty()) {
+            m_blockingAllExited.store(true);
+            m_blockingExitedCv.notify_one();
+        }
     });
-    th.detach();
 }
 
 bool Runtime::isShuttingDown() const noexcept {
@@ -462,6 +480,17 @@ void Runtime::shutdown() {
     for (auto& worker : m_workers) {
         if (worker.thread.joinable()) {
             worker.thread.join();
+        }
+    }
+
+    {
+        std::unique_lock lock(m_blockingMtx);
+        if (!m_blockingThreads.empty()) {
+            // wait for all blocking threads to finish
+            ARC_TRACE("Waiting for blocking tasks to finish...");
+            m_blockingExitedCv.wait(lock, [this] {
+                return m_blockingAllExited.load();
+            });
         }
     }
 
