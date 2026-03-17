@@ -1,5 +1,6 @@
 #include <arc/prelude.hpp>
 #include <gtest/gtest.h>
+#include <semaphore>
 
 TEST(Task, SpawnAwaitResult) {
     auto runtime = arc::Runtime::create(1);
