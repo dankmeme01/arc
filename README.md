@@ -21,7 +21,7 @@ TODO:
 
 Arc supports Clang and MSVC and requires C++23. If you are using CMake with CPM, the easiest way to use Arc is as follows:
 ```cmake
-CPMAddPackage("gh:dankmeme01/arc@v1.1.0")
+CPMAddPackage("gh:dankmeme01/arc@v1.5.4") # always use latest release!
 target_link_libraries(mylib PRIVATE arc)
 ```
 
