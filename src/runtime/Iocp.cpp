@@ -132,7 +132,7 @@ std::optional<Result<size_t>> IocpWriteAwaiter::poll(Context& cx) {
     if (WriteFile(m_context->handle(), m_buffer, m_length, nullptr, m_context->overlapped())) {
         DWORD transferred = 0;
         if (GetOverlappedResult(m_context->handle(), m_context->overlapped(), &transferred, FALSE)) {
-            printWarn("Overlapped ok: {}", transferred);
+            // printWarn("Overlapped ok: {}", transferred);
             return Ok(transferred);
         }
     }
