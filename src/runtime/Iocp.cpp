@@ -277,13 +277,6 @@ Result<IocpPipe> IocpPipe::open(const std::wstring& name) {
 }
 
 Result<IocpPipe> IocpPipe::open(HANDLE handle) {
-    // I got stuck here for a while, but apparently you need to set this flag
-    // so that you don't receive IOCP packets when transfers complete synchronously
-    SetFileCompletionNotificationModes(
-        handle,
-        FILE_SKIP_COMPLETION_PORT_ON_SUCCESS
-    );
-
     // register with the iocp driver
     auto rt = Runtime::current();
     ARC_DEBUG_ASSERT(rt);
@@ -305,6 +298,13 @@ IocpWriteAwaiter IocpPipe::write(const void* buffer, size_t length) {
 
 IocpPipe::~IocpPipe() {}
 
-IocpPipe::IocpPipe(std::unique_ptr<IocpPipeContext> context) : m_iocpContext(std::move(context)) {}
+IocpPipe::IocpPipe(std::unique_ptr<IocpPipeContext> context) : m_iocpContext(std::move(context)) {
+    // I got stuck here for a while, but apparently you need to set this flag
+    // so that you don't receive IOCP packets when transfers complete synchronously
+    SetFileCompletionNotificationModes(
+        m_iocpContext->handle(),
+        FILE_SKIP_COMPLETION_PORT_ON_SUCCESS
+    );
+}
 
 }
