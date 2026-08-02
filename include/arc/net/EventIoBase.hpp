@@ -40,22 +40,28 @@ public:
     }
 
     Future<NetResult<void>> pollReady(Interest interest) {
-        uint64_t id = 0;
-        Interest ready = co_await pollFunc([&](auto& cx) {
-            auto ready = m_io.pollReady(interest, cx, id);
-            return ready == 0 ? std::nullopt : std::optional{ready};
-        });
-        if (id != 0) {
-            m_io.unregister(id);
-        }
+        while (true) {
+            uint64_t id = 0;
+            Interest ready = co_await pollFunc([&](auto& cx) {
+                auto ready = m_io.pollReady(interest, cx, id);
+                return ready == 0 ? std::nullopt : std::optional{ready};
+            });
+            if (id != 0) {
+                m_io.unregister(id);
+            }
 
-        // check if there was an error
-        if (ready & Interest::Error) {
-            co_return Err(this->takeSocketError());
-        }
+            // check if there was an error
+            if (ready & Interest::Error) {
+                if (auto err = this->takeOrClearError()) {
+                    co_return Err(*err);
+                }
+                // ghost error, poll again
+                continue;
+            }
 
-        // otherwise, we are ready to return
-        co_return Ok();
+            // otherwise, we are ready to return
+            co_return Ok();
+        }
     }
 
     qsox::Error takeSocketError() {
