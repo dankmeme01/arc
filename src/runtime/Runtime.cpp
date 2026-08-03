@@ -2,6 +2,13 @@
 #include <asp/thread/Thread.hpp>
 #include <asp/time/chrono.hpp>
 
+#ifdef _WIN32
+# include <Windows.h>
+#else
+# include <pthread.h>
+# include <time.h>
+#endif
+
 using namespace asp::time;
 using enum std::memory_order;
 
@@ -83,6 +90,9 @@ void Runtime::init(const RuntimeOptions& options) {
             this->workerLoopWrapper(worker);
         });
     }
+
+    // TODO: make this configurable in abi breaking release
+    m_shutdownDeadline = Duration::fromSecs(2);
 }
 
 Runtime::~Runtime() {
@@ -325,12 +335,15 @@ void Runtime::workerLoop(WorkerData& data, Context& cx) {
 #endif
 
         ARC_TRACE("[Worker {}] driving task {}", data.id, taskName);
+        auto curTask = std::atomic_ref<TaskBase*>(data.currentTask);
+        curTask.store(task, ::release);
         now = Instant::now();
 
         cx.setup(now + m_taskDeadline);
         task->m_vtable->run(task, cx);
 
         ARC_TRACE("[Worker {}] finished driving task {}", data.id, taskName);
+        curTask.store(nullptr, ::release);
 
 #ifdef ARC_DEBUG
         auto taken = now.elapsed();
@@ -468,18 +481,31 @@ std::vector<asp::SharedPtr<TaskDebugData>> Runtime::getTaskStats() {
     return out;
 }
 
+static bool timedThreadJoin(std::thread& thr, Duration timeout);
+
 void Runtime::shutdown() {
     if (m_stopFlag.exchange(true, ::acq_rel)) {
         return;
     }
+
+    auto deadline = Instant::now() + m_shutdownDeadline;
 
     ARC_TRACE("[Runtime] shutting down");
     m_cv.notify_all();
     m_blockingCv.notify_all();
 
     for (auto& worker : m_workers) {
+        if (deadline.until().isZero()) {
+            this->reportHungWorker(worker);
+            break;
+        }
+
         if (worker.thread.joinable()) {
-            worker.thread.join();
+            ARC_TRACE("Joining worker {}, giving {}", worker.id, deadline.until());
+            if (!timedThreadJoin(worker.thread, deadline.until())) {
+                this->reportHungWorker(worker);
+                break;
+            }
         }
     }
 
@@ -525,9 +551,50 @@ void Runtime::shutdown() {
     tasks->clear();
 }
 
+void Runtime::reportHungWorker(WorkerData& data) {
+    // technically this is a race condition
+    auto task = std::atomic_ref{data.currentTask}.load(::acquire);
+    if (!task) {
+        arc::printError("Runtime worker {} is hung for no apparent reason, this is a bug!", data.id);
+        return;
+    }
+
+    arc::printError("Runtime worker {} is hung executing task {}", data.id, task->debugName());
+}
+
 void setGlobalRuntime(Runtime* rt) {
     g_globalRuntime = rt;
 }
 
+bool timedThreadJoin(std::thread& thr, Duration timeout) {
+#ifdef _WIN32
+    DWORD result = WaitForSingleObject(thr.native_handle(), (DWORD)timeout.millis());
+    if (result == WAIT_OBJECT_0) {
+        thr.join();
+        return true;
+    }
+    return false;
+#elif defined (__linux__)
+    timespec ts;
+    clock_gettime(CLOCK_REALTIME, &ts);
+    auto finalDur = Duration{(uint64_t)ts.tv_sec, (uint32_t)ts.tv_nsec} + timeout;
+    ts.tv_sec = finalDur.seconds();
+    ts.tv_nsec = finalDur.subsecNanos();
+
+    int rc = pthread_timedjoin_np(thr.native_handle(), nullptr, &ts);
+
+    // prevent funny exceptions or asan faults due to the std::thread having an invalid state
+    ManuallyDrop<std::thread> md = std::move(thr);
+
+    if (rc == 0) {
+        return true;
+    }
+    return false;
+#else
+    // nope
+    thr.join();
+    return true;
+#endif
+}
 
 }

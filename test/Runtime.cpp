@@ -139,3 +139,19 @@ TEST(Runtime, MultiRuntimeSignal) {
 }
 
 #endif
+
+TEST(Runtime, TerminateOnHungTask) {
+    auto rt1 = arc::Runtime::create(1);
+
+    // spawn a task that blocks forever
+    rt1->spawn([] -> arc::Future<> {
+        asp::sleep(asp::Duration::fromDays(1));
+        co_return;
+    });
+
+    // give it some time to actually run
+    std::this_thread::sleep_for(std::chrono::milliseconds{1});
+
+    // expect runtime to shutdown.. eventually
+    rt1->safeShutdown();
+}
