@@ -570,7 +570,7 @@ bool timedThreadJoin(std::thread& thr, Duration timeout) {
 #ifdef _WIN32
     DWORD result = WaitForSingleObject(thr.native_handle(), (DWORD)timeout.millis());
     if (result == WAIT_OBJECT_0) {
-        thr.join();
+        thr.detach();
         return true;
     }
     return false;

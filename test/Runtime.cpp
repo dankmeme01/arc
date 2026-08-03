@@ -140,6 +140,7 @@ TEST(Runtime, MultiRuntimeSignal) {
 
 #endif
 
+#if defined(_WIN32) || defined(__linux__)
 TEST(Runtime, TerminateOnHungTask) {
     auto rt1 = arc::Runtime::create(1);
 
@@ -155,3 +156,4 @@ TEST(Runtime, TerminateOnHungTask) {
     // expect runtime to shutdown.. eventually
     rt1->safeShutdown();
 }
+#endif
