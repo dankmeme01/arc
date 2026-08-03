@@ -164,7 +164,8 @@ private:
 
     struct WorkerData {
         std::thread thread;
-        size_t id;
+        size_t id = 0;
+        TaskBase* currentTask = nullptr;
     };
 
     const RuntimeVtable* m_vtable;
@@ -192,6 +193,7 @@ private:
     std::vector<WorkerData> m_workers;
     std::condition_variable m_cv;
     asp::time::Duration m_taskDeadline;
+    asp::time::Duration m_shutdownDeadline;
 
 
     std::mutex m_blockingMtx;
@@ -226,6 +228,7 @@ private:
 
     void init(const RuntimeOptions& options);
     void shutdown();
+    void reportHungWorker(WorkerData&);
 
     void workerLoop(WorkerData& data, Context& cx);
     void workerLoopWrapper(WorkerData& data);
