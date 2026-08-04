@@ -569,8 +569,8 @@ void setGlobalRuntime(Runtime* rt) {
 bool timedThreadJoin(std::thread& thr, Duration timeout) {
 #ifdef _WIN32
     DWORD result = WaitForSingleObject(thr.native_handle(), (DWORD)timeout.millis());
+    thr.detach();
     if (result == WAIT_OBJECT_0) {
-        thr.detach();
         return true;
     }
     return false;
