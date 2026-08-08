@@ -140,7 +140,6 @@ TEST(Runtime, MultiRuntimeSignal) {
 
 #endif
 
-#if defined(_WIN32) || defined(__linux__)
 TEST(Runtime, TerminateOnHungTask) {
     auto rt1 = arc::Runtime::create(1);
 
@@ -156,4 +155,18 @@ TEST(Runtime, TerminateOnHungTask) {
     // expect runtime to shutdown.. eventually
     rt1->safeShutdown();
 }
-#endif
+
+TEST(Runtime, TerminateOnHungBlockingTask) {
+    auto rt1 = arc::Runtime::create(1);
+
+    // spawn a blocking task that blocks forever
+    rt1->spawnBlocking<void>([]  {
+        asp::sleep(asp::Duration::fromDays(1));
+    });
+
+    // give it some time to actually run
+    std::this_thread::sleep_for(std::chrono::milliseconds{1});
+
+    // expect runtime to shutdown.. eventually
+    rt1->safeShutdown();
+}
