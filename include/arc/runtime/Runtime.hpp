@@ -11,6 +11,7 @@
 
 #include <asp/time/Duration.hpp>
 #include <asp/ptr/SharedPtr.hpp>
+#include <asp/sync/Notify.hpp>
 #include <asp/time/sleep.hpp>
 #include <arc/util/Function.hpp>
 
@@ -195,6 +196,8 @@ private:
     asp::time::Duration m_taskDeadline;
     asp::time::Duration m_shutdownDeadline;
 
+    asp::Notify m_workerExitedNotify;
+    std::atomic<size_t> m_workerExited{0};
 
     std::mutex m_blockingMtx;
     // protected by m_blockingMtx
@@ -228,10 +231,13 @@ private:
 
     void init(const RuntimeOptions& options);
     void shutdown();
-    void reportHungWorker(WorkerData&);
+    void reportHungWorkers();
+    void reportHungWorker(WorkerData&, TaskBase* task);
+    void reportHungBlockingWorkers();
 
     void workerLoop(WorkerData& data, Context& cx);
     void workerLoopWrapper(WorkerData& data);
+    void workerLoopHandleExit(WorkerData& data);
     void blockingWorkerLoop(size_t id);
 
     void removeTask(TaskBase* task) noexcept;
