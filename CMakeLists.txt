@@ -52,7 +52,7 @@ target_link_options(arc PRIVATE ${ARC_ASAN_LINK_OPTIONS})
 # Add qsox if networking is enabled
 if (ARC_FEATURE_NET)
     if (NOT TARGET qsox)
-        CPMAddPackage("gh:dankmeme01/qsox#ea5d35c")
+        CPMAddPackage("gh:dankmeme01/qsox#060564b")
     endif()
     target_link_libraries(arc PUBLIC qsox)
 endif()
