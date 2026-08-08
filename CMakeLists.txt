@@ -33,7 +33,7 @@ if (NOT COMMAND CPMAddPackage)
 endif()
 
 if (NOT TARGET asp)
-    CPMAddPackage("gh:dankmeme01/asp2#b0053a5")
+    CPMAddPackage("gh:dankmeme01/asp2#a2ddce1")
 endif()
 if (NOT TARGET std23::nontype_functional)
     CPMAddPackage("gh:geode-sdk/nontype_functional#6d1d08c")
