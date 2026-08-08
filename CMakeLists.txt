@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.21)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-project(arc VERSION 1.5.4)
+project(arc VERSION 1.5.7)
 
 include(cmake/Features.cmake)
 option(ARC_BUILD_TESTS "Build tests" OFF)
