@@ -429,7 +429,7 @@ void Runtime::ensureBlockingWorker(size_t tasksInQueue) {
     }
 
     // spawn a new worker if there are no free workers and there are tasks waiting
-    if (tasksInQueue > 0 && m_busyBlockingWorkers.load(::relaxed) >= workers) {
+    if (m_busyBlockingWorkers.load(::relaxed) + tasksInQueue > workers) {
         this->spawnBlockingWorker();
     }
 }

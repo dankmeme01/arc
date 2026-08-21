@@ -170,3 +170,30 @@ TEST(Runtime, TerminateOnHungBlockingTask) {
     // expect runtime to shutdown.. eventually
     rt1->safeShutdown();
 }
+
+TEST(Runtime, BlockingDistribution) {
+    auto rt1 = arc::Runtime::create(1);
+
+    // spawn 8 blocking tasks with same function that waits a bit and records thread id
+    asp::Mutex<std::vector<std::thread::id>> threadIds;
+    std::counting_semaphore<> sem{0};
+
+    for (int i = 0; i < 8; i++) {
+        rt1->spawnBlocking<void>([&]  {
+            asp::sleep(asp::Duration::fromMillis(2));
+            threadIds.lock()->push_back(std::this_thread::get_id());
+            sem.release();
+        });
+    }
+
+    // wait for completion
+    for (int i = 0; i < 8; i++) {
+        sem.acquire();
+    }
+
+    // all thread ids shall be different, because we want 8 different threads to run the tasks in parallel
+    auto ids = threadIds.lock();
+    std::sort(ids->begin(), ids->end());
+    auto uniqueEnd = std::unique(ids->begin(), ids->end());
+    EXPECT_EQ(std::distance(ids->begin(), uniqueEnd), 8);
+}
