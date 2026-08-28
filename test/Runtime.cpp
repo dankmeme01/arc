@@ -1,6 +1,7 @@
 #include <arc/prelude.hpp>
 #include <gtest/gtest.h>
 #include <signal.h>
+#include <semaphore>
 
 using namespace arc;
 
