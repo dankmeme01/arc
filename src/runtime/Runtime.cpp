@@ -402,6 +402,7 @@ void Runtime::blockingWorkerLoop(size_t id) {
             if (!btasks.empty()) {
                 task = std::move(btasks.front());
                 btasks.pop_front();
+                m_busyBlockingWorkers.fetch_add(1, ::relaxed);
             }
         }
 
@@ -410,7 +411,6 @@ void Runtime::blockingWorkerLoop(size_t id) {
         }
 
         ARC_TRACE("[Blocking {}] executing blocking task {}", id, (void*)task.get());
-        m_busyBlockingWorkers.fetch_add(1, ::relaxed);
         task->execute();
         m_busyBlockingWorkers.fetch_sub(1, ::relaxed);
         ARC_TRACE("[Blocking {}] finished blocking task {}", id, (void*)task.get());
