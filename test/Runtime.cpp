@@ -181,8 +181,9 @@ TEST(Runtime, BlockingDistribution) {
 
     for (int i = 0; i < 8; i++) {
         rt1->spawnBlocking<void>([&]  {
-            asp::sleep(asp::Duration::fromMillis(2));
+            asp::sleep(asp::Duration::fromMillis(8));
             threadIds.lock()->push_back(std::this_thread::get_id());
+            asp::sleep(asp::Duration::fromMillis(8));
             sem.release();
         });
     }
