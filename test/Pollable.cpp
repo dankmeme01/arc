@@ -62,3 +62,18 @@ TEST(Pollable, PollFunc) {
     EXPECT_TRUE(fut.poll(cx));
     EXPECT_EQ(counter, 4);
 }
+
+TEST(Pollable, GetTypename) {
+    EXPECT_EQ(getTypename<int>(), "int");
+    EXPECT_EQ(getTypename<bool>(), "bool");
+
+#ifndef _MSC_VER // clang
+    EXPECT_EQ(getTypename<std::string>(), "std::basic_string<char>");
+    EXPECT_EQ(getTypename<std::optional<int>>(), "std::optional<int>");
+    EXPECT_EQ(getTypename<unsigned long long>(), "unsigned long long");
+#else // msvc
+    EXPECT_EQ(getTypename<std::string>(), "class std::basic_string_view<char,struct std::char_traits<char> >");
+    EXPECT_EQ(getTypename<std::optional<int>>(), "class std::optional<int>");
+    EXPECT_EQ(getTypename<unsigned long long>(), "unsigned __int64");
+#endif
+}
