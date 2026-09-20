@@ -165,7 +165,10 @@ IocpOpenAwaiter::IocpOpenAwaiter(IocpHandleContext* context, OpenFn fn) : m_cont
     });
 }
 
-IocpOpenAwaiter::~IocpOpenAwaiter() {}
+IocpOpenAwaiter::~IocpOpenAwaiter() {
+    m_context->setCallback(nullptr, nullptr);
+    if (m_waker) CancelIoEx(m_context->handle(), m_context->overlapped());
+}
 
 std::optional<Result<>> IocpOpenAwaiter::poll(Context& cx) {
     // if already finished, return result
