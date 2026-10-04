@@ -27,6 +27,7 @@ struct IocpHandleContext {
     OVERLAPPED* overlapped() { return &m_ov; }
     HANDLE handle() const { return m_handle; }
 
+    // TODO (ABI): make virtual
     ~IocpHandleContext();
 
 protected:
@@ -76,6 +77,7 @@ struct IocpOpenAwaiter : Pollable<IocpOpenAwaiter, Result<>> {
     ~IocpOpenAwaiter();
 
     std::optional<Result<>> poll(Context& cx);
+    void detach();
 
 private:
     IocpHandleContext* m_context;

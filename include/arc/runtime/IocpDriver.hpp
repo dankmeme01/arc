@@ -26,8 +26,10 @@ struct IocpHandleContext;
 
 struct IocpDriverVtable {
     using RegisterIoFn = Result<>(*)(IocpDriver*, WinHandle, IocpHandleContext*, HandleType);
+    using ReturnRetiredFn = void(*)(IocpDriver*, IocpHandleContext*);
 
     RegisterIoFn m_registerIo;
+    ReturnRetiredFn m_returnRetired;
 };
 
 class IocpDriver {
@@ -38,6 +40,7 @@ public:
     ~IocpDriver();
 
     Result<> registerIo(WinHandle handle, IocpHandleContext* context, HandleType type);
+    void returnRetired(IocpHandleContext* context);
 
 private:
     friend class Runtime;
@@ -45,10 +48,12 @@ private:
     const IocpDriverVtable* m_vtable;
     asp::WeakPtr<Runtime> m_runtime;
     WinHandle m_iocp = nullptr;
+    asp::Mutex<std::vector<std::unique_ptr<IocpHandleContext>>> m_retired;
 
     void doWork();
 
     static Result<> vRegisterIo(IocpDriver* self, WinHandle handle, IocpHandleContext* ctx, HandleType type);
+    static void vReturnRetired(IocpDriver* self, IocpHandleContext* ctx);
 };
 
 }

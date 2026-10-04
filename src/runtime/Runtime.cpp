@@ -531,6 +531,20 @@ void Runtime::shutdown() {
     m_workers.clear();
     m_blockingTasks.clear();
 
+    // abort all tasks
+    // it's not safe to call destroy on them because someone still might have TaskHandles
+    // simply call abort and then run, so that stuff gets cleaned up
+
+    Context cx { nullptr };
+    g_runtime = this;
+
+    auto tasks = m_tasks.lock();
+    for (auto* task : *tasks) {
+        task->m_vtable->abort(task, true);
+        task->m_vtable->run(task, cx);
+    }
+    tasks->clear();
+
     // free all drivers
 #ifdef ARC_FEATURE_TIME
     m_timeDriver.reset();
@@ -544,19 +558,6 @@ void Runtime::shutdown() {
 #ifdef ARC_FEATURE_IOCP
     m_iocpDriver.reset();
 #endif
-
-    // abort all tasks
-    // it's not safe to call destroy on them because someone still might have TaskHandles
-    // simply call abort and then run, so that stuff gets cleaned up
-
-    Context cx { nullptr };
-
-    auto tasks = m_tasks.lock();
-    for (auto* task : *tasks) {
-        task->m_vtable->abort(task, true);
-        task->m_vtable->run(task, cx);
-    }
-    tasks->clear();
 }
 
 void Runtime::reportHungWorkers() {
