@@ -175,6 +175,7 @@ IocpOpenAwaiter::IocpOpenAwaiter(IocpHandleContext* context, OpenFn fn) : m_cont
 }
 
 IocpOpenAwaiter::~IocpOpenAwaiter() {
+    if (!m_context) return;
     cleanupContext(m_context, m_waker.valid());
 }
 
