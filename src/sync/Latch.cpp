@@ -5,9 +5,7 @@ using enum std::memory_order;
 
 namespace arc {
 
-using Awaiter = Latch::Awaiter;
-
-bool Awaiter::poll(Context& cx) {
+bool Latch::Awaiter::poll(Context& cx) {
     switch (m_state) {
         case None: {
             // not yet registered, first do a fast check for completed
@@ -46,19 +44,19 @@ bool Awaiter::poll(Context& cx) {
     std::unreachable();
 }
 
-Awaiter::Awaiter(Awaiter&& other) noexcept
+Latch::Awaiter::Awaiter(Awaiter&& other) noexcept
     : m_latch(other.m_latch)
 {
     ARC_ASSERT(other.m_state == None, "cannot move a Awaiter that already was polled");
 }
 
-Awaiter::~Awaiter() {
+Latch::Awaiter::~Awaiter() {
     if (m_state == Registered) {
         m_latch.m_waiters.lock()->remove(this);
     }
 }
 
-Awaiter Latch::wait() noexcept {
+Latch::Awaiter Latch::wait() noexcept {
     return Awaiter{*this};
 }
 

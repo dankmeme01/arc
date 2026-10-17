@@ -5,11 +5,9 @@ using namespace asp::time;
 
 namespace arc {
 
-using Awaiter = Interval::Awaiter;
-
 // Awaiter
 
-bool Awaiter::poll(Context& cx) noexcept {
+bool Interval::Awaiter::poll(Context& cx) noexcept {
     return m_interval->doPoll(cx);
 }
 
@@ -73,7 +71,7 @@ void Interval::setMissedTickBehavior(MissedTickBehavior behavior) {
     m_mtBehavior = behavior;
 }
 
-Awaiter Interval::tick() noexcept {
+Interval::Awaiter Interval::tick() noexcept {
     return Awaiter{this};
 }
 
