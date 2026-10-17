@@ -25,7 +25,7 @@ TEST(Pollable, Never) {
     };
 
     auto fut = lambda();
-    EXPECT_FALSE(fut.poll(cx));
+    EXPECT_FALSE(fut._poll(cx));
 }
 
 TEST(Pollable, Yield) {
