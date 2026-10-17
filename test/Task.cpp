@@ -20,7 +20,7 @@ TEST(Task, SpawnBlockingResult) {
     auto runtime = arc::Runtime::create(1);
 
     int result = runtime->blockOn([] -> arc::Future<int> {
-        auto task = arc::spawnBlocking<int>([] {
+        auto task = arc::spawnBlocking([] {
             return 42;
         });
 

@@ -14,6 +14,7 @@
 #include <asp/sync/Notify.hpp>
 #include <asp/time/sleep.hpp>
 #include <arc/util/Function.hpp>
+#include <arc/util/TypeTraits.hpp>
 
 #ifdef ARC_FEATURE_TIME
 # include "TimeDriver.hpp"
@@ -276,13 +277,16 @@ auto spawn(F&& t) requires Spawnable<std::decay_t<F>> {
     }
 }
 
+
 /// Spawns a blocking function onto a thread pool.
 /// Use this when you need to run expensive synchronous code inside an async context.
 /// The returned handle can be awaited to get the result of the function.
-template <typename T = void>
-auto spawnBlocking(arc::MoveOnlyFunction<T()> f) {
+template <typename T = InferReturn, typename F>
+auto spawnBlocking(F&& f) {
+    using Output = std::decay_t<DoInferReturnType<T, F>>;
+
     if (auto rt = Runtime::current()) {
-        return rt->spawnBlocking<T>(std::move(f));
+        return rt->spawnBlocking<Output>(std::forward<F>(f));
     } else {
         throw std::runtime_error("No runtime available");
     }
