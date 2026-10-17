@@ -24,6 +24,17 @@ std::string lastWinError(DWORD code) {
     }
 }
 
+static void cleanupContext(IocpHandleContext* ctx, bool cancelIo = true) {
+    ctx->setCallback(nullptr, nullptr);
+    if (cancelIo) CancelIoEx(ctx->handle(), ctx->overlapped());
+}
+
+static void cleanupAndPassContext(std::unique_ptr<IocpHandleContext> ctx) {
+    if (!ctx) return;
+    cleanupContext(ctx.get(), true);
+    Runtime::current()->iocpDriver().returnRetired(ctx.release());
+}
+
 IocpHandleContext::~IocpHandleContext() {
     if (m_handle) CloseHandle(m_handle);
 }
@@ -70,8 +81,7 @@ IocpReadAwaiter::IocpReadAwaiter(IocpHandleContext* context, void* buffer, size_
 }
 
 IocpReadAwaiter::~IocpReadAwaiter() {
-    m_context->setCallback(nullptr, nullptr);
-    if (m_waker) CancelIoEx(m_context->handle(), m_context->overlapped());
+    cleanupContext(m_context, m_waker.valid());
 }
 
 std::optional<Result<size_t>> IocpReadAwaiter::poll(Context& cx) {
@@ -117,8 +127,7 @@ IocpWriteAwaiter::IocpWriteAwaiter(IocpHandleContext* context, const void* buffe
 }
 
 IocpWriteAwaiter::~IocpWriteAwaiter() {
-    m_context->setCallback(nullptr, nullptr);
-    if (m_waker) CancelIoEx(m_context->handle(), m_context->overlapped());
+    cleanupContext(m_context, m_waker.valid());
 }
 
 std::optional<Result<size_t>> IocpWriteAwaiter::poll(Context& cx) {
@@ -165,7 +174,10 @@ IocpOpenAwaiter::IocpOpenAwaiter(IocpHandleContext* context, OpenFn fn) : m_cont
     });
 }
 
-IocpOpenAwaiter::~IocpOpenAwaiter() {}
+IocpOpenAwaiter::~IocpOpenAwaiter() {
+    if (!m_context) return;
+    cleanupContext(m_context, m_waker.valid());
+}
 
 std::optional<Result<>> IocpOpenAwaiter::poll(Context& cx) {
     // if already finished, return result
@@ -205,6 +217,12 @@ std::optional<Result<>> IocpOpenAwaiter::poll(Context& cx) {
     return std::nullopt;
 }
 
+void IocpOpenAwaiter::detach() {
+    m_waker.destroy();
+    m_context = nullptr;
+    m_result = std::nullopt;
+}
+
 // IocpPipe Connection
 
 IocpPipeListenAwaiter::IocpPipeListenAwaiter(WinHandle handle)
@@ -218,7 +236,10 @@ IocpPipeListenAwaiter::IocpPipeListenAwaiter(WinHandle handle)
     })
 {}
 
-IocpPipeListenAwaiter::~IocpPipeListenAwaiter() {}
+IocpPipeListenAwaiter::~IocpPipeListenAwaiter() {
+    cleanupAndPassContext(std::move(m_iocpContext));
+    m_inner.detach();
+}
 
 std::optional<Result<IocpPipe>> IocpPipeListenAwaiter::poll(Context& cx) {
     if (auto res = m_inner.poll(cx)) {
@@ -296,7 +317,9 @@ IocpWriteAwaiter IocpPipe::write(const void* buffer, size_t length) {
     return IocpWriteAwaiter{m_iocpContext.get(), buffer, length};
 }
 
-IocpPipe::~IocpPipe() {}
+IocpPipe::~IocpPipe() {
+    cleanupAndPassContext(std::move(m_iocpContext));
+}
 
 IocpPipe::IocpPipe(std::unique_ptr<IocpPipeContext> context) : m_iocpContext(std::move(context)) {
     // I got stuck here for a while, but apparently you need to set this flag

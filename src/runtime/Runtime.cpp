@@ -531,6 +531,20 @@ void Runtime::shutdown() {
     m_workers.clear();
     m_blockingTasks.clear();
 
+    // abort all tasks
+    // it's not safe to call destroy on them because someone still might have TaskHandles
+    // simply call abort and then run, so that stuff gets cleaned up
+
+    Context cx { nullptr };
+    g_runtime = this;
+
+    auto tasks = m_tasks.lock();
+    for (auto* task : *tasks) {
+        task->m_vtable->abort(task, true);
+        task->m_vtable->run(task, cx);
+    }
+    tasks->clear();
+
     // free all drivers
 #ifdef ARC_FEATURE_TIME
     m_timeDriver.reset();
@@ -544,19 +558,31 @@ void Runtime::shutdown() {
 #ifdef ARC_FEATURE_IOCP
     m_iocpDriver.reset();
 #endif
+}
 
-    // abort all tasks
-    // it's not safe to call destroy on them because someone still might have TaskHandles
-    // simply call abort and then run, so that stuff gets cleaned up
+void Runtime::reportHungWorkers() {
+    size_t reported = 0;
 
-    Context cx { nullptr };
-
-    auto tasks = m_tasks.lock();
-    for (auto* task : *tasks) {
-        task->m_vtable->abort(task, true);
-        task->m_vtable->run(task, cx);
+    for (auto& worker : m_workers) {
+        // technically this is a race condition
+        if (auto task = std::atomic_ref{worker.currentTask}.load(::acquire)) {
+            this->reportHungWorker(worker, task);
+            reported++;
+        }
     }
-    tasks->clear();
+
+    if (reported == 0) {
+        arc::printError("Runtime has hung workers, but no task is currently running, this might be a bug in arc!!!");
+    }
+}
+
+void Runtime::reportHungWorker(WorkerData& data, TaskBase* task) {
+    arc::printError("Runtime worker {} is hung executing task {}, this is a bug in the program!", data.id, task->debugName());
+}
+
+void Runtime::reportHungBlockingWorkers() {
+    // there's not much we can do here unfortunately
+    arc::printError("Runtime has hung blocking workers, this is a bug in the program!");
 }
 
 void Runtime::reportHungWorkers() {

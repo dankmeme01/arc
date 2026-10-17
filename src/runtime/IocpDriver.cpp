@@ -12,6 +12,7 @@ IocpDriver::IocpDriver(asp::WeakPtr<Runtime> runtime) : m_runtime(std::move(runt
 
     static constexpr IocpDriverVtable vtable {
         .m_registerIo = &IocpDriver::vRegisterIo,
+        .m_returnRetired = &IocpDriver::vReturnRetired,
     };
 
     m_vtable = &vtable;
@@ -25,6 +26,10 @@ IocpDriver::~IocpDriver() {
 
 Result<> IocpDriver::registerIo(WinHandle handle, IocpHandleContext* ctx, HandleType type) {
     return m_vtable->m_registerIo(this, handle, ctx, type);
+}
+
+void IocpDriver::returnRetired(IocpHandleContext* context) {
+    m_vtable->m_returnRetired(this, context);
 }
 
 void IocpDriver::doWork() {
@@ -60,6 +65,20 @@ void IocpDriver::doWork() {
         ARC_TRACE("[IocpDriver] completed IO {}, {} bytes, overlapped at {}", ctx->handle(), bytes, (void*)ov);
         ctx->notifySuccess(bytes);
     }
+
+    {
+        // check the retired handles
+        auto handles = m_retired.lock();
+        for (size_t i = 0; i < handles->size();) {
+            auto& ctx = (*handles)[i];
+            if (HasOverlappedIoCompleted(ctx->overlapped())) {
+                ARC_TRACE("[IocpDriver] destroying retired handle {}", ctx->handle());
+                handles->erase(handles->begin() + i);
+            } else {
+                i++;
+            }
+        }
+    }
 }
 
 Result<> IocpDriver::vRegisterIo(IocpDriver* self, WinHandle handle, IocpHandleContext* ctx, HandleType type) {
@@ -75,6 +94,10 @@ Result<> IocpDriver::vRegisterIo(IocpDriver* self, WinHandle handle, IocpHandleC
     }
 
     return Ok();
+}
+
+void IocpDriver::vReturnRetired(IocpDriver* self, IocpHandleContext* ctx) {
+    self->m_retired.lock()->emplace_back(ctx);
 }
 
 }
