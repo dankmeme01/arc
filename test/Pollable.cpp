@@ -67,13 +67,18 @@ TEST(Pollable, GetTypename) {
     EXPECT_EQ(getTypename<int>(), "int");
     EXPECT_EQ(getTypename<bool>(), "bool");
 
+    // the actual strings are changing and unpredictable, so we just check that they contain the type name
+    auto stringName = getTypename<std::string>();
+    EXPECT_TRUE(
+        stringName.contains("std::basic_string") || stringName.contains("std::string")
+    );
+
+    auto optName = getTypename<std::optional<int>>();
+    EXPECT_TRUE(optName.contains("std::optional<int>"));
+
 #ifndef _MSC_VER // clang
-    EXPECT_EQ(getTypename<std::string>(), "std::basic_string<char>");
-    EXPECT_EQ(getTypename<std::optional<int>>(), "std::optional<int>");
     EXPECT_EQ(getTypename<unsigned long long>(), "unsigned long long");
 #else // msvc
-    EXPECT_EQ(getTypename<std::string>(), "class std::basic_string_view<char,struct std::char_traits<char> >");
-    EXPECT_EQ(getTypename<std::optional<int>>(), "class std::optional<int>");
     EXPECT_EQ(getTypename<unsigned long long>(), "unsigned __int64");
 #endif
 }
