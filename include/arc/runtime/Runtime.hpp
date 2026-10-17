@@ -87,6 +87,7 @@ struct RuntimeOptions {
     bool ioDriver = true;
     bool signalDriver = true;
     bool iocpDriver = true;
+    asp::Duration shutdownDeadline = asp::Duration::fromSecs(2);
 };
 
 class Runtime : public asp::EnableSharedFromThis<Runtime> {

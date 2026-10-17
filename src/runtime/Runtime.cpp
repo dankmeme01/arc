@@ -84,8 +84,7 @@ void Runtime::init(const RuntimeOptions& options) {
         });
     }
 
-    // TODO: make this configurable in abi breaking release
-    m_shutdownDeadline = Duration::fromSecs(2);
+    m_shutdownDeadline = options.shutdownDeadline;
 }
 
 Runtime::~Runtime() {
