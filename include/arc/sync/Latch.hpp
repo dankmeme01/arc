@@ -27,7 +27,7 @@ struct Latch {
             None,
             Registered,
             Completed
-        } m_state;
+        } m_state = None;
     };
 
     Awaiter wait() noexcept;
