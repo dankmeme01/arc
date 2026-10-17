@@ -585,31 +585,6 @@ void Runtime::reportHungBlockingWorkers() {
     arc::printError("Runtime has hung blocking workers, this is a bug in the program!");
 }
 
-void Runtime::reportHungWorkers() {
-    size_t reported = 0;
-
-    for (auto& worker : m_workers) {
-        // technically this is a race condition
-        if (auto task = std::atomic_ref{worker.currentTask}.load(::acquire)) {
-            this->reportHungWorker(worker, task);
-            reported++;
-        }
-    }
-
-    if (reported == 0) {
-        arc::printError("Runtime has hung workers, but no task is currently running, this might be a bug in arc!!!");
-    }
-}
-
-void Runtime::reportHungWorker(WorkerData& data, TaskBase* task) {
-    arc::printError("Runtime worker {} is hung executing task {}, this is a bug in the program!", data.id, task->debugName());
-}
-
-void Runtime::reportHungBlockingWorkers() {
-    // there's not much we can do here unfortunately
-    arc::printError("Runtime has hung blocking workers, this is a bug in the program!");
-}
-
 void setGlobalRuntime(Runtime* rt) {
     g_globalRuntime = rt;
 }
