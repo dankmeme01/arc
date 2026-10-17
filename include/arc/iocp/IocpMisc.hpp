@@ -27,8 +27,7 @@ struct IocpHandleContext {
     OVERLAPPED* overlapped() { return &m_ov; }
     HANDLE handle() const { return m_handle; }
 
-    // TODO (ABI): make virtual
-    ~IocpHandleContext();
+    virtual ~IocpHandleContext();
 
 protected:
     friend class IocpDriver;
