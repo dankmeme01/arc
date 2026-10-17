@@ -29,7 +29,7 @@ Future<Result<>> asyncMain(int argc, const char** argv) {
     auto& stream = res.unwrap();
 
     while (true) {
-        auto line = co_await spawnBlocking<std::string>([] {
+        auto line = co_await spawnBlocking([] {
             std::string line;
             std::cout << "> " << std::flush;
             std::getline(std::cin, line);

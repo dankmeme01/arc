@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.21)
 set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-project(arc VERSION 1.5.11)
+project(arc VERSION 1.6.0)
 
 include(cmake/Features.cmake)
 option(ARC_BUILD_TESTS "Build tests" OFF)
@@ -33,7 +33,7 @@ if (NOT COMMAND CPMAddPackage)
 endif()
 
 if (NOT TARGET asp)
-    CPMAddPackage("gh:dankmeme01/asp2#a2ddce1")
+    CPMAddPackage("gh:dankmeme01/asp2@1.3.1")
 endif()
 if (NOT TARGET std23::nontype_functional)
     CPMAddPackage("gh:geode-sdk/nontype_functional#6d1d08c")

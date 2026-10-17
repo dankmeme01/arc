@@ -8,6 +8,7 @@
 
 #include "sync/mpsc.hpp"
 #include "sync/oneshot.hpp"
+#include "sync/Latch.hpp"
 #include "sync/Notify.hpp"
 #include "sync/Mutex.hpp"
 #include "sync/Semaphore.hpp"

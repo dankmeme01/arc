@@ -6,6 +6,7 @@ ARC_FATAL_NO_FEATURE(net)
 #else
 
 #include "EventIoBase.hpp"
+#include <span>
 #include <qsox/TcpStream.hpp>
 
 namespace arc {
@@ -34,18 +35,38 @@ public:
 
     // Sends data over this socket. Returns amount of bytes sent.
     Future<NetResult<size_t>> send(const void* data, size_t size);
+    // Sends data over this socket. Returns amount of bytes sent.
+    Future<NetResult<size_t>> send(std::span<const uint8_t> data) {
+        return this->send(data.data(), data.size());
+    }
 
     // Sends data over this socket, waiting until all data is sent, or an error occurs.
     Future<NetResult<void>> sendAll(const void* data, size_t size);
+    // Sends data over this socket, waiting until all data is sent, or an error occurs.
+    Future<NetResult<void>> sendAll(std::span<const uint8_t> data) {
+        return this->sendAll(data.data(), data.size());
+    }
 
     // Receives data from the socket. Returns amount of bytes received.
     Future<NetResult<size_t>> receive(void* buffer, size_t size);
+    // Receives data from the socket. Returns amount of bytes received.
+    Future<NetResult<size_t>> receive(std::span<uint8_t> buffer) {
+        return this->receive(buffer.data(), buffer.size());
+    }
 
     // Receives data from the socket, waiting until the given buffer is full or an error occurs.
     Future<NetResult<void>> receiveExact(void* buffer, size_t size);
+    // Receives data from the socket, waiting until the given buffer is full or an error occurs.
+    Future<NetResult<void>> receiveExact(std::span<uint8_t> buffer) {
+        return this->receiveExact(buffer.data(), buffer.size());
+    }
 
     // Peeks at incoming data without removing it from the queue.
     Future<NetResult<size_t>> peek(void* buffer, size_t size);
+    // Peeks at incoming data without removing it from the queue.
+    Future<NetResult<size_t>> peek(std::span<uint8_t> buffer) {
+        return this->peek(buffer.data(), buffer.size());
+    }
 
     NetResult<qsox::SocketAddress> localAddress() const;
     NetResult<qsox::SocketAddress> remoteAddress() const;

@@ -121,12 +121,15 @@ struct ARC_NODISCARD Future : PollableBase {
         return doSuspend;
     }
 
+    // NOTE: **do not call this manually** unless you know what you are doing.
     T await_resume() {
         // ARC_TRACE("[{}] await_resume()", this->debugName());
-        return this->getOutput();
+        return this->_getOutput();
     }
 
-    bool poll(Context& cx) noexcept {
+    // Drives the coroutine state machine further.
+    // NOTE: **do not call this manually** unless you know what you are doing.
+    bool _poll(Context& cx) noexcept {
         ARC_DEBUG_ASSERT(m_handle, "polling a future with an invalid handle");
 
         auto child = this->child();
@@ -174,7 +177,9 @@ struct ARC_NODISCARD Future : PollableBase {
         }
     }
 
-    T getOutput() {
+    // Rethrows exceptions, if any, and returns the return value of the future. UB if future hasn't finished.
+    // NOTE: **do not call this manually** unless you know what you are doing. For getting future output in async code, simply `co_await` it.
+    T _getOutput() {
         this->maybeRethrow();
         if constexpr (!std::is_void_v<T>) {
             return this->promise().template getOutput<T>();
@@ -186,17 +191,17 @@ protected:
 
     static bool vPoll(void* self, Context& cx) noexcept {
         auto me = static_cast<Future*>(self);
-        return me->poll(cx);
+        return me->_poll(cx);
     }
 
     template <bool Void>
     static void vGetOutput(void* self, void* outp) {
         auto me = static_cast<Future*>(self);
         if constexpr (Void) {
-            me->getOutput();
+            me->_getOutput();
         } else {
             auto out = reinterpret_cast<MaybeUninit<NonVoidOutput>*>(outp);
-            out->init(me->getOutput());
+            out->init(me->_getOutput());
         }
     }
 

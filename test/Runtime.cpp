@@ -51,7 +51,7 @@ TEST(Runtime, OutlivedSocket) {
     // try to send data
     auto addr = qsox::SocketAddress::parse("127.0.0.1:8080").unwrap();
     auto fut = socket->sendTo("hello", 5, addr);
-    EXPECT_FALSE(fut.poll(cx));
+    EXPECT_FALSE(fut._poll(cx));
 
     arc::drop(std::move(socket));
 }

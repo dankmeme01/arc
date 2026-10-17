@@ -160,16 +160,31 @@ protected:
         }
     }
 
-    auto rioPoll(auto fn) -> Future<typename ExtractOptional<std::invoke_result_t<decltype(fn), Context&, uint64_t&>>::type> {
-        uint64_t id = 0;
+    template <typename Ret, typename Fn>
+    struct ARC_NODISCARD RioPoll : Pollable<RioPoll<Ret, Fn>, Ret> {
+        template <typename X>
+        explicit RioPoll(X&& func, Registration& io) : m_func(std::forward<X>(func)), m_io(io) {}
 
-        auto result = co_await pollFunc([&id, fn = std::move(fn)](Context& cx) mutable {
-            return fn(cx, id);
-        });
-        if (id != 0) {
-            m_io.unregister(id);
+        ~RioPoll() {
+            if (m_id != 0) {
+                m_io.unregister(m_id);
+            }
         }
-        co_return result;
+
+        std::optional<Ret> poll(Context& cx) {
+            return m_func(cx, m_id);
+        }
+
+    private:
+        uint64_t m_id = 0;
+        Registration& m_io;
+        Fn m_func;
+    };
+
+    template <typename Fn>
+    auto rioPoll(Fn&& fn) {
+        using Ret = typename ExtractOptional<std::invoke_result_t<std::decay_t<Fn>, Context&, uint64_t&>>::type;
+        return RioPoll<Ret, std::decay_t<Fn>>{std::forward<Fn>(fn), m_io};
     }
 };
 

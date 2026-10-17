@@ -49,6 +49,14 @@ asp::SharedPtr<TaskDebugData> TaskBase::getDebugData() noexcept {
     return m_vtable->getDebugData(this);
 }
 
+void* TaskBase::getTLSEntry(uint64_t key) noexcept {
+    return m_vtable->getTlsEntry(this, key);
+}
+
+void* TaskBase::createTLSEntry(uint64_t key, void* data, void(*dtor)(void*)) noexcept {
+    return m_vtable->createTlsEntry(this, key, data, dtor);
+}
+
 std::optional<bool> TaskBase::vPoll(void* ptr, Context& cx) {
     auto self = static_cast<TaskBase*>(ptr);
     auto state = self->getState();
@@ -158,6 +166,39 @@ void TaskBase::vSchedule(void* self) {
             rt->enqueueTask(task);
         }
     }
+}
+
+static auto binSearchSlot(std::vector<TaskTlsSlot>& slots, uint64_t key) {
+    return std::lower_bound(slots.begin(), slots.end(), key, [](const TaskTlsSlot& slot, uint64_t key) {
+        return slot.key < key;
+    });
+}
+
+void* TaskBase::vGetTlsEntry(void* ptr, uint64_t key) {
+    auto self = static_cast<TaskBase*>(ptr);
+
+    // all tls slots are sorted, use bin search
+    auto& slots = self->m_tlsSlots;
+    auto it = binSearchSlot(slots, key);
+
+    if (it != slots.end() && it->key == key) {
+        return it->data.get();
+    }
+
+    return nullptr;
+}
+
+void* TaskBase::vCreateTlsEntry(void* ptr, uint64_t key, void* data, void(*dtor)(void*)) noexcept {
+    auto self = static_cast<TaskBase*>(ptr);
+
+    auto& slots = self->m_tlsSlots;
+    auto it = binSearchSlot(slots, key);
+
+    ARC_ASSERT(it == slots.end() || it->key != key, "Attempted to create a duplicate TLS slot");
+
+    // insert new slot
+    slots.emplace(it, key, data, dtor);
+    return data;
 }
 
 void TaskBase::dropRef() {

@@ -2,6 +2,7 @@
 
 #include "Waker.hpp"
 #include "CondvarWaker.hpp"
+#include "TaskLocal.hpp"
 #include <arc/future/Promise.hpp>
 #include <arc/future/Future.hpp>
 #include <arc/util/Trace.hpp>
@@ -31,8 +32,9 @@ static constexpr uint64_t TASK_REGISTERING = 1 << 6; // currently registering th
 static constexpr uint64_t TASK_HANDLE      = 1 << 7; // presence of an active TaskHandle
 static constexpr uint64_t TASK_ABANDONED   = 1 << 8; // no longer owned by a runtime
 static constexpr uint64_t TASK_REFERENCE   = 1 << 12; // single reference
-
 static constexpr uint64_t TASK_INITIAL_STATE = TASK_SCHEDULED | TASK_REFERENCE | TASK_HANDLE;
+
+static constexpr uint64_t TASK_ABI_VERSION = 1;
 
 struct TaskDebugData {
     size_t m_debugDataSize{sizeof(TaskDebugData)};
@@ -48,6 +50,17 @@ struct TaskDebugData {
     std::vector<void*> creationStack() const noexcept;
 };
 
+struct TaskTlsSlot {
+    uint64_t key;
+    std::unique_ptr<void, void(*)(void*)> data{nullptr, nullptr};
+
+    TaskTlsSlot(uint64_t key, void* data, void(*dtor)(void*)) : key(key), data(data, dtor) {}
+    TaskTlsSlot(const TaskTlsSlot&) = delete;
+    TaskTlsSlot& operator=(const TaskTlsSlot&) = delete;
+    TaskTlsSlot(TaskTlsSlot&& o) noexcept = default;
+    TaskTlsSlot& operator=(TaskTlsSlot&& o) noexcept = default;
+};
+
 struct TaskVtable {
     using Fn = void(*)(void*);
     using AbortFn = void(*)(void*, bool);
@@ -59,7 +72,10 @@ struct TaskVtable {
     using SetNameFn = void(*)(void*, asp::BoxedString);
     using GetNameFn = asp::BoxedString(*)(void*);
     using GetDebugDataFn = asp::SharedPtr<TaskDebugData>(*)(void*);
+    using GetTlsEntryFn = void*(*)(void*, uint64_t key);
+    using CreateTlsEntryFn = void*(*)(void*, uint64_t key, void* data, void(*dtor)(void*));
 
+    uint64_t abiVersion;
     Fn schedule;
     Fn destroy;
     AbortFn abort;
@@ -71,12 +87,17 @@ struct TaskVtable {
     SetNameFn setName;
     GetNameFn getName;
     GetDebugDataFn getDebugData;
+    // Virtuals added in abi v1 (v1.6.0)
+    GetTlsEntryFn getTlsEntry;
+    CreateTlsEntryFn createTlsEntry;
 };
 
 struct TaskBase {
     void abort() noexcept;
     void setName(asp::BoxedString name) noexcept;
     asp::SharedPtr<TaskDebugData> getDebugData() noexcept;
+    void* getTLSEntry(uint64_t key) noexcept;
+    void* createTLSEntry(uint64_t key, void* data, void(*dtor)(void*)) noexcept;
 
     // Every field past the vtable can be changed without causing an ABI break.
     // Fields must never be directly accessed and should only be used through the vtable.
@@ -99,6 +120,7 @@ protected:
     asp::BoxedString m_name;
     asp::SharedPtr<TaskDebugData> m_debugData;
     std::exception_ptr m_exception;
+    std::vector<TaskTlsSlot> m_tlsSlots;
 
     static bool shouldDestroy(uint64_t state) noexcept;
     uint64_t incref() noexcept;
@@ -122,6 +144,8 @@ protected:
     static void vSetName(void* ptr, asp::BoxedString name) noexcept;
     static asp::BoxedString vGetName(void* ptr) noexcept;
     static asp::SharedPtr<TaskDebugData> vGetDebugData(void* ptr);
+    static void* vGetTlsEntry(void* ptr, uint64_t key);
+    static void* vCreateTlsEntry(void* ptr, uint64_t key, void* data, void(*dtor)(void*)) noexcept;
 
     /// Polls the task. Returns:
     /// - std::nullopt if the task is pending
@@ -339,6 +363,7 @@ protected:
     }
 
     static constexpr TaskVtable vtable = {
+        .abiVersion = TASK_ABI_VERSION,
         .schedule = &Task::vSchedule,
         .destroy = &Task::vDestroy,
         .abort = &Task::vAbort,
@@ -350,6 +375,8 @@ protected:
         .setName = &Task::vSetName,
         .getName = &Task::vGetName,
         .getDebugData = &Task::vGetDebugData,
+        .getTlsEntry = &Task::vGetTlsEntry,
+        .createTlsEntry = &Task::vCreateTlsEntry,
     };
 
     static constexpr RawWakerVtable WakerVtable = {

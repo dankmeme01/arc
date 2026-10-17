@@ -71,6 +71,11 @@ Interest Registration::pollReady(Interest interest, Context& cx, uint64_t& outId
 }
 
 void Registration::unregister(uint64_t id) {
+    // avoid crash in shutdown
+    if (!m_rio) return;
+    auto rt = m_rio->runtime.upgrade();
+    if (!rt || rt->isShuttingDown()) return;
+
     ARC_DEBUG_ASSERT(m_rio);
     if (id != 0) m_driver->unregisterWaiter(*m_rio, id);
 }

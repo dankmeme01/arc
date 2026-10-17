@@ -25,7 +25,7 @@ TEST(Pollable, Never) {
     };
 
     auto fut = lambda();
-    EXPECT_FALSE(fut.poll(cx));
+    EXPECT_FALSE(fut._poll(cx));
 }
 
 TEST(Pollable, Yield) {
@@ -61,4 +61,24 @@ TEST(Pollable, PollFunc) {
     EXPECT_EQ(counter, 3);
     EXPECT_TRUE(fut.poll(cx));
     EXPECT_EQ(counter, 4);
+}
+
+TEST(Pollable, GetTypename) {
+    EXPECT_EQ(getTypename<int>(), "int");
+    EXPECT_EQ(getTypename<bool>(), "bool");
+
+    // the actual strings are changing and unpredictable, so we just check that they contain the type name
+    auto stringName = getTypename<std::string>();
+    EXPECT_TRUE(
+        stringName.contains("std::basic_string") || stringName.contains("std::string")
+    );
+
+    auto optName = getTypename<std::optional<int>>();
+    EXPECT_TRUE(optName.contains("std::optional<int>"));
+
+#ifndef _MSC_VER // clang
+    EXPECT_EQ(getTypename<unsigned long long>(), "unsigned long long");
+#else // msvc
+    EXPECT_EQ(getTypename<unsigned long long>(), "unsigned __int64");
+#endif
 }

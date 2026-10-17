@@ -15,8 +15,8 @@ TEST(Future, ImmediateReturn) {
         co_return 123;
     }();
 
-    EXPECT_TRUE(fut.poll(cx));
-    EXPECT_EQ(fut.getOutput(), 123);
+    EXPECT_TRUE(fut._poll(cx));
+    EXPECT_EQ(fut._getOutput(), 123);
 }
 
 TEST(Future, YieldAndReturn) {
@@ -28,9 +28,9 @@ TEST(Future, YieldAndReturn) {
         co_return 123;
     }();
 
-    EXPECT_FALSE(fut.poll(cx));
-    EXPECT_TRUE(fut.poll(cx));
-    EXPECT_EQ(fut.getOutput(), 123);
+    EXPECT_FALSE(fut._poll(cx));
+    EXPECT_TRUE(fut._poll(cx));
+    EXPECT_EQ(fut._getOutput(), 123);
 }
 
 TEST(Future, Exception) {
