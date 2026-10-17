@@ -40,10 +40,10 @@ bool Awaiter::poll(Context& cx) {
             return false;
         } break;
 
-        case Completed: {
-            std::unreachable();
-        } break;
+        case Completed: break;
     }
+
+    std::unreachable();
 }
 
 Awaiter::Awaiter(Awaiter&& other) noexcept
