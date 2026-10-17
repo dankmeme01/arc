@@ -6,6 +6,7 @@ ARC_FATAL_NO_FEATURE(net)
 #else
 
 #include "EventIoBase.hpp"
+#include <span>
 #include <qsox/UdpSocket.hpp>
 
 namespace arc {
@@ -31,25 +32,53 @@ public:
 
     // Sends a datagram to the specified address. Returns the number of bytes sent.
     Future<NetResult<size_t>> sendTo(const void* buffer, size_t size, const qsox::SocketAddress& destination);
+    // Sends a datagram to the specified address. Returns the number of bytes sent.
+    Future<NetResult<size_t>> sendTo(std::span<const uint8_t> buffer, const qsox::SocketAddress& destination) {
+        return this->sendTo(buffer.data(), buffer.size(), destination);
+    }
 
     // Sends a datagram to the connected address. Returns the number of bytes sent.
     // Will fail if the socket is not connected.
     Future<NetResult<size_t>> send(const void* buffer, size_t size);
+    // Sends a datagram to the connected address. Returns the number of bytes sent.
+    // Will fail if the socket is not connected.
+    Future<NetResult<size_t>> send(std::span<const uint8_t> buffer) {
+        return this->send(buffer.data(), buffer.size());
+    }
 
     // Receives a single datagram from the socket. If the buffer is too small, excess data is discarded.
     // On success, returns the number of bytes received.
     Future<NetResult<size_t>> recvFrom(void* buffer, size_t size, qsox::SocketAddress& sender);
+    // Receives a single datagram from the socket. If the buffer is too small, excess data is discarded.
+    // On success, returns the number of bytes received.
+    Future<NetResult<size_t>> recvFrom(std::span<uint8_t> buffer, qsox::SocketAddress& sender) {
+        return this->recvFrom(buffer.data(), buffer.size(), sender);
+    }
 
     // Receives a single datagram from the connected address. If the buffer is too small, excess data is discarded.
     // On success returns the number of bytes received, will fail if the socket is not connected.
     Future<NetResult<size_t>> recv(void* buffer, size_t size);
+    // Receives a single datagram from the connected address. If the buffer is too small, excess data is discarded.
+    // On success returns the number of bytes received, will fail if the socket is not connected.
+    Future<NetResult<size_t>> recv(std::span<uint8_t> buffer) {
+        return this->recv(buffer.data(), buffer.size());
+    }
 
     // Peeks at the next datagram in the socket without removing it from the queue.
     Future<NetResult<size_t>> peekFrom(void* buffer, size_t size, qsox::SocketAddress& sender);
+    // Peeks at the next datagram in the socket without removing it from the queue.
+    Future<NetResult<size_t>> peekFrom(std::span<uint8_t> buffer, qsox::SocketAddress& sender) {
+        return this->peekFrom(buffer.data(), buffer.size(), sender);
+    }
 
     // Peeks at the next datagram in the connected socket without removing it from the queue.
     // Will fail if the socket is not connected.
     Future<NetResult<size_t>> peek(void* buffer, size_t size);
+    // Peeks at the next datagram in the connected socket without removing it from the queue.
+    // Will fail if the socket is not connected.
+    Future<NetResult<size_t>> peek(std::span<uint8_t> buffer) {
+        return this->peek(buffer.data(), buffer.size());
+    }
 
     NetResult<qsox::SocketAddress> localAddress() const;
     NetResult<qsox::SocketAddress> remoteAddress() const;
