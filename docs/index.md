@@ -4,3 +4,4 @@ This documentation is fairly limited, but if you find something in Arc confusing
 
 * [Common coroutine gotchas](./common-gotchas.md)
 * [Pollables](./pollables.md)
+* [Task Local Data](./task-local.md)

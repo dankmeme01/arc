@@ -14,7 +14,6 @@ This project is WIP, some things may have bugs and not be production ready, but 
 * Top-level exception handler that prints the backtrace of futures, to aid in debugging
 
 TODO:
-* Remove getOutput as public function in future, it is not meant to be used by users
 * File IO using blocking thread pool
 * Better poller. Current implementation uses `poll`/`WSAPoll`, which isn't scalable. This is not an issue for small jobs, but makes the library unsuitable for servers that handle hundreds of connections. Currently this is a non-goal as this library was mostly made for a network client rather than a server
 * Work stealing scheduler
@@ -23,7 +22,7 @@ TODO:
 
 Arc supports Clang and MSVC and requires C++23. If you are using CMake with CPM, the easiest way to use Arc is as follows:
 ```cmake
-CPMAddPackage("gh:dankmeme01/arc@1.5.4") # always use latest release!
+CPMAddPackage("gh:dankmeme01/arc@1.6.0") # always use latest release!
 target_link_libraries(mylib PRIVATE arc)
 ```
 
