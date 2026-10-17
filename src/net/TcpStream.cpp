@@ -58,7 +58,7 @@ NetResult<void> TcpStream::setNoDelay(bool noDelay) {
 }
 
 Future<NetResult<size_t>> TcpStream::send(const void* data, size_t size) {
-    return this->rioPoll([this, data, size](Context& cx, uint64_t& id) {
+    co_return co_await this->rioPoll([this, data, size](Context& cx, uint64_t& id) {
         return this->pollWrite(cx, data, size, id);
     });
 }
@@ -93,7 +93,7 @@ Future<NetResult<void>> TcpStream::sendAll(const void* datav, size_t size) {
 }
 
 Future<NetResult<size_t>> TcpStream::receive(void* buffer, size_t size) {
-    return this->rioPoll([this, buffer, size](Context& cx, uint64_t& id) {
+    co_return co_await this->rioPoll([this, buffer, size](Context& cx, uint64_t& id) {
         return this->pollRead(cx, buffer, size, id);
     });
 }
@@ -128,7 +128,7 @@ Future<NetResult<void>> TcpStream::receiveExact(void* buffer, size_t size) {
 }
 
 Future<NetResult<size_t>> TcpStream::peek(void* buffer, size_t size) {
-    return this->rioPoll([this, buffer, size](Context& cx, uint64_t& id) {
+    co_return co_await this->rioPoll([this, buffer, size](Context& cx, uint64_t& id) {
         return this->pollRead(cx, buffer, size, id, true);
     });
 }

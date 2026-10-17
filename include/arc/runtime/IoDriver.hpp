@@ -88,6 +88,7 @@ private:
 struct IoEntry {
 private:
     friend class IoDriver;
+    friend struct Registration;
 
     SockFd fd;
     asp::SpinLock<std::vector<IoWaiter>> waiters; // TODO: slab kind of thing

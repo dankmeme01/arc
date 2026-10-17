@@ -24,6 +24,7 @@ Checks: |
   -bugprone-nondeterministic-pointer-iteration-order,
   -bugprone-implicit-widening-of-multiplication-result,
   -bugprone-optional-value-conversion,
+  -bugprone-forwarding-reference-overload,
   # often not useful
   -bugprone-macro-parentheses,
 

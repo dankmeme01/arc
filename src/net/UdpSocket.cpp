@@ -38,37 +38,37 @@ NetResult<void> UdpSocket::disconnect() {
 }
 
 Future<NetResult<size_t>> UdpSocket::sendTo(const void* buffer, size_t size, const SocketAddress& destination) {
-    return this->rioPoll([this, buffer, size, dest = std::optional{destination}](Context& cx, uint64_t& id) {
+    co_return co_await this->rioPoll([this, buffer, size, dest = std::optional{destination}](Context& cx, uint64_t& id) {
         return this->pollWrite(cx, buffer, size, dest, id);
     });
 }
 
 Future<NetResult<size_t>> UdpSocket::send(const void* buffer, size_t size) {
-    return this->rioPoll([this, buffer, size](Context& cx, uint64_t& id) {
+    co_return co_await this->rioPoll([this, buffer, size](Context& cx, uint64_t& id) {
         return this->pollWrite(cx, buffer, size, std::nullopt, id);
     });
 }
 
 Future<NetResult<size_t>> UdpSocket::recvFrom(void* buffer, size_t size, SocketAddress& sender) {
-    return this->rioPoll([this, buffer, size, sender = &sender](Context& cx, uint64_t& id) {
+    co_return co_await this->rioPoll([this, buffer, size, sender = &sender](Context& cx, uint64_t& id) {
         return this->pollRead(cx, buffer, size, sender, false, id);
     });
 }
 
 Future<NetResult<size_t>> UdpSocket::recv(void* buffer, size_t size) {
-    return this->rioPoll([this, buffer, size](Context& cx, uint64_t& id) {
+    co_return co_await this->rioPoll([this, buffer, size](Context& cx, uint64_t& id) {
         return this->pollRead(cx, buffer, size, nullptr, false, id);
     });
 }
 
 Future<NetResult<size_t>> UdpSocket::peekFrom(void* buffer, size_t size, SocketAddress& sender) {
-    return this->rioPoll([this, buffer, size, sender = &sender](Context& cx, uint64_t& id) {
+    co_return co_await this->rioPoll([this, buffer, size, sender = &sender](Context& cx, uint64_t& id) {
         return this->pollRead(cx, buffer, size, sender, true, id);
     });
 }
 
 Future<NetResult<size_t>> UdpSocket::peek(void* buffer, size_t size) {
-    return this->rioPoll([this, buffer, size](Context& cx, uint64_t& id) {
+    co_return co_await this->rioPoll([this, buffer, size](Context& cx, uint64_t& id) {
         return this->pollRead(cx, buffer, size, nullptr, true, id);
     });
 }
