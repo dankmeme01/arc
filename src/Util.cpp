@@ -1,7 +1,7 @@
 #include <arc/util/Random.hpp>
 #include <arc/util/Assert.hpp>
 #include <arc/util/Trace.hpp>
-#include <fmt/core.h>
+#include <fmt/std.h>
 #include <random>
 #include <stdexcept>
 #include <iostream>

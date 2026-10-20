@@ -1,7 +1,6 @@
 #pragma once
 
-#include <fmt/core.h>
-#include <fmt/std.h>
+#include <fmt/format.h>
 #include <asp/time/Instant.hpp>
 #include <arc/util/Function.hpp>
 
