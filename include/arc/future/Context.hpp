@@ -4,7 +4,7 @@
 #include <source_location>
 #include <asp/time/Instant.hpp>
 #include <asp/ptr/BoxedString.hpp>
-#include <fmt/core.h>
+#include <fmt/format.h>
 
 namespace arc {
 
