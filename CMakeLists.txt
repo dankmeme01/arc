@@ -33,7 +33,7 @@ if (NOT COMMAND CPMAddPackage)
 endif()
 
 if (NOT TARGET asp)
-    CPMAddPackage("gh:dankmeme01/asp2@1.4.3")
+    CPMAddPackage("gh:dankmeme01/asp2@1.5.2")
 endif()
 if (NOT TARGET std23::nontype_functional)
     CPMAddPackage("gh:geode-sdk/nontype_functional#6d1d08c")
@@ -52,7 +52,7 @@ target_link_options(arc PRIVATE ${ARC_ASAN_LINK_OPTIONS})
 # Add qsox if networking is enabled
 if (ARC_FEATURE_NET)
     if (NOT TARGET qsox)
-        CPMAddPackage("gh:dankmeme01/qsox#060564b")
+        CPMAddPackage("gh:dankmeme01/qsox@1.0.0")
     endif()
     target_link_libraries(arc PUBLIC qsox)
 endif()
@@ -70,7 +70,7 @@ if (ARC_BUILD_TESTS)
 
     enable_testing()
 
-    CPMAddPackage("gh:google/googletest@1.16.0")
+    CPMAddPackage("gh:google/googletest@1.18.0")
 
     file(GLOB TEST_SOURCES CONFIGURE_DEPENDS "test/*.cpp")
     add_executable(arc_tests ${TEST_SOURCES})
