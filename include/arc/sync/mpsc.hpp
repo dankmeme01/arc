@@ -447,18 +447,66 @@ private:
     std::shared_ptr<Shared<T>> m_data;
 };
 
+template <typename T>
+struct MpscChannel {
+    Sender<T> tx;
+    Receiver<T> rx;
+
+    // Wrappers for convenience, it's not uncommon to store the tx+rx parts inside one struct
+
+    /// Attempts to send a value, waiting if there is no capacity left.
+    /// Returns the value back if the channel is closed.
+    auto send(T value) const {
+        return tx.send(std::move(value));
+    }
+
+    /// Attempts to send a value without blocking, returns the value if the channel is full or closed.
+    auto trySend(T value) const {
+        return tx.trySend(std::move(value));
+    }
+
+    /// Receives a value from the channel, waiting if there is no value available.
+    auto recv() noexcept {
+        return rx.recv();
+    }
+
+    /// Attempts to receive a value without blocking, returns an error if the channel is empty or closed.
+    auto tryRecv() noexcept(ChannelData<T>::NoexceptMovable) {
+        return rx.tryRecv();
+    }
+
+    /// Drains all values from the channel into a deque, waking all waiting senders.
+    auto drain() {
+        return rx.drain();
+    }
+
+    bool hasCapacity() const noexcept {
+        return tx.hasCapacity();
+    }
+
+    bool empty() const noexcept {
+        return rx.empty();
+    }
+};
+
 /// Creates a new multi-producer, single-consumer channel with the given capacity.
+/// The returned value can be destructured into `Sender<T>` and `Receiver<T>` halves to store separately:
+/// ```cpp
+/// auto [tx, rx] = arc::mpsc::channel<int>(10);
+/// tx.send(42);
+/// ```
 /// Sender<T> may be copied to create multiple senders, but there can only be one Receiver<T>.
 /// `send()` is typically non-blocking unless the channel is full, in which case senders will have to wait.
+///
 /// When capacity is `std::nullopt` (the default), the channel is unbounded.
 /// When capacity is set to 0, the channel is rendezvous,
 /// meaning that messages are never stored and can only be sent when a receiver is waiting.
 ///
 /// This function does not require a runtime, and can be run in both synchronous and asynchronous contexts.
 template <typename T>
-std::pair<Sender<T>, Receiver<T>> channel(std::optional<size_t> capacity = std::nullopt) {
+MpscChannel<T> channel(std::optional<size_t> capacity = std::nullopt) {
     auto shared = std::make_shared<Shared<T>>(capacity);
-    return std::make_pair(Sender<T>{shared}, Receiver<T>{shared});
+    return MpscChannel<T>{Sender<T>{shared}, Receiver<T>{shared}};
 }
 
 }

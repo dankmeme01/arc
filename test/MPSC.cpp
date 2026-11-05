@@ -186,6 +186,22 @@ TEST(MPSC, Rendezvous) {
     EXPECT_TRUE(spoll->isOk());
 }
 
+TEST(MPSC, CombinedStruct) {
+    Waker waker = Waker::noop();
+    Context cx { &waker };
+
+    auto chan = mpsc::channel<int>(2);
+    EXPECT_TRUE(chan.trySend(1).isOk());
+    EXPECT_TRUE(chan.trySend(2).isOk());
+
+    EXPECT_EQ(chan.tryRecv().unwrap(), 1);
+    EXPECT_EQ(chan.tryRecv().unwrap(), 2);
+
+    auto r = chan.tryRecv();
+    EXPECT_FALSE(r.isOk());
+    EXPECT_TRUE(r.unwrapErr() == mpsc::TryRecvOutcome::Empty);
+}
+
 void moveFutureHelper(auto& cx, auto txfut, auto rxfut) {
     // tx fails to send because no receiver
     EXPECT_FALSE(txfut.poll(cx).has_value());

@@ -252,17 +252,87 @@ private:
     std::shared_ptr<Shared<T>> m_data;
 };
 
-/// Creates a new oneshot channel, returning the sender and receiver halves.
-/// Sender and Receiver cannot be copied, and only a single message can ever be sent through the channel.
+template <typename T>
+struct OneshotChannel {
+    Sender<T> tx;
+    Receiver<T> rx;
+
+    // Wrappers for convenience, it's not uncommon to store the tx+rx parts inside one struct
+
+    /// Sends a value over the channel. This never blocks and will send the value immediately.
+    /// It is undefined behavior to call this more than once. The only possible failure case is if the channel is closed by receiver.
+    auto send(T value) const {
+        return tx.send(std::move(value));
+    }
+
+    /// Receives a value from the channel, waiting if there is no value available.
+    auto recv() noexcept {
+        return rx.recv();
+    }
+
+    /// Attempts to receive a value without blocking, returns an error if the channel is empty or closed.
+    auto tryRecv() noexcept(ChannelData<T>::NoexceptMovable) {
+        return rx.tryRecv();
+    }
+};
+
+template <typename T>
+struct MpscChannel {
+    Sender<T> tx;
+    Receiver<T> rx;
+
+    // Wrappers for convenience, it's not uncommon to store the tx+rx parts inside one struct
+
+    /// Attempts to send a value, waiting if there is no capacity left.
+    /// Returns the value back if the channel is closed.
+    auto send(T value) const {
+        return tx.send(std::move(value));
+    }
+
+    /// Attempts to send a value without blocking, returns the value if the channel is full or closed.
+    auto trySend(T value) const {
+        return tx.trySend(std::move(value));
+    }
+
+    /// Receives a value from the channel, waiting if there is no value available.
+    auto recv() const noexcept {
+        return rx.recv();
+    }
+
+    /// Attempts to receive a value without blocking, returns an error if the channel is empty or closed.
+    auto tryRecv() const noexcept(ChannelData<T>::NoexceptMovable) {
+        return rx.tryRecv();
+    }
+
+    /// Drains all values from the channel into a deque, waking all waiting senders.
+    auto drain() {
+        return rx.drain();
+    }
+
+    bool hasCapacity() const noexcept {
+        return tx.hasCapacity();
+    }
+
+    bool empty() const noexcept {
+        return rx.empty();
+    }
+};
+
+/// Creates a new oneshot channel. Only one message can ever be sent over the channel, and there can only be one sender and one receiver.
+/// The returned value can be destructured into `Sender<T>` and `Receiver<T>` halves to store separately:
+/// ```cpp
+/// auto [tx, rx] = arc::oneshot::channel<int>();
+/// tx.send(42);
+/// ```
 ///
 /// `send()` never blocks, and either inserts the message into the channel or straight into the receiver.
 /// Calling `send()` more than once is UB, as is calling `recv()`/`tryRecv()` after a message has been received.
 ///
 /// This function does not require a runtime, and can be run in both synchronous and asynchronous contexts.
 template <typename T>
-std::pair<Sender<T>, Receiver<T>> channel() {
+OneshotChannel<T> channel() {
     auto shared = std::make_shared<Shared<T>>();
-    return std::make_pair(Sender<T>{shared}, Receiver<T>{shared});
+    return OneshotChannel<T>{Sender<T>{shared}, Receiver<T>{shared}};
 }
 
 }
