@@ -67,12 +67,11 @@ Future<NetResult<void>> TcpStream::sendAll(const void* datav, size_t size) {
     const char* data = reinterpret_cast<const char*>(datav);
     size_t remaining = size;
 
-    uint64_t id = 0;
-
+    ScopedIoRegistration reg{m_io};
     NetResult<void> result = Ok();
     while (remaining > 0) {
         auto res = co_await pollFunc([&](Context& cx) {
-            return this->pollWrite(cx, data, remaining, id);
+            return this->pollWrite(cx, data, remaining, reg.m_id);
         });
 
         if (!res) {
@@ -83,10 +82,6 @@ Future<NetResult<void>> TcpStream::sendAll(const void* datav, size_t size) {
         auto n = res.unwrap();
         data += n;
         remaining -= n;
-    }
-
-    if (id != 0) {
-        m_io.unregister(id);
     }
 
     co_return result;
@@ -102,12 +97,11 @@ Future<NetResult<void>> TcpStream::receiveExact(void* buffer, size_t size) {
     char* buf = reinterpret_cast<char*>(buffer);
     size_t remaining = size;
 
-    uint64_t id = 0;
-
+    ScopedIoRegistration reg{m_io};
     NetResult<void> result = Ok();
     while (remaining > 0) {
         auto res = co_await pollFunc([&](Context& cx) {
-            return this->pollRead(cx, buf, remaining, id);
+            return this->pollRead(cx, buf, remaining, reg.m_id);
         });
 
         if (!res) {
@@ -118,10 +112,6 @@ Future<NetResult<void>> TcpStream::receiveExact(void* buffer, size_t size) {
         auto n = res.unwrap();
         buf += n;
         remaining -= n;
-    }
-
-    if (id != 0) {
-        m_io.unregister(id);
     }
 
     co_return result;

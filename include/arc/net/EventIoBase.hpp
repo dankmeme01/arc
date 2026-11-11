@@ -11,6 +11,7 @@ ARC_FATAL_NO_FEATURE(net)
 #include <arc/util/Trace.hpp>
 #include <arc/util/Result.hpp>
 #include <arc/util/Function.hpp>
+#include <utility>
 
 namespace arc {
 
@@ -18,6 +19,23 @@ template <typename T = void>
 using NetResult = qsox::NetResult<T>;
 
 qsox::Error errorFromSocket(SockFd fd);
+
+struct ScopedIoRegistration {
+    explicit ScopedIoRegistration(Registration& io) : m_io(io) {}
+
+    ScopedIoRegistration(const ScopedIoRegistration&) = delete;
+    ScopedIoRegistration& operator=(const ScopedIoRegistration&) = delete;
+    ScopedIoRegistration(ScopedIoRegistration&& other) noexcept : m_io(other.m_io), m_id(std::exchange(other.m_id, 0)) {}
+
+    ~ScopedIoRegistration() {
+        if (m_id != 0) {
+            m_io.unregister(m_id);
+        }
+    }
+
+    Registration& m_io;
+    uint64_t m_id = 0;
+};
 
 template <typename Derived>
 class EventIoBase {
@@ -41,14 +59,11 @@ public:
 
     Future<NetResult<void>> pollReady(Interest interest) {
         while (true) {
-            uint64_t id = 0;
+            ScopedIoRegistration reg{m_io};
             Interest ready = co_await pollFunc([&](auto& cx) {
-                auto ready = m_io.pollReady(interest, cx, id);
+                auto ready = m_io.pollReady(interest, cx, reg.m_id);
                 return ready == 0 ? std::nullopt : std::optional{ready};
             });
-            if (id != 0) {
-                m_io.unregister(id);
-            }
 
             // check if there was an error
             if (ready & Interest::Error) {
@@ -122,7 +137,7 @@ protected:
 
             auto err = res.unwrapErr();
             if (err == qsox::Error::WouldBlock) {
-                m_io.clearReadiness(Interest::Readable);
+                m_io.clearReadiness(Interest::Writable);
                 return Ok(std::nullopt);
             } else {
                 return Err(err);
@@ -163,21 +178,14 @@ protected:
     template <typename Ret, typename Fn>
     struct ARC_NODISCARD RioPoll : Pollable<RioPoll<Ret, Fn>, Ret> {
         template <typename X>
-        explicit RioPoll(X&& func, Registration& io) : m_func(std::forward<X>(func)), m_io(io) {}
-
-        ~RioPoll() {
-            if (m_id != 0) {
-                m_io.unregister(m_id);
-            }
-        }
+        explicit RioPoll(X&& func, Registration& io) : m_func(std::forward<X>(func)), m_reg(io) {}
 
         std::optional<Ret> poll(Context& cx) {
-            return m_func(cx, m_id);
+            return m_func(cx, m_reg.m_id);
         }
 
     private:
-        uint64_t m_id = 0;
-        Registration& m_io;
+        ScopedIoRegistration m_reg;
         Fn m_func;
     };
 

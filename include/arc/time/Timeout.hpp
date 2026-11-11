@@ -85,7 +85,7 @@ struct ARC_NODISCARD Timeout : Pollable<Timeout<Fut>, Output> {
 
         // register timer if we aren't already registered
         if (m_id == 0) {
-            td.addEntry(m_expiry, cx.cloneWaker());
+            m_id = td.addEntry(m_expiry, cx.cloneWaker());
             m_runtime = cx.runtime()->weakFromThis();
         }
 
